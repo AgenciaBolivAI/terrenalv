@@ -7,7 +7,7 @@
 
 import React from 'react';
 import type { MapManzana } from '../data/types';
-import { manzanaAggregate, useMapStore } from '../store/useMapStore';
+import { useMapStore } from '../store/useMapStore';
 import { LotPath } from './LotPath';
 import { intersectsPadded } from './viewbox';
 
@@ -27,17 +27,13 @@ function ManzanaGroupInner({ manzana }: { manzana: MapManzana }) {
   const visible = useMapStore(
     (s) =>
       s.lodBucket >= 1 &&
-      (s.viewportBbox === null || intersectsPadded(m.bbox, s.viewportBbox, 0.2)),
+      (s.viewportBbox === null || intersectsPadded(m.bbox, s.viewportBbox, 0.6)),
   );
   // Primitive selector (count) so a broadcast only re-renders when it changes.
-  const disponibles = useMapStore((s) => manzanaAggregate(m, s.statusByLotId).disponibles);
-  const pricedCount = useMapStore((s) => {
-    let n = 0;
-    for (const id of m.lotIds) {
-      if (s.statusByLotId[id]?.priced) n++;
-    }
-    return n;
-  });
+  // Precomputed in the store when statuses change — these selectors used to
+  // loop every lot id on EVERY store write, including each zoom-frame update.
+  const disponibles = useMapStore((s) => s.manzanaStats[m.id]?.disponibles ?? 0);
+  const pricedCount = useMapStore((s) => s.manzanaStats[m.id]?.priced ?? 0);
   const lots = useMapStore((s) => s.lots);
 
   const isResidencial = m.kind === 'residencial';

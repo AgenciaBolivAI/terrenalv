@@ -34,6 +34,16 @@ interface MapState {
     elements: MapElement[];
   }) => void;
 
+  /** lotId → manzanaId, built once with the geometry (culling + stats). */
+  lotManzana: Map<string, string>;
+  /**
+   * Per-manzana availability, recomputed ONLY when statuses change. Previously
+   * every ManzanaGroup looped its own lot ids inside a selector, so any store
+   * write — including one viewportBbox update per zoom frame — cost ~6k
+   * iterations across the 96 groups.
+   */
+  manzanaStats: Record<string, { total: number; disponibles: number; priced: number }>;
+
   // Hot status state
   statusRev: number;
   statusByLotId: Record<string, LotLiveState>;
@@ -55,6 +65,25 @@ interface MapState {
   setViewportBbox: (b: [number, number, number, number]) => void;
 }
 
+type Stats = Record<string, { total: number; disponibles: number; priced: number }>;
+
+/** One pass over all lots — replaces per-manzana loops running inside selectors. */
+function computeStats(manzanas: MapManzana[], byLot: Record<string, LotLiveState>): Stats {
+  const out: Stats = {};
+  for (const m of manzanas) {
+    let disponibles = 0;
+    let priced = 0;
+    for (const id of m.lotIds) {
+      const e = byLot[id];
+      if (!e) continue;
+      if (e.priced) priced++;
+      if (e.st === 'disponible' && e.priced) disponibles++;
+    }
+    out[m.id] = { total: m.lotIds.length, disponibles, priced };
+  }
+  return out;
+}
+
 export const useMapStore = create<MapState>()(
   subscribeWithSelector((set, get) => ({
     ready: false,
@@ -65,8 +94,15 @@ export const useMapStore = create<MapState>()(
     lots: new Map(),
     manzanas: [],
     elements: [],
-    setGeometry: (g) =>
+    lotManzana: new Map(),
+    manzanaStats: {},
+    setGeometry: (g) => {
+      const lotManzana = new Map<string, string>();
+      for (const m of g.manzanas) {
+        for (const id of m.lotIds) lotManzana.set(id, m.id);
+      }
       set({
+        lotManzana,
         ready: true,
         geometryVersion: g.geometryVersion,
         planBbox: g.planBbox,
@@ -75,7 +111,9 @@ export const useMapStore = create<MapState>()(
         lots: g.lots,
         manzanas: g.manzanas,
         elements: g.elements,
-      }),
+        manzanaStats: computeStats(g.manzanas, get().statusByLotId),
+      });
+    },
 
     statusRev: 0,
     statusByLotId: {},
@@ -86,7 +124,13 @@ export const useMapStore = create<MapState>()(
       if (rev < get().statusRev) return;
       const map: Record<string, LotLiveState> = {};
       for (const e of entries) map[e.id] = { st: e.st, priced: e.priced, price: e.price };
-      set({ statusRev: rev, serverNow, statusByLotId: map, needsStatusResync: false });
+      set({
+        statusRev: rev,
+        serverNow,
+        statusByLotId: map,
+        needsStatusResync: false,
+        manzanaStats: computeStats(get().manzanas, map),
+      });
     },
     applyStatusEvent: (lotId, status, rev) => {
       const { statusRev, statusByLotId } = get();
@@ -99,13 +143,28 @@ export const useMapStore = create<MapState>()(
         set({ needsStatusResync: true });
       }
       const prev = statusByLotId[lotId];
-      set({
+      const next = { st: status, priced: prev?.priced ?? false, price: prev?.price ?? null };
+      const patch: Partial<MapState> = {
         statusRev: Math.max(rev, statusRev),
-        statusByLotId: {
-          ...statusByLotId,
-          [lotId]: { st: status, priced: prev?.priced ?? false, price: prev?.price ?? null },
-        },
-      });
+        statusByLotId: { ...statusByLotId, [lotId]: next },
+      };
+      // Only the affected manzana's counters move — no full recompute.
+      const mzId = get().lotManzana.get(lotId);
+      if (mzId) {
+        const stats = get().manzanaStats;
+        const cur = stats[mzId];
+        if (cur) {
+          const wasAvail = prev?.st === 'disponible' && prev?.priced;
+          const isAvail = next.st === 'disponible' && next.priced;
+          if (wasAvail !== isAvail) {
+            patch.manzanaStats = {
+              ...stats,
+              [mzId]: { ...cur, disponibles: cur.disponibles + (isAvail ? 1 : -1) },
+            };
+          }
+        }
+      }
+      set(patch);
     },
     needsStatusResync: false,
     setNeedsStatusResync: (v) => set({ needsStatusResync: v }),

@@ -17,6 +17,13 @@ import { useMapStore } from '../store/useMapStore';
 import { getViewBox, type ViewportController } from './viewbox';
 
 const THROTTLE_MS = 120;
+/**
+ * Culling is settled AFTER the gesture, not during it. Recomputing which
+ * manzanas are visible mid-zoom mounts/unmounts hundreds of <path> elements on
+ * every tick, which is what made zooming stutter. The LOD bucket still updates
+ * live (it only changes at two thresholds and swaps whole layers).
+ */
+const CULL_SETTLE_MS = 220;
 const MAX_SCALE = 8;
 
 function bucketFor(scale: number): 0 | 1 | 2 {
@@ -61,6 +68,8 @@ export function PlanViewport({ controllerRef, children }: PlanViewportProps) {
   const lastRunRef = useRef(0);
   const pendingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const cullTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const applyTransform = useCallback(() => {
     const args = lastArgsRef.current;
     const { w, h } = sizeRef.current;
@@ -79,16 +88,22 @@ export function PlanViewport({ controllerRef, children }: PlanViewportProps) {
     const store = useMapStore.getState();
     const bucket = bucketFor(scale);
     if (store.lodBucket !== bucket) store.setLodBucket(bucket);
-    const prev = store.viewportBbox;
-    if (
-      !prev ||
-      Math.abs(prev[0] - bboxNow[0]) > 0.5 ||
-      Math.abs(prev[1] - bboxNow[1]) > 0.5 ||
-      Math.abs(prev[2] - bboxNow[2]) > 0.5 ||
-      Math.abs(prev[3] - bboxNow[3]) > 0.5
-    ) {
-      store.setViewportBbox(bboxNow);
-    }
+    // Debounced: only the trailing edge of a gesture updates culling.
+    if (cullTimerRef.current !== null) clearTimeout(cullTimerRef.current);
+    cullTimerRef.current = setTimeout(() => {
+      cullTimerRef.current = null;
+      const st = useMapStore.getState();
+      const prev = st.viewportBbox;
+      if (
+        !prev ||
+        Math.abs(prev[0] - bboxNow[0]) > 0.5 ||
+        Math.abs(prev[1] - bboxNow[1]) > 0.5 ||
+        Math.abs(prev[2] - bboxNow[2]) > 0.5 ||
+        Math.abs(prev[3] - bboxNow[3]) > 0.5
+      ) {
+        st.setViewportBbox(bboxNow);
+      }
+    }, CULL_SETTLE_MS);
   }, [vb.minX, vb.minY]);
 
   const scheduleTransform = useCallback(
@@ -113,6 +128,7 @@ export function PlanViewport({ controllerRef, children }: PlanViewportProps) {
   useEffect(
     () => () => {
       if (pendingRef.current !== null) clearTimeout(pendingRef.current);
+      if (cullTimerRef.current !== null) clearTimeout(cullTimerRef.current);
     },
     [],
   );
