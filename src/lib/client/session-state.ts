@@ -90,6 +90,11 @@ export function clearFormDraft(): void {
 // Map view state (per tab): come back to the same spot after visiting a lot page.
 // ---------------------------------------------------------------------------
 export interface StoredMapView {
+  /** `${slug}:${geometryVersion}:${containerW}x${containerH}` — a restore is only
+   *  valid for the same project, same published geometry, same viewport size.
+   *  Otherwise the stored pan/zoom points at a different plan and lands the
+   *  buyer somewhere arbitrary (or outside the plat entirely). */
+  key: string;
   scale: number;
   positionX: number;
   positionY: number;
@@ -100,6 +105,7 @@ export function saveMapView(v: StoredMapView): void {
   write('session', 'map-view', v);
 }
 
-export function getMapView(): StoredMapView | null {
-  return read<StoredMapView>('session', 'map-view');
+export function getMapView(expectedKey: string): StoredMapView | null {
+  const v = read<StoredMapView>('session', 'map-view');
+  return v && v.key === expectedKey ? v : null;
 }

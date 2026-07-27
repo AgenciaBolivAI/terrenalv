@@ -82,7 +82,9 @@ export default function AuditClient({ projectId }: { projectId: string | null })
       .select('id, occurred_at, actor_type, actor_id, actor_label, action, entity_type, entity_id, before, after')
       .order('occurred_at', { ascending: false })
       .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
-    if (projectId) q = q.eq('project_id', projectId);
+    // Global-scope entries (setting.updated, profile.updated) carry a NULL
+    // project_id; an equality filter hid them from the audit page entirely.
+    if (projectId) q = q.or(`project_id.eq.${projectId},project_id.is.null`);
     if (action.trim()) q = q.ilike('action', `%${action.trim().replace(/[%,()]/g, '')}%`);
     if (entityType) q = q.eq('entity_type', entityType);
     if (actorType) q = q.eq('actor_type', actorType);

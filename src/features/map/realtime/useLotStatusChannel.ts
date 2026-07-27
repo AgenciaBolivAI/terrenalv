@@ -75,8 +75,13 @@ export function useLotStatusChannel(projectId: string | null): void {
     document.addEventListener('visibilitychange', onVisibility);
 
     let hadFirstSubscribe = false;
+    // Private topic: the DB trigger publishes with private=true and a SELECT-only
+    // policy on realtime.messages lets clients RECEIVE but never PUBLISH. With a
+    // public topic anyone holding the anon key could broadcast fake 'vendido'
+    // for every lot and black out the whole map for all visitors.
+    void supabase.realtime.setAuth();
     const channel = supabase.channel(`project:${projectId}:lots`, {
-      config: { broadcast: { self: true }, private: false },
+      config: { broadcast: { self: true }, private: true },
     });
     channel
       .on('broadcast', { event: 'lot_status' }, (message) => {
@@ -96,9 +101,11 @@ export function useLotStatusChannel(projectId: string | null): void {
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          // First SUBSCRIBED right after SSR data is fresh; later ones mean we
-          // were offline for a while → pull a snapshot to close the gap.
-          if (hadFirstSubscribe) void resync(true);
+          // ALWAYS resync on the first SUBSCRIBED too: events emitted between
+          // the server-rendered status snapshot and the socket opening are not
+          // replayed by broadcast, so without this a lot reserved in that
+          // window stays green until the next focus event.
+          void resync(true);
           hadFirstSubscribe = true;
         }
       });

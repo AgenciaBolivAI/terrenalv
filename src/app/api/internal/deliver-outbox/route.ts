@@ -235,21 +235,24 @@ export async function POST(req: NextRequest) {
   const from = process.env.RESEND_FROM ?? 'Terrenalv <onboarding@resend.dev>';
   const resend = resendKey ? new Resend(resendKey) : null;
 
+  // Nothing was attempted, so nothing may be counted: the cron pings every
+  // minute, and incrementing here would burn all 3 attempts within 3 minutes
+  // and strand every queued email as 'fallido' before Resend is ever configured.
+  if (!resend) {
+    return NextResponse.json(
+      {
+        skipped: rows.length,
+        reason: 'RESEND_API_KEY no configurada — los correos siguen en cola',
+      },
+      { status: 200 },
+    );
+  }
+
   let sent = 0;
   let failed = 0;
 
   for (const row of rows) {
     const attempts = row.attempts + 1;
-
-    if (!resend) {
-      // Per contract: count the attempt, keep it pendiente.
-      await admin
-        .from('notification_outbox')
-        .update({ attempts, last_error: 'RESEND_API_KEY no configurada' })
-        .eq('id', row.id);
-      failed += 1;
-      continue;
-    }
 
     if (row.channel !== 'email') {
       await admin

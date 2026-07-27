@@ -177,6 +177,9 @@ function seedToSnapshot(seed: SeedFile): GeometrySnapshot | null {
   return { v: 0, bbox: [x0, y0, x1, y1], manzanas, lots, elements };
 }
 
+/** The only slug the on-disk seed geometry describes. */
+const SEED_SLUG = 'estrellas-del-sur';
+
 async function loadFromSeed(slug: string): Promise<GeometryLoadResult | null> {
   if (typeof window !== 'undefined') return null; // filesystem is server-only
   try {
@@ -211,9 +214,20 @@ async function loadFromSeed(slug: string): Promise<GeometryLoadResult | null> {
   }
 }
 
-/** Resolve the published geometry for a project slug, or null (map not ready). */
+/**
+ * Resolve the published geometry for a project slug, or null (map not ready).
+ *
+ * The seed fallback is a DEVELOPMENT convenience only. In production it would
+ * be actively harmful: a transient database blip would swap the live map for
+ * stale seed geometry whose lot ids don't exist in the DB — every lot would
+ * render as available-unpriced and any reserve attempt would 404. Better to
+ * show "Mapa en preparación" than a map that lies about availability. It is
+ * also restricted to the seed's own slug so an arbitrary slug can't serve it.
+ */
 export async function loadGeometry(slug: string): Promise<GeometryLoadResult | null> {
   const fromDb = await loadFromDb(slug);
   if (fromDb) return fromDb;
+  if (process.env.NODE_ENV === 'production') return null;
+  if (slug !== SEED_SLUG) return null;
   return loadFromSeed(slug);
 }

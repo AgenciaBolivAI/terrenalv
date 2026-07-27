@@ -15,7 +15,7 @@ import {
   saveFormDraft,
 } from '@/lib/client/session-state';
 import type { CreateReservationResponse, ReservationApiError } from '../lib/api';
-import { TurnstileWidget } from './TurnstileWidget';
+import { TurnstileWidget, type TurnstileHandle } from './TurnstileWidget';
 
 type FieldErrors = Partial<Record<'full_name' | 'ci' | 'phone' | 'email' | 'accept_terms', string>>;
 
@@ -44,6 +44,7 @@ export function ReserveForm({
   const [serverErrorCode, setServerErrorCode] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const restored = useRef(false);
+  const turnstileRef = useRef<TurnstileHandle | null>(null);
 
   // Restore the draft once (mobile browsers kill the tab during the bank round-trip).
   useEffect(() => {
@@ -125,6 +126,9 @@ export function ReserveForm({
         setServerError(json?.error ?? 'Ocurrió un error. Intenta de nuevo.');
         setServerErrorCode(json?.code ?? null);
         setSending(false);
+        // Turnstile tokens are single-use: without a reset every retry after a
+        // server error would fail with CAPTCHA_FAILED.
+        turnstileRef.current?.reset();
         return;
       }
       // The reservation is now this device's session anchor; the draft is done.
@@ -138,6 +142,7 @@ export function ReserveForm({
     } catch {
       setServerError('Sin conexión. Revisa tu internet e intenta de nuevo.');
       setSending(false);
+      turnstileRef.current?.reset();
     }
   }
 
@@ -271,7 +276,7 @@ export function ReserveForm({
         <p className="-mt-2 text-xs text-red-600">{fieldErrors.accept_terms}</p>
       ) : null}
 
-      <TurnstileWidget onToken={setToken} />
+      <TurnstileWidget onToken={setToken} handleRef={turnstileRef} />
 
       {serverError ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-3">

@@ -119,16 +119,26 @@ export function PlanViewport({ controllerRef, children }: PlanViewportProps) {
 
   // ---- Session continuity: come back to the same spot after leaving the map
   // (e.g. to a lot's reserve page). Saved on hide/unmount, restored on init.
+  // Identity of the current view: a stored transform is only meaningful for the
+  // same geometry AND the same container size (rotating the phone or publishing
+  // new geometry invalidates it).
+  const viewKey = useCallback(() => {
+    const { geometryVersion } = useMapStore.getState();
+    const { w, h } = sizeRef.current;
+    return `${geometryVersion}:${Math.round(w)}x${Math.round(h)}`;
+  }, []);
+
   const persistView = useCallback(() => {
     const args = lastArgsRef.current;
     if (!args) return;
     saveMapView({
+      key: viewKey(),
       scale: args.scale,
       positionX: args.x,
       positionY: args.y,
       selectedLotId: useMapStore.getState().selectedLotId,
     });
-  }, []);
+  }, [viewKey]);
 
   useEffect(() => {
     const onHide = () => persistView();
@@ -191,7 +201,7 @@ export function PlanViewport({ controllerRef, children }: PlanViewportProps) {
           doubleClick={{ mode: 'zoomIn', step: 0.7 }}
           wheel={{ step: 0.2 }}
           onInit={(ref) => {
-            const stored = getMapView();
+            const stored = getMapView(viewKey());
             if (stored && fit !== null && stored.scale >= fit * 0.85 && stored.scale <= MAX_SCALE) {
               ref.setTransform(stored.positionX, stored.positionY, stored.scale, 0);
               scheduleTransform(stored.scale, stored.positionX, stored.positionY);

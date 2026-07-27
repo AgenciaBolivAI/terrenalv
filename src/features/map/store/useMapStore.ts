@@ -81,16 +81,22 @@ export const useMapStore = create<MapState>()(
     statusByLotId: {},
     serverNow: null,
     applyStatusSnapshot: (rev, serverNow, entries) => {
+      // Monotonicity guard: a slow in-flight snapshot must never overwrite newer
+      // state that broadcasts already applied (stale response ordering).
+      if (rev < get().statusRev) return;
       const map: Record<string, LotLiveState> = {};
       for (const e of entries) map[e.id] = { st: e.st, priced: e.priced, price: e.price };
       set({ statusRev: rev, serverNow, statusByLotId: map, needsStatusResync: false });
     },
     applyStatusEvent: (lotId, status, rev) => {
       const { statusRev, statusByLotId } = get();
+      // Old/replayed event: ignore rather than resurrect a superseded status.
+      if (rev <= statusRev) return;
       if (rev > statusRev + 1) {
-        // Missed events (tab sleep / reconnect) → snapshot refetch.
+        // Missed events (tab sleep / reconnect). Apply this one anyway — it IS
+        // the newest known truth for this lot — but flag a snapshot refetch to
+        // recover the lots whose events we never saw.
         set({ needsStatusResync: true });
-        return;
       }
       const prev = statusByLotId[lotId];
       set({

@@ -28,10 +28,13 @@ export function CountdownBar({
   onExpired?: () => void;
 }) {
   const [, tick] = useReducer((x: number) => x + 1, 0);
-  const firedRef = useRef(false);
+  // Keyed on the DEADLINE, not the snapshot: refetching produces a new
+  // serverNowIso/capturedAtMs, and resetting on those looped onExpired →
+  // refetch → onExpired, burning the buyer's IP rate limit right when they
+  // needed to upload their proof during the grace window.
+  const firedForRef = useRef<string | null>(null);
 
   useEffect(() => {
-    firedRef.current = false;
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [targetIso, serverNowIso, capturedAtMs]);
@@ -39,11 +42,11 @@ export function CountdownBar({
   const c = countdownFrom(targetIso, serverNowIso, capturedAtMs);
 
   useEffect(() => {
-    if (c.expired && !firedRef.current) {
-      firedRef.current = true;
+    if (c.expired && firedForRef.current !== targetIso) {
+      firedForRef.current = targetIso;
       onExpired?.();
     }
-  });
+  }, [c.expired, targetIso, onExpired]);
 
   if (c.expired) {
     return (

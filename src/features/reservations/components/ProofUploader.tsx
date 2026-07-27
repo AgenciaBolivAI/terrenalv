@@ -10,7 +10,10 @@ import imageCompression from 'browser-image-compression';
 
 type Phase = 'idle' | 'comprimiendo' | 'subiendo' | 'error';
 
-const MAX_SEND_BYTES = 6 * 1024 * 1024;
+// Vercel caps a serverless request body at 4.5 MB and rejects it BEFORE the
+// route runs — a larger body 413s with an opaque error the buyer can't act on.
+// Stay under it so the failure is a clear Spanish message instead.
+const MAX_SEND_BYTES = 4 * 1024 * 1024;
 
 export function ProofUploader({
   code,
@@ -47,7 +50,11 @@ export function ProofUploader({
     }
     if (toSend.size > MAX_SEND_BYTES) {
       setPhase('error');
-      setError('El archivo pesa demasiado (máximo 6 MB). Prueba con una foto más liviana.');
+      setError(
+        file.type === 'application/pdf'
+          ? 'El PDF pesa demasiado (máximo 4 MB). Envía una captura de pantalla del pago.'
+          : 'El archivo pesa demasiado (máximo 4 MB). Prueba con una foto más liviana.',
+      );
       return;
     }
 

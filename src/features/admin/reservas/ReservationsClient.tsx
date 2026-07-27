@@ -197,6 +197,13 @@ export default function ReservationsClient({ projectId, role, initialTab, openId
   }, [query]);
 
   // ---- Deep link ?open=<reservation_id> ----
+  // Re-arms whenever the URL param changes: clicking a bell notification while
+  // ALREADY on /admin/reservas only changes the query string (no remount), so a
+  // ref captured once at mount left the click doing nothing.
+  useEffect(() => {
+    if (openId) pendingOpenRef.current = openId;
+  }, [openId]);
+
   useEffect(() => {
     const target = pendingOpenRef.current;
     if (!target || loading) return;
@@ -221,7 +228,7 @@ export default function ReservationsClient({ projectId, role, initialTab, openId
         setRows((prev) => (prev.some((r) => r.id === row.id) ? prev : [row, ...prev]));
         setSelectedId(row.id);
       });
-  }, [loading, supabase, syncUrl]);
+  }, [loading, openId, supabase, syncUrl]);
 
   // ---- Realtime: the NotificationBell (single team-topic subscriber) re-emits
   // broadcasts as a DOM event; refetch on it (debounced) + on window focus. ----

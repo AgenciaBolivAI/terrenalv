@@ -18,6 +18,7 @@ declare global {
           'error-callback'?: () => void;
         },
       ) => string;
+      reset: (widgetId?: string) => void;
     };
     __terrenalvTurnstileOnLoad?: () => void;
   }
@@ -26,17 +27,43 @@ declare global {
 const SCRIPT_SRC =
   'https://challenges.cloudflare.com/turnstile/v0/api.js?onload=__terrenalvTurnstileOnLoad&render=explicit';
 
-export function TurnstileWidget({ onToken }: { onToken: (token: string | null) => void }) {
+export interface TurnstileHandle {
+  /** Issue a fresh token: Turnstile tokens are single-use, so every retry needs one. */
+  reset: () => void;
+}
+
+export function TurnstileWidget({
+  onToken,
+  handleRef,
+}: {
+  onToken: (token: string | null) => void;
+  handleRef?: React.RefObject<TurnstileHandle | null>;
+}) {
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
   const containerRef = useRef<HTMLDivElement>(null);
   const renderedRef = useRef(false);
+  const widgetIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!handleRef) return;
+    handleRef.current = {
+      reset: () => {
+        if (!window.turnstile || widgetIdRef.current === null) return;
+        onToken(null);
+        window.turnstile.reset(widgetIdRef.current);
+      },
+    };
+    return () => {
+      handleRef.current = null;
+    };
+  }, [handleRef, onToken]);
 
   useEffect(() => {
     if (!siteKey || renderedRef.current) return;
     const renderWidget = () => {
       if (renderedRef.current || !containerRef.current || !window.turnstile) return;
       renderedRef.current = true;
-      window.turnstile.render(containerRef.current, {
+      widgetIdRef.current = window.turnstile.render(containerRef.current, {
         sitekey: siteKey,
         callback: (token) => onToken(token),
         'expired-callback': () => onToken(null),

@@ -18,7 +18,9 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const SERVICE_UNAVAILABLE = 'Servicio no disponible todavía';
-const MAX_RAW_BYTES = 6 * 1024 * 1024; // raw input cap
+// Matches the client cap. Vercel rejects bodies over 4.5 MB before this route
+// even runs, so a higher number here would be a lie.
+const MAX_RAW_BYTES = 4 * 1024 * 1024;
 const MAX_PDF_BYTES = 5 * 1024 * 1024; // bucket limit (PDFs pass through untouched)
 
 type Sniffed = 'jpeg' | 'png' | 'webp' | 'pdf';
@@ -68,7 +70,7 @@ export async function POST(
     return errorJson('El archivo está vacío. Intenta con otra foto.', 'EMPTY_FILE', 400);
   }
   if (file.size > MAX_RAW_BYTES) {
-    return errorJson('El archivo pesa demasiado (máximo 6 MB).', 'FILE_TOO_LARGE', 413);
+    return errorJson('El archivo pesa demasiado (máximo 4 MB).', 'FILE_TOO_LARGE', 413);
   }
 
   const raw = Buffer.from(await file.arrayBuffer());

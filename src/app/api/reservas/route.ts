@@ -91,10 +91,23 @@ export async function POST(request: Request) {
     }
     const projectId = lotRow.project_id as string;
 
-    // CAPTCHA: only when the setting is on AND the secret is configured.
+    // CAPTCHA. If the admin turned it ON but the secret is missing, FAIL CLOSED:
+    // silently skipping it would leave the panel claiming protection that isn't
+    // there — exactly when it was switched on to stop an ongoing abuse wave.
     const captchaEnabled = await getSetting<boolean>(admin, projectId, 'captcha_enabled', false);
     const turnstileSecret = process.env.TURNSTILE_SECRET_KEY;
-    if (captchaEnabled === true && turnstileSecret) {
+    if (captchaEnabled === true) {
+      if (!turnstileSecret) {
+        console.error('captcha_enabled=true pero falta TURNSTILE_SECRET_KEY');
+        return NextResponse.json(
+          {
+            error:
+              'La verificación de seguridad no está disponible en este momento. Contáctanos por WhatsApp.',
+            code: 'CAPTCHA_UNAVAILABLE',
+          },
+          { status: 503 },
+        );
+      }
       const passed = await verifyTurnstile(turnstileSecret, turnstileToken, request.headers);
       if (!passed) {
         return NextResponse.json(
@@ -120,6 +133,22 @@ export async function POST(request: Request) {
     });
     if (error) {
       const code = rpcErrorCode(error.message);
+      // The RPC's own log_attempt is rolled back with its RAISE, so failures
+      // were invisible to the rate limiter. Record them out-of-band — except
+      // when the limiter itself rejected (that would feed its own loop).
+      if (code !== 'RATE_LIMITED') {
+        await admin
+          .rpc('log_reservation_failure', {
+            p_ip_hash: ipHash,
+            p_ci: parsed.data.ci,
+            p_phone: parsed.data.phone,
+            p_reason: code ?? 'error',
+          })
+          .then(
+            () => undefined,
+            () => undefined, // never let bookkeeping mask the real error
+          );
+      }
       return NextResponse.json(
         { error: rpcErrorCopy(error.message), code },
         { status: code === 'RATE_LIMITED' ? 429 : 400 },
