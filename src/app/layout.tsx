@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     template: '%s — Terrenalv',
   },
   description:
-    'Urbanización Estrellas del Sur: lotes desde 250 m² sobre la Carretera Internacional Ruta 9, Zanja Honda, Santa Cruz. Reserva tu lote en línea con Terrenalv S.R.L.',
+    'Urbanización Estrellas del Sur: lotes desde 250 m² con entrada por la Carretera Internacional Ruta 9, Zanja Honda, Santa Cruz. Reserva tu lote en línea con Terrenalv S.R.L.',
 };
 
 export const viewport: Viewport = {

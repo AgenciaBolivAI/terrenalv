@@ -56,6 +56,13 @@ export function PlanSurface() {
           <rect width={3} height={3} fill="#fdba74" />
           <line x1={0} y1={0} x2={0} y2={3} stroke="#ea580c" strokeWidth={1} />
         </pattern>
+
+        {/* Railway sleepers + rails, drawn over the ballast fill. */}
+        <pattern id="hatch-durmientes" width={6} height={24} patternUnits="userSpaceOnUse">
+          <rect x={0} y={1} width={4} height={22} fill="#8b7355" opacity={0.75} />
+          <line x1={0} y1={7} x2={6} y2={7} stroke="#57534e" strokeWidth={1.4} />
+          <line x1={0} y1={17} x2={6} y2={17} stroke="#57534e" strokeWidth={1.4} />
+        </pattern>
       </defs>
 
       <ElementsLayer elements={elements} />

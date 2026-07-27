@@ -6,6 +6,8 @@ export interface GenericNotificationProps {
   title?: string;
   bodyText?: string | null;
   details?: Record<string, unknown> | null;
+  /** Public origin of the app, for the hosted logo in EmailLayout. */
+  baseUrl?: string | null;
 }
 
 /** Fallback for outbox templates without a dedicated design. */
@@ -13,12 +15,13 @@ export default function GenericNotification({
   title = 'Notificación',
   bodyText,
   details,
+  baseUrl,
 }: GenericNotificationProps) {
   const entries = details
     ? Object.entries(details).filter(([, v]) => v != null && typeof v !== 'object')
     : [];
   return (
-    <EmailLayout preview={title}>
+    <EmailLayout baseUrl={baseUrl} preview={title}>
       <Text style={styles.h1}>{title}</Text>
       {bodyText ? <Text style={styles.text}>{bodyText}</Text> : null}
       {entries.length > 0 ? (

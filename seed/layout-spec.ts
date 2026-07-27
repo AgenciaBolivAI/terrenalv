@@ -1,129 +1,235 @@
-// Layout spec hand-transcribed from Terrenalv's printed plano photos (the green
-// master sheet M-1…M-25 with the sales pinboard, plus the M-23/M-24/M-25 detail
-// close-up). Plan-space: meters, origin at the SW corner of the west field,
-// +X east, +Y north. Anchored provisionally to UTM 20S at (479250, 7972500).
+// Layout of the urbanización, transcribed from Terrenalv's physical maqueta and
+// the printed plano sheets.
 //
-// Fidelity notes:
-//  * Block positions, codes, street pattern, and the área-verde placements follow
-//    the photo. Lot counts/frontages are exact where legible (M-23/24/25 detail:
-//    10.00 / 11.00 / 11.50 / 12.00 m fronts, 25–30 m depths, wider corner lots),
-//    pattern-inferred elsewhere → every manzana is seeded needs_review = true.
-//  * The team corrects geometry in the admin Map Builder afterwards; lots start
-//    unpriced, so nothing is reservable until each manzana gets its pricing pass.
+// SITE READING (corrected — the first pass had the highway alongside the site):
+// walking in from the road you cross, in this order:
+//
+//   1. Carretera Internacional Argentina–Paraguay (Ruta 9) — crosses the site's
+//      SOUTH END, perpendicular to the long axis.
+//   2. Two blocks — a shallow band between the highway and the tracks.
+//   3. Vía férrea (train tracks) — crosses the strip parallel to the highway.
+//      This is the corridor labelled "TRILLO" on the plano sheets; it is a
+//      railway, NOT an avenue.
+//   4. The rest of the project — a long narrow strip running north, away from
+//      the highway: rows of manzanas flanking a central longitudinal avenue,
+//      with cross-streets between rows.
+//
+// All lots sit on ONE side of the highway (nothing across it).
+//
+// Plan-space: meters, +X east, +Y north, origin at the site's SW corner.
+// The SITE's long axis is +Y, but each MANZANA is a band running ACROSS the
+// strip (long axis +X, 50 m deep = two back-to-back 25 m lot rows), exactly as
+// the maqueta shows. So blocks keep the 'S' hint: row A fronts the street to
+// the south, row B the street to the north.
+//
+// Fidelity: the highway → 2 blocks → railway → body sequence, the central
+// avenue, and the frontage pattern (10.00 m fronts × 25 m depth, wider corner
+// lots) follow the photos. Exact per-manzana lot counts are only legible for
+// M-23/24/25, so the rest use the dominant pattern and EVERY manzana is seeded
+// needs_review = true for the team to correct in the admin Map Builder.
 
 export type SideHint = 'S' | 'N' | 'E' | 'W';
 
 export interface BlockSpec {
   code: string;
-  sector: 'Oeste' | 'Este';
+  sector: string;
   kind: 'residencial' | 'area_verde' | 'equipamiento' | 'amenidad';
   /** [x, y, width, height] in meters, axis-aligned. */
   rect: [number, number, number, number];
   rows?: 1 | 2;
-  /** Frontage spec DSL for row A (street side per hint) and row B. */
+  /** Frontage spec DSL for row A (the side the hint points at) and row B. */
   frontA?: string;
   frontB?: string;
   depthA?: number;
-  /** Which side row A fronts. Default 'S'. */
+  /** Which side row A fronts. Bands run E–W here, so 'S'. */
   hint?: SideHint;
 }
 
 export interface ElementSpec {
   kind: 'calle' | 'avenida' | 'ciclovia' | 'area_verde' | 'equipamiento' | 'amenidad' | 'perimetro';
   name: string;
-  /** [x, y, width, height] axis-aligned band/footprint. */
   rect: [number, number, number, number];
   props?: Record<string, unknown>;
 }
 
-// Row grid (south → north). Row pitch = block depth + 13 m street.
-//   Row 5  y   0– 50   M-25 (long) · M-11
-//   Row 4  y  63–113   M-24 (long) · M-12 · M-10
-//   Row 3  y 126–186   M-23 (long, 30 m lots) · M-13 · M-9
-//   Row 2  y 199–249   M-21 · M-22 · M-14 · M-8
-//   Row 1  y 262–312   M-20 · M-19 · M-18 · M-17
-//   North  y 325–375   M-16 ÁREA VERDE · M-15 · (M-7 · M-6 · M-5 cluster)
-// Columns: west long span x 0–294 (split 0–140 / 154–294 in rows 1–2),
-// middle x 307–457, east x 470–620, then AVENIDA x 620–650, NE cluster beyond.
+// ---------------------------------------------------------------------------
+// Dimensions — proportions matched to the maqueta (~7:1 long strip).
+// ---------------------------------------------------------------------------
 
-export const BLOCKS: BlockSpec[] = [
-  // --- Row 5 (south edge, fronting the Carretera side) ---
-  { code: 'M-25', sector: 'Oeste', kind: 'residencial', rect: [0, 0, 277, 50], rows: 2, frontA: '12; 22x11.5; 12', frontB: '12; 22x11.5; 12' },
-  { code: 'M-11', sector: 'Oeste', kind: 'residencial', rect: [307, 0, 150, 50], rows: 2, frontA: '10; 13x10; 10' },
+const LOT_DEPTH = 25; // m — dominant depth on the plano
+const CALLE = 13; // m — "13.00 CALLE S/N"
+const AVENIDA = 26; // m — the central spine
+const RAILWAY_W = 24; // m — vía férrea corridor
+const HIGHWAY_W = 30; // m — Ruta 9
 
-  // --- Row 4 ---
-  { code: 'M-24', sector: 'Oeste', kind: 'residencial', rect: [0, 63, 294, 50], rows: 2, frontA: '12; 27x10; 12', frontB: '12; 27x10; 12' },
-  { code: 'M-12', sector: 'Oeste', kind: 'residencial', rect: [307, 63, 150, 50], rows: 2, frontA: '10; 13x10; 10' },
-  { code: 'M-10', sector: 'Oeste', kind: 'residencial', rect: [470, 63, 150, 50], rows: 2, frontA: '10; 13x10; 10' },
+/** Each manzana: a band 170 m long (across the strip) × 50 m deep (two lot rows). */
+const BLOCK_LEN = 170;
+const BLOCK_DEPTH = LOT_DEPTH * 2; // 50
+/** 17 lots per row → 34 per manzana (10 m fronts, 10 m corner lots). */
+const FRONTS = '10; 15x10; 10';
+/** Short bands at the tapered north end: 11 lots per row. */
+const FRONTS_SHORT = '10; 9x10; 10';
+const BLOCK_LEN_SHORT = 110;
 
-  // --- Row 3 (M-23 has the 30 m-deep lots per the detail sheet) ---
-  { code: 'M-23', sector: 'Oeste', kind: 'residencial', rect: [0, 126, 294, 60], rows: 2, depthA: 30, frontA: '12; 27x10; 12', frontB: '12; 27x10; 12' },
-  { code: 'M-13', sector: 'Oeste', kind: 'residencial', rect: [307, 126, 150, 60], rows: 2, depthA: 30, frontA: '10; 13x10; 10' },
-  { code: 'M-9', sector: 'Oeste', kind: 'residencial', rect: [470, 126, 150, 60], rows: 2, depthA: 30, frontA: '10; 13x10; 10' },
+const X_WEST = CALLE;
+const X_AVE = CALLE + BLOCK_LEN;
+const X_EAST = X_AVE + AVENIDA;
+/** calle | manzana | avenida | manzana | calle */
+export const SITE_WIDTH = CALLE * 2 + BLOCK_LEN * 2 + AVENIDA; // 392 m
 
-  // --- Row 2 ---
-  { code: 'M-21', sector: 'Oeste', kind: 'residencial', rect: [0, 199, 140, 50], rows: 2, frontA: '10; 12x10; 10' },
-  { code: 'M-22', sector: 'Oeste', kind: 'residencial', rect: [154, 199, 140, 50], rows: 2, frontA: '10; 12x10; 10' },
-  { code: 'M-14', sector: 'Oeste', kind: 'residencial', rect: [307, 199, 150, 50], rows: 2, frontA: '10; 13x10; 10' },
-  { code: 'M-8', sector: 'Oeste', kind: 'residencial', rect: [470, 199, 150, 50], rows: 2, frontA: '10; 13x10; 10' },
+const BAND_PITCH = BLOCK_DEPTH + CALLE; // 63 m per row of manzanas
 
-  // --- Row 1 ---
-  { code: 'M-20', sector: 'Oeste', kind: 'residencial', rect: [0, 262, 140, 50], rows: 2, frontA: '10; 12x10; 10' },
-  { code: 'M-19', sector: 'Oeste', kind: 'residencial', rect: [154, 262, 140, 50], rows: 2, frontA: '10; 12x10; 10' },
-  { code: 'M-18', sector: 'Oeste', kind: 'residencial', rect: [307, 262, 150, 50], rows: 2, frontA: '10; 13x10; 10' },
-  { code: 'M-17', sector: 'Oeste', kind: 'residencial', rect: [470, 262, 150, 50], rows: 2, frontA: '10; 13x10; 10' },
+// South end: highway, the 2-block entry band, then the railway.
+const HIGHWAY_Y = -HIGHWAY_W;
+const ENTRY_Y = 0;
+const RAILWAY_Y = ENTRY_Y + BLOCK_DEPTH + CALLE;
+const BODY_Y = RAILWAY_Y + RAILWAY_W + CALLE;
 
-  // --- North strip ---
-  { code: 'M-16', sector: 'Oeste', kind: 'area_verde', rect: [307, 325, 150, 50] },
-  { code: 'M-15', sector: 'Oeste', kind: 'residencial', rect: [470, 325, 150, 50], rows: 2, frontA: '10; 13x10; 10' },
+/** 47 bands × 2 manzanas = 94, plus the 2 entry blocks = 96 (matches the planos). */
+const BODY_BANDS = 47;
+// The strip holds a constant width end to end. (An earlier taper at the north
+// end was invented, not read off the maqueta — the team refines the real
+// boundary in the Map Builder.)
+const SHORT_FROM = Number.POSITIVE_INFINITY;
 
-  // --- NE cluster (smaller blocks near the Trillo) ---
-  { code: 'M-7', sector: 'Oeste', kind: 'residencial', rect: [663, 262, 90, 50], rows: 2, frontA: '9x10' },
-  { code: 'M-6', sector: 'Oeste', kind: 'residencial', rect: [663, 325, 90, 50], rows: 2, frontA: '9x10' },
-  { code: 'M-5', sector: 'Oeste', kind: 'residencial', rect: [766, 325, 90, 50], rows: 2, frontA: '9x10' },
+// Special-purpose bands, following the plano sheets.
+const POOL_BAND = 9; // Mega Piscina — west manzana
+const CLUB_BAND = 23; // Club House — east manzana
+const GREEN_BANDS = new Set([5, 18, 31, 42]); // área verde, west
+const EQUIP_BANDS = new Set([12, 27, 38]); // área de equipamiento, east
 
-  // --- Sector Este (across the Trillo, per the right section of the sheet) ---
-  { code: 'AV-E1', sector: 'Este', kind: 'area_verde', rect: [940, 262, 100, 50] },
-  { code: 'M-4', sector: 'Este', kind: 'residencial', rect: [1053, 262, 150, 50], rows: 2, frontA: '10; 13x10; 10' },
-  { code: 'M-1', sector: 'Este', kind: 'residencial', rect: [1216, 262, 80, 50], rows: 2, frontA: '8x10' },
-  { code: 'AV-E2', sector: 'Este', kind: 'area_verde', rect: [940, 199, 100, 50] },
-  { code: 'M-3', sector: 'Este', kind: 'residencial', rect: [1053, 199, 150, 50], rows: 2, frontA: '10; 13x10; 10' },
-  { code: 'M-2', sector: 'Este', kind: 'residencial', rect: [1216, 199, 80, 50], rows: 2, frontA: '8x10' },
-];
+const bandLen = (band: number) => (band >= SHORT_FROM ? BLOCK_LEN_SHORT : BLOCK_LEN);
+const bandFronts = (band: number) => (band >= SHORT_FROM ? FRONTS_SHORT : FRONTS);
+const bandY = (band: number) => BODY_Y + band * BAND_PITCH;
 
-export const ELEMENTS: ElementSpec[] = [
-  // Horizontal streets between block rows (west field span).
-  { kind: 'calle', name: 'Calle S/N', rect: [-13, 50, 646, 13] },
-  { kind: 'calle', name: 'Calle S/N', rect: [-13, 113, 646, 13] },
-  { kind: 'calle', name: 'Calle S/N', rect: [-13, 186, 646, 13] },
-  { kind: 'calle', name: 'Calle S/N', rect: [-13, 249, 646, 13] },
-  { kind: 'calle', name: 'Calle S/N', rect: [-13, 312, 646, 13] },
-  // Vertical streets between columns.
-  { kind: 'calle', name: 'Calle S/N', rect: [140, 199, 14, 126] },
-  { kind: 'calle', name: 'Calle S/N', rect: [294, -13, 13, 401] },
-  { kind: 'calle', name: 'Calle S/N', rect: [457, -13, 13, 401] },
-  { kind: 'calle', name: 'Calle S/N', rect: [-13, -13, 13, 401] },
-  // Main avenue on the east edge of the west field.
-  { kind: 'avenida', name: 'Avenida S/N', rect: [620, -13, 30, 401] },
-  // NE cluster streets.
-  { kind: 'calle', name: 'Calle S/N', rect: [650, 249, 220, 13] },
-  { kind: 'calle', name: 'Calle S/N', rect: [650, 312, 220, 13] },
-  { kind: 'calle', name: 'Calle S/N', rect: [753, 249, 13, 139] },
-  { kind: 'calle', name: 'Calle S/N', rect: [856, 249, 13, 76] },
-  // The Trillo corridor separating the sectors.
-  { kind: 'avenida', name: 'Trillo', rect: [900, -13, 20, 401] },
-  // Sector Este streets.
-  { kind: 'calle', name: 'Calle S/N', rect: [920, 186, 389, 13] },
-  { kind: 'calle', name: 'Calle S/N', rect: [920, 249, 389, 13] },
-  { kind: 'calle', name: 'Calle S/N', rect: [920, 312, 389, 13] },
-  { kind: 'calle', name: 'Calle S/N', rect: [1040, 186, 13, 139] },
-  { kind: 'calle', name: 'Calle S/N', rect: [1203, 186, 13, 139] },
-  // Carretera Internacional Ruta 9 along the south edge (site fronts it).
-  { kind: 'avenida', name: 'Carretera Internacional Ruta 9 (Argentina–Paraguay)', rect: [-60, -55, 1420, 30], props: { width_m: 30, highway: true } },
-  // Amenities (renders exist → billboards in 3D; footprints on the plat).
-  { kind: 'amenidad', name: 'Mega Piscina', rect: [330, 335, 100, 32], props: { billboard: 'mega-piscina', pad: true } },
-  { kind: 'amenidad', name: 'Club House', rect: [955, 272, 70, 30], props: { billboard: 'club-house', pad: true } },
-];
+// ---------------------------------------------------------------------------
+// Blocks
+// ---------------------------------------------------------------------------
+
+function buildBlocks(): BlockSpec[] {
+  const blocks: BlockSpec[] = [];
+  const residencial = (code: string, sector: string, rect: BlockSpec['rect'], fronts: string): BlockSpec => ({
+    code,
+    sector,
+    kind: 'residencial',
+    rect,
+    rows: 2,
+    hint: 'S',
+    frontA: fronts,
+    frontB: fronts,
+  });
+
+  // --- The 2 blocks between the Carretera and the tracks ---
+  blocks.push(residencial('M-1', 'Acceso', [X_WEST, ENTRY_Y, BLOCK_LEN, BLOCK_DEPTH], FRONTS));
+  blocks.push(residencial('M-2', 'Acceso', [X_EAST, ENTRY_Y, BLOCK_LEN, BLOCK_DEPTH], FRONTS));
+
+  // --- The body: bands stacked north of the railway ---
+  let code = 3;
+  for (let band = 0; band < BODY_BANDS; band++) {
+    const y = bandY(band);
+    const len = bandLen(band);
+    const fronts = bandFronts(band);
+    const sector = band < BODY_BANDS / 2 ? 'Sur' : 'Norte';
+    // Tapered bands stay flush with the avenue; the strip narrows outward.
+    const inset = BLOCK_LEN - len;
+    const xEast = X_AVE + AVENIDA;
+
+    const westKind =
+      band === POOL_BAND ? 'amenidad' : GREEN_BANDS.has(band) ? 'area_verde' : 'residencial';
+    const eastKind =
+      band === CLUB_BAND ? 'amenidad' : EQUIP_BANDS.has(band) ? 'equipamiento' : 'residencial';
+
+    const westRect: BlockSpec['rect'] = [X_WEST + inset, y, len, BLOCK_DEPTH];
+    const eastRect: BlockSpec['rect'] = [xEast, y, len, BLOCK_DEPTH];
+
+    blocks.push(
+      westKind === 'residencial'
+        ? residencial(`M-${code++}`, sector, westRect, fronts)
+        : { code: `M-${code++}`, sector, kind: westKind, rect: westRect },
+    );
+    blocks.push(
+      eastKind === 'residencial'
+        ? residencial(`M-${code++}`, sector, eastRect, fronts)
+        : { code: `M-${code++}`, sector, kind: eastKind, rect: eastRect },
+    );
+  }
+
+  return blocks;
+}
+
+export const BLOCKS: BlockSpec[] = buildBlocks();
+
+/** North edge of the built area. */
+const SITE_TOP = bandY(BODY_BANDS - 1) + BLOCK_DEPTH;
+
+// ---------------------------------------------------------------------------
+// Elements
+// ---------------------------------------------------------------------------
+
+function buildElements(): ElementSpec[] {
+  const els: ElementSpec[] = [];
+  const overhang = 220; // roads run past the property line
+
+  // Carretera Internacional: crosses the SOUTH end, perpendicular to the strip.
+  els.push({
+    kind: 'avenida',
+    name: 'Carretera Internacional Ruta 9',
+    rect: [-overhang, HIGHWAY_Y, SITE_WIDTH + overhang * 2, HIGHWAY_W],
+    props: { width_m: HIGHWAY_W, highway: true },
+  });
+
+  // Vía férrea: crosses the strip parallel to the highway (the plano's "TRILLO").
+  els.push({
+    kind: 'avenida',
+    name: 'Vía férrea',
+    rect: [-overhang, RAILWAY_Y, SITE_WIDTH + overhang * 2, RAILWAY_W],
+    props: { width_m: RAILWAY_W, railway: true },
+  });
+
+  // Central avenue: the spine, running the full length of the urbanización.
+  els.push({
+    kind: 'avenida',
+    name: 'Avenida Principal',
+    rect: [X_AVE, ENTRY_Y, AVENIDA, SITE_TOP - ENTRY_Y],
+    props: { width_m: AVENIDA },
+  });
+
+  // Perimeter streets down both flanks.
+  els.push({ kind: 'calle', name: 'Calle S/N', rect: [0, ENTRY_Y, CALLE, SITE_TOP - ENTRY_Y] });
+  els.push({
+    kind: 'calle',
+    name: 'Calle S/N',
+    rect: [SITE_WIDTH - CALLE, ENTRY_Y, CALLE, SITE_TOP - ENTRY_Y],
+  });
+
+  // Cross-streets: after the entry band and after every body band.
+  els.push({ kind: 'calle', name: 'Calle S/N', rect: [0, ENTRY_Y + BLOCK_DEPTH, SITE_WIDTH, CALLE] });
+  for (let band = 0; band < BODY_BANDS; band++) {
+    els.push({
+      kind: 'calle',
+      name: 'Calle S/N',
+      rect: [0, bandY(band) + BLOCK_DEPTH, SITE_WIDTH, CALLE],
+    });
+  }
+
+  // Amenity footprints (billboards in 3D), inside their manzanas.
+  els.push({
+    kind: 'amenidad',
+    name: 'Mega Piscina',
+    rect: [X_WEST + 8, bandY(POOL_BAND) + 6, BLOCK_LEN - 16, BLOCK_DEPTH - 12],
+    props: { billboard: 'mega-piscina', pad: true },
+  });
+  els.push({
+    kind: 'amenidad',
+    name: 'Club House',
+    rect: [X_EAST + 8, bandY(CLUB_BAND) + 6, BLOCK_LEN - 16, BLOCK_DEPTH - 12],
+    props: { billboard: 'club-house', pad: true },
+  });
+
+  return els;
+}
+
+export const ELEMENTS: ElementSpec[] = buildElements();
 
 /** Provisional UTM 20S anchor (refined later via Builder calibration). */
 export const UTM_ANCHOR = { epsg: 32720, offsetE: 479250.0, offsetN: 7972500.0 };

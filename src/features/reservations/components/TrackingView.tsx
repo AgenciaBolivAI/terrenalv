@@ -6,6 +6,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { LogoMark } from '@/components/Logo';
 import { formatDateTime, formatMoney } from '@/lib/format';
 import type { TrackedReservation } from '../lib/api';
 import { useReservationStatus } from '../hooks/useReservationStatus';
@@ -88,7 +89,8 @@ export function TrackingView({
       : undefined;
 
   return (
-    <div className="mx-auto w-full max-w-md px-4 pb-16">
+    // The page rail (max width, padding, branded header/footer) comes from PublicShell.
+    <div>
       {status === 'pendiente_pago' && data.hold_expires_at ? (
         <CountdownBar
           targetIso={data.hold_expires_at}
@@ -184,10 +186,14 @@ export function TrackingView({
       {status === 'confirmada' ? (
         <div className="space-y-4">
           <section className="rounded-2xl border border-green-200 bg-green-50 p-5 text-center">
-            <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-brand">
-              <svg viewBox="0 0 24 24" className="h-9 w-9 text-white" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+            {/* The check confirms the payment; the mark says who confirms it. */}
+            <div className="mx-auto mb-3 flex items-center justify-center gap-3">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand">
+                <svg viewBox="0 0 24 24" className="h-9 w-9 text-white" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+              <LogoMark className="h-8 w-8" />
             </div>
             <h2 className="text-2xl font-extrabold text-brand">
               ¡Lote reservado a tu nombre!

@@ -112,6 +112,7 @@ async function buildEmail(
           lote: (p.lote as string) ?? '—',
           monto_bob: (p.monto_bob as number) ?? undefined,
           adminUrl,
+          baseUrl: base,
         }),
       };
     case 'team_comprobante_subido':
@@ -124,6 +125,7 @@ async function buildEmail(
           monto_bob: (p.monto_bob as number) ?? undefined,
           posible_duplicado: p.posible_duplicado === true,
           reviewUrl: adminUrl,
+          baseUrl: base,
         }),
       };
     case 'buyer_reserva_creada': {
@@ -139,6 +141,7 @@ async function buildEmail(
           reference_code: extra?.reference_code ?? null,
           vencimiento: extra?.vencimiento ?? null,
           trackingUrl,
+          baseUrl: base,
         }),
       };
     }
@@ -151,6 +154,7 @@ async function buildEmail(
           manzana: extra?.manzana ?? null,
           lote: extra?.lote ?? null,
           trackingUrl,
+          baseUrl: base,
         }),
       };
     }
@@ -162,12 +166,13 @@ async function buildEmail(
           motivo: (p.motivo as string) ?? null,
           permite_reintento: p.permite_reintento !== false,
           trackingUrl,
+          baseUrl: base,
         }),
       };
     case 'buyer_reserva_expirada':
       return {
         subject: `Tu reserva ${code} expiró — Estrellas del Sur`,
-        react: createElement(BuyerReservaExpirada, { tracking_code: code, trackingUrl }),
+        react: createElement(BuyerReservaExpirada, { tracking_code: code, trackingUrl, baseUrl: base }),
       };
     default:
       return {
@@ -176,6 +181,7 @@ async function buildEmail(
           title: notif?.title ?? `Notificación: ${humanizeTemplate(row.template)}`,
           bodyText: notif?.body ?? null,
           details: p,
+          baseUrl: base,
         }),
       };
   }

@@ -43,6 +43,7 @@ export const ROAD_COLOR = '#78716c'; // stone-500, reads as compacted road
 export const GREEN_COLOR = '#8fd6a4'; // area_verde (2D uses #bbf7d0; darkened for sun)
 export const PAD_AMENIDAD_HEX = '#7dd3fc'; // .el-amenidad
 export const PAD_EQUIPAMIENTO_HEX = '#fbcfe8'; // .mz-equipamiento
+export const PAD_RAILWAY_HEX = '#c9c2b6'; // .el-railway — ballast, not asphalt
 export const OUTLINE_COLOR = '#57534e'; // stone-600 lot outlines
 export const SELECT_FILL = '#3b82f6';
 export const SELECT_STROKE = '#1d4ed8'; // matches .lot-path.selected

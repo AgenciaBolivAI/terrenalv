@@ -15,7 +15,9 @@ import { useMapStore } from '../store/useMapStore';
 import { LABEL_COLOR, LABEL_Y } from './palette';
 import { amenityBillboards, roundedRectGeometry } from './world';
 
-const LABEL_MAX_DIST = 480; // spec: visible under ~600; tightened for budget
+// Minimum reach. On a long site the effective radius grows with how far the
+// camera has pulled back, otherwise the whole-site overview shows zero labels.
+const LABEL_MIN_DIST = 480;
 const LABEL_MAX_VISIBLE = 12; // hard cap keeps total draw calls ≤ 25
 const CULL_INTERVAL_S = 0.15;
 
@@ -49,12 +51,16 @@ export function LabelsLayer({ showManzanaLabels }: { showManzanaLabels: boolean 
     if (accRef.current < CULL_INTERVAL_S) return;
     accRef.current = 0;
 
+    // Scale the cull radius with the camera's height above the plat, so the
+    // nearest labels stay legible whether you're zoomed into one manzana or
+    // looking down the length of the whole strip.
+    const reach = Math.max(LABEL_MIN_DIST, camera.position.y * 1.6);
     const near: { i: number; d: number }[] = [];
     for (let i = 0; i < group.children.length; i++) {
       const child = group.children[i];
       const d = camera.position.distanceTo(child.position);
       child.visible = false;
-      if (d < LABEL_MAX_DIST) near.push({ i, d });
+      if (d < reach) near.push({ i, d });
     }
     near.sort((a, b) => a.d - b.d);
     const n = Math.min(LABEL_MAX_VISIBLE, near.length);

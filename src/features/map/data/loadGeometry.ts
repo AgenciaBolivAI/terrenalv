@@ -63,13 +63,27 @@ async function loadFromDb(slug: string): Promise<GeometryLoadResult | null> {
 
     const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const url = `${base}/storage/v1/object/public/maps/${manifest.slug}/geometry-v${manifest.geometry_version}.json`;
-    // Content-addressed by version → safe to cache.
-    const res = await fetch(url, {
-      cache: 'force-cache',
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!res.ok) return null;
-    const snapshot: unknown = await res.json();
+    // Content-addressed by version → safe to cache indefinitely.
+    let snapshot: unknown = null;
+    try {
+      const res = await fetch(url, {
+        cache: 'force-cache',
+        signal: AbortSignal.timeout(10000),
+      });
+      if (res.ok) snapshot = await res.json();
+    } catch {
+      // fall through to the database
+    }
+
+    // Storage is only a CDN cache. When the snapshot for this version hasn't
+    // been uploaded (or the fetch failed), read the same shape from the
+    // published rows — they are the source of truth.
+    if (!isValidSnapshot(snapshot)) {
+      const { data: fromDb } = await supabase.rpc('get_geometry_snapshot', {
+        p_project_id: manifest.project_id,
+      });
+      snapshot = fromDb;
+    }
     if (!isValidSnapshot(snapshot)) return null;
 
     return {

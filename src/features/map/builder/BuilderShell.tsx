@@ -5,6 +5,7 @@
 // here so every RPC error surfaces as a Spanish toast in one place.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Logo } from '@/components/Logo';
 import { createClient } from '@/lib/supabase/client';
 import type { ManzanaKind } from '@/lib/db-types';
 import { EmptyState, Spinner, btnPrimary, btnSecondary, inputClass } from '@/features/admin/ui/bits';
@@ -287,6 +288,12 @@ export default function BuilderShell({
     <div className="flex h-full flex-col overflow-hidden bg-stone-100">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-1.5 border-b border-stone-200 bg-white px-2 py-1.5">
+        {/* This view negative-margins out of the AdminShell chrome, so it carries its own brand. */}
+        <div className="mr-1 hidden items-center gap-2 border-r border-stone-200 pr-2.5 sm:flex">
+          <Logo className="h-5 w-auto" srl={false} />
+          <span className="text-xs font-medium text-stone-400">Editor de mapa</span>
+        </div>
+
         <div className="flex overflow-hidden rounded-lg border border-stone-300">
           {TOOLS.map((t) => (
             <button
@@ -399,6 +406,14 @@ export default function BuilderShell({
               <Spinner label="Cargando lotes…" />
             </div>
           ) : null}
+          <a
+            href="https://bolivai.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="absolute bottom-1.5 right-2 text-[10px] text-stone-400/80 hover:text-stone-600"
+          >
+            Made by BolivAI
+          </a>
         </div>
         <div className="hidden h-full w-72 shrink-0 overflow-y-auto border-l border-stone-200 bg-white sm:block lg:w-80">
           {rightPanel}

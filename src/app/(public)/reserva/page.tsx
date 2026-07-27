@@ -2,6 +2,7 @@
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { PublicShell } from '@/features/reservations/components/PublicShell';
 import { SearchReservationForm } from '@/features/reservations/components/SearchReservationForm';
 
 export const metadata: Metadata = {
@@ -11,8 +12,8 @@ export const metadata: Metadata = {
 
 export default function BuscarReservaPage() {
   return (
-    <main className="min-h-dvh bg-background">
-      <div className="mx-auto w-full max-w-md px-4 pb-16 pt-10">
+    <PublicShell>
+      <div className="pt-4">
         <h1 className="text-2xl font-extrabold text-stone-900">Buscar mi reserva</h1>
         <p className="mt-1 text-sm text-stone-600">
           Ingresa tu código de seguimiento para ver el estado de tu lote.
@@ -30,6 +31,6 @@ export default function BuscarReservaPage() {
           </Link>
         </p>
       </div>
-    </main>
+    </PublicShell>
   );
 }

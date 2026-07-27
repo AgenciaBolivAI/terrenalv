@@ -9,7 +9,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseFrontageSpec, subdivideManzana } from '../src/features/map/lib/subdivide';
 import type { Ring } from '../src/features/map/lib/types';
-import { BLOCKS, ELEMENTS, UTM_ANCHOR, type BlockSpec } from './layout-spec';
+import { BLOCKS, ELEMENTS, UTM_ANCHOR, type BlockSpec, type SideHint } from './layout-spec';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -20,9 +20,16 @@ const rectRing = ([x, y, w, h]: [number, number, number, number]): Ring => [
   [x, y + h],
 ];
 
+/**
+ * A point just outside the block on the given side. subdivideManzana uses it to
+ * pick which LONG chain is row A (nearest wins), so the hint must sit off a long
+ * edge: 'W'/'E' for a tall block, 'S'/'N' for a wide one. Defaulting to 'S' on a
+ * tall block leaves both long chains equidistant and the winner arbitrary.
+ */
 function hintPoint(spec: BlockSpec): [number, number] {
   const [x, y, w, h] = spec.rect;
-  switch (spec.hint ?? 'S') {
+  const fallback: SideHint = h >= w ? 'W' : 'S';
+  switch (spec.hint ?? fallback) {
     case 'S': return [x + w / 2, y - 15];
     case 'N': return [x + w / 2, y + h + 15];
     case 'W': return [x - 15, y + h / 2];
@@ -64,7 +71,11 @@ for (const block of BLOCKS) {
   };
 
   if (block.kind === 'residencial' && block.frontA) {
-    const frontLen = block.rect[2];
+    // The front chain runs along the block's LONG axis, which for this site is
+    // vertical (+Y). Using the width unconditionally would mis-size any
+    // `llenar xN` spec on a tall block.
+    const [, , rw, rh] = block.rect;
+    const frontLen = Math.max(rw, rh);
     const frontagesA = parseFrontageSpec(block.frontA, frontLen);
     const frontagesB = block.frontB ? parseFrontageSpec(block.frontB, frontLen) : undefined;
     const rows = block.rows ?? 2;
@@ -143,7 +154,14 @@ for (const e of elements) {
   svg += `<path d="${toSvg(e.ring)}" fill="${elementFill[e.kind] ?? '#eee'}" stroke="none"/>`;
 }
 for (const m of manzanas) {
-  const fill = m.kind === 'area_verde' ? '#86efac' : m.kind === 'equipamiento' ? '#f9a8d4' : '#ffffff';
+  const fill =
+    m.kind === 'area_verde'
+      ? '#86efac'
+      : m.kind === 'equipamiento'
+        ? '#f9a8d4'
+        : m.kind === 'amenidad'
+          ? '#bae6fd'
+          : '#ffffff';
   svg += `<path d="${toSvg(m.ring)}" fill="${fill}" stroke="#78716c" stroke-width="0.8"/>`;
   for (const lot of m.lots) {
     svg += `<path d="${toSvg(lot.ring)}" fill="#d9f99d" stroke="#57534e" stroke-width="0.25"/>`;

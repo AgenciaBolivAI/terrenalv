@@ -133,6 +133,41 @@ describe('subdivideManzana — single row', () => {
   });
 });
 
+describe('subdivideManzana — block whose long axis is VERTICAL', () => {
+  // The site strip runs north; a block rotated 90° must subdivide along its own
+  // long axis with the hint taken off a LONG (west/east) edge, not a short one.
+  const block = rect(0, 0, 50, 180); // 50 m wide (2 lot rows) × 180 m tall
+  const result = subdivideManzana(block, {
+    sideAHint: [-20, 90], // west edge
+    rows: 2,
+    frontagesA: parseFrontageSpec('18x10'),
+  });
+
+  it('produces 36 lots of 250 m² with 10 m fronts and 25 m depth', () => {
+    expect(result.lots).toHaveLength(36);
+    expect(result.warnings).toEqual([]);
+    for (const lot of result.lots) {
+      expect(lot.area_m2).toBeCloseTo(250, 0);
+      expect(lot.frontage_m).toBe(10);
+      expect(lot.depth_m).toBeCloseTo(25, 1);
+    }
+  });
+
+  it('row A is the west row (nearest the hint)', () => {
+    for (const lot of result.lots.slice(0, 18)) {
+      for (const [x] of lot.ring) expect(x).toBeLessThanOrEqual(25.01);
+    }
+    for (const lot of result.lots.slice(18)) {
+      for (const [x] of lot.ring) expect(x).toBeGreaterThanOrEqual(24.99);
+    }
+  });
+
+  it('tiles the block exactly', () => {
+    const total = result.lots.reduce((s, l) => s + ringArea(l.ring), 0);
+    expect(total).toBeCloseTo(50 * 180, 0);
+  });
+});
+
 describe('subdivideManzana — spec longer than the block warns', () => {
   const block = rect(0, 0, 100, 50);
   const result = subdivideManzana(block, {

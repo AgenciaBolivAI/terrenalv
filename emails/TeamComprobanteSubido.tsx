@@ -9,6 +9,8 @@ export interface TeamComprobanteSubidoProps {
   monto_bob?: number | string;
   posible_duplicado?: boolean;
   reviewUrl?: string | null;
+  /** Public origin of the app, for the hosted logo in EmailLayout. */
+  baseUrl?: string | null;
 }
 
 export default function TeamComprobanteSubido({
@@ -18,9 +20,10 @@ export default function TeamComprobanteSubido({
   monto_bob,
   posible_duplicado = false,
   reviewUrl,
+  baseUrl,
 }: TeamComprobanteSubidoProps) {
   return (
-    <EmailLayout preview={`Comprobante subido — ${tracking_code}`}>
+    <EmailLayout baseUrl={baseUrl} preview={`Comprobante subido — ${tracking_code}`}>
       <Text style={styles.h1}>Comprobante subido</Text>
       <Text style={styles.text}>
         Hay un comprobante esperando verificación. Mientras se revisa, el plazo del comprador queda

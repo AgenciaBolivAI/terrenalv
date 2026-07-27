@@ -61,6 +61,8 @@ body {
 .el-avenida { fill: #d6d3d1; }
 .el-area_verde { fill: #bbf7d0; }
 .el-amenidad { fill: #7dd3fc; }
+/* Vía férrea: ballast, not asphalt (sleepers come from the hatch pattern). */
+.el-railway { fill: #c9c2b6; }
 
 .map-label {
   font-weight: 700;

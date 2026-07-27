@@ -60,7 +60,20 @@ export function MapLegend() {
         <span className="flex items-center gap-1">
           <Swatch kind="vendido" /> Vendido
         </span>
+        <span className="hidden items-center gap-1 sm:flex">
+          <span className="h-2.5 w-2.5 rounded-xs bg-[#c9c2b6] ring-1 ring-stone-400" /> Vía férrea
+        </span>
       </div>
+      {/* Attribution rides with the legend: the map is a full-bleed 100dvh
+          surface with no footer region of its own. */}
+      <a
+        href="https://bolivai.com"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="pointer-events-auto pl-1 text-[9px] font-medium text-stone-500 hover:text-stone-700"
+      >
+        Made by BolivAI
+      </a>
     </div>
   );
 }

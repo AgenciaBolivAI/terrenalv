@@ -8,6 +8,7 @@ import { headers } from 'next/headers';
 import { hashClientIp } from '@/lib/server/client-ip';
 import { fetchReservationStatus } from '@/features/reservations/server/getStatus';
 import { safeDecode } from '@/features/reservations/lib/api';
+import { PublicShell } from '@/features/reservations/components/PublicShell';
 import { TrackingView } from '@/features/reservations/components/TrackingView';
 
 export const dynamic = 'force-dynamic';
@@ -29,8 +30,8 @@ function ErrorShell({
   showSearch: boolean;
 }) {
   return (
-    <main className="min-h-dvh bg-background">
-      <div className="mx-auto w-full max-w-md px-4 pb-16 pt-10">
+    <PublicShell>
+      <div className="pt-6">
         <section className="rounded-2xl border border-stone-200 bg-white p-6 text-center shadow-sm">
           <h1 className="text-xl font-extrabold text-stone-900">{title}</h1>
           <p className="mt-2 text-sm text-stone-600">{body}</p>
@@ -52,7 +53,7 @@ function ErrorShell({
           </div>
         </section>
       </div>
-    </main>
+    </PublicShell>
   );
 }
 
@@ -100,12 +101,12 @@ export default async function ReservaTrackingPage({
   }
 
   return (
-    <main className="min-h-dvh bg-background">
+    <PublicShell>
       <TrackingView
         code={result.data.tracking_code}
         initial={result.data}
         nuevo={sp?.nuevo === '1'}
       />
-    </main>
+    </PublicShell>
   );
 }

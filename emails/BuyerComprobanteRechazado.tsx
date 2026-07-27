@@ -15,6 +15,8 @@ export interface BuyerComprobanteRechazadoProps {
   motivo?: string | null;
   permite_reintento?: boolean;
   trackingUrl?: string | null;
+  /** Public origin of the app, for the hosted logo in EmailLayout. */
+  baseUrl?: string | null;
 }
 
 export default function BuyerComprobanteRechazado({
@@ -22,10 +24,11 @@ export default function BuyerComprobanteRechazado({
   motivo,
   permite_reintento = true,
   trackingUrl,
+  baseUrl,
 }: BuyerComprobanteRechazadoProps) {
   const motivoTexto = (motivo && MOTIVO_COPY[motivo]) || MOTIVO_COPY.otro;
   return (
-    <EmailLayout preview={`Revisa tu comprobante — reserva ${tracking_code}`}>
+    <EmailLayout baseUrl={baseUrl} preview={`Revisa tu comprobante — reserva ${tracking_code}`}>
       <Text style={styles.h1}>Revisa tu comprobante</Text>
       <Text style={styles.text}>
         Revisamos el comprobante de tu reserva <strong>{tracking_code}</strong> y no pudimos

@@ -8,6 +8,8 @@ export interface TeamNuevaReservaProps {
   lote?: string;
   monto_bob?: number | string;
   adminUrl?: string | null;
+  /** Public origin of the app, for the hosted logo in EmailLayout. */
+  baseUrl?: string | null;
 }
 
 export default function TeamNuevaReserva({
@@ -16,9 +18,10 @@ export default function TeamNuevaReserva({
   lote = '—',
   monto_bob,
   adminUrl,
+  baseUrl,
 }: TeamNuevaReservaProps) {
   return (
-    <EmailLayout preview={`Nueva reserva ${tracking_code} — Lote ${lote}, Mz ${manzana}`}>
+    <EmailLayout baseUrl={baseUrl} preview={`Nueva reserva ${tracking_code} — Lote ${lote}, Mz ${manzana}`}>
       <Text style={styles.h1}>Nueva reserva</Text>
       <Section style={styles.infoBox}>
         <Text style={styles.label}>Código</Text>

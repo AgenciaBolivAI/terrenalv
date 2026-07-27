@@ -52,6 +52,16 @@ function ElementsLayerInner({ elements }: { elements: MapElement[] }) {
             />
           );
         }
+        // The vía férrea is stored as an `avenida` polygon but must not read as
+        // asphalt: ballast fill + sleeper hatch + the two rails.
+        if (el.props.railway === true) {
+          return (
+            <g key={el.id}>
+              <path d={el.path} className="el-railway" />
+              <path d={el.path} fill="url(#hatch-durmientes)" />
+            </g>
+          );
+        }
         if (CSS_POLY_KINDS.has(el.kind)) {
           return <path key={el.id} d={el.path} className={`el-${el.kind}`} />;
         }

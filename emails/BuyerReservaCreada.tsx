@@ -10,6 +10,8 @@ export interface BuyerReservaCreadaProps {
   reference_code?: string | null;
   vencimiento?: string | null; // formatted La_Paz datetime
   trackingUrl?: string | null;
+  /** Public origin of the app, for the hosted logo in EmailLayout. */
+  baseUrl?: string | null;
 }
 
 export default function BuyerReservaCreada({
@@ -20,9 +22,10 @@ export default function BuyerReservaCreada({
   reference_code,
   vencimiento,
   trackingUrl,
+  baseUrl,
 }: BuyerReservaCreadaProps) {
   return (
-    <EmailLayout preview={`Tu reserva ${tracking_code} está creada — paga la seña para asegurar tu lote`}>
+    <EmailLayout baseUrl={baseUrl} preview={`Tu reserva ${tracking_code} está creada — paga la seña para asegurar tu lote`}>
       <Text style={styles.h1}>¡Tu reserva está creada!</Text>
       <Text style={styles.text}>
         Reservaste el <strong>Lote {lote}</strong> de la <strong>Manzana {manzana}</strong> en

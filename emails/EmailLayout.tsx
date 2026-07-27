@@ -1,8 +1,9 @@
-import { Body, Container, Head, Hr, Html, Preview, Section, Text } from '@react-email/components';
+import { Body, Container, Head, Hr, Html, Img, Link, Preview, Section, Text } from '@react-email/components';
 import * as React from 'react';
+import { BRAND } from '@/lib/brand';
 
-export const BRAND_GREEN = '#14532d';
-export const BRAND_GREEN_LIGHT = '#16a34a';
+export const BRAND_GREEN = BRAND.green;
+export const BRAND_GREEN_LIGHT = BRAND.greenLight;
 
 export const styles = {
   h1: {
@@ -60,13 +61,24 @@ export const styles = {
   },
 };
 
+/**
+ * Shared chrome for every transactional email.
+ *
+ * `baseUrl` is the public origin of the app (the `app_base_url` setting, threaded
+ * from the outbox worker). Email clients strip inline SVG, so the logo mark has to
+ * be a hosted PNG at an absolute URL — when we don't know the origin we drop it and
+ * lean on the styled text wordmark rather than ship a broken image.
+ */
 export default function EmailLayout({
   preview,
   children,
+  baseUrl,
 }: {
   preview: string;
   children: React.ReactNode;
+  baseUrl?: string | null;
 }) {
+  const origin = (baseUrl || process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/+$/, '');
   return (
     <Html lang="es">
       <Head />
@@ -74,6 +86,15 @@ export default function EmailLayout({
       <Body style={{ backgroundColor: '#faf8f4', fontFamily: 'Arial, Helvetica, sans-serif', margin: 0, padding: 0 }}>
         <Container style={{ maxWidth: '480px', margin: '0 auto', padding: '24px 16px' }}>
           <Section style={{ textAlign: 'center' as const, paddingBottom: '16px' }}>
+            {origin ? (
+              <Img
+                src={`${origin}/logo-email.png`}
+                alt="Terrenalv"
+                width="56"
+                height="56"
+                style={{ display: 'block', margin: '0 auto 8px', borderRadius: '12px' }}
+              />
+            ) : null}
             <Text
               style={{
                 color: BRAND_GREEN,
@@ -104,6 +125,10 @@ export default function EmailLayout({
             Terrenalv S.R.L. — Zanja Honda, Cabezas, Santa Cruz, Bolivia.
             <br />
             Este es un mensaje automático; no respondas a este correo.
+            <br />
+            <Link href="https://bolivai.com" style={{ color: '#a8a29e', textDecoration: 'underline' }}>
+              Made by BolivAI
+            </Link>
           </Text>
         </Container>
       </Body>

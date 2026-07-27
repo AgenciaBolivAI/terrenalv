@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getSetting } from '@/lib/server/settings';
 import { LotSummaryCard } from '@/features/reservations/components/LotSummaryCard';
+import { PublicShell } from '@/features/reservations/components/PublicShell';
 import { ReserveForm } from '@/features/reservations/components/ReserveForm';
 
 export const dynamic = 'force-dynamic';
@@ -149,13 +150,7 @@ async function loadData(lotId: string): Promise<LoadResult> {
   }
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
-  return (
-    <main className="min-h-dvh bg-background">
-      <div className="mx-auto w-full max-w-md px-4 pb-16 pt-4">{children}</div>
-    </main>
-  );
-}
+// Every state below renders inside <PublicShell>: Terrenalv header + BolivAI footer.
 
 function FriendlyCard({
   title,
@@ -188,13 +183,13 @@ export default async function ReservarLotePage({
   const { lotId } = await params;
   if (!UUID_RE.test(lotId)) {
     return (
-      <Shell>
+      <PublicShell>
         <FriendlyCard
           title="Lote no encontrado"
           body="El enlace no es válido. Elige tu lote desde el mapa."
           mapHref={FALLBACK_MAP}
         />
-      </Shell>
+      </PublicShell>
     );
   }
 
@@ -202,19 +197,19 @@ export default async function ReservarLotePage({
 
   if (result.state === 'not_ready') {
     return (
-      <Shell>
+      <PublicShell>
         <FriendlyCard
           title="Mapa en preparación"
           body="Las reservas en línea estarán disponibles muy pronto. Vuelve a intentarlo en unos minutos."
           mapHref={FALLBACK_MAP}
         />
-      </Shell>
+      </PublicShell>
     );
   }
 
   if (result.state === 'unavailable') {
     return (
-      <Shell>
+      <PublicShell>
         <FriendlyCard
           title={
             result.reason === 'taken'
@@ -228,14 +223,14 @@ export default async function ReservarLotePage({
           }
           mapHref={result.mapHref}
         />
-      </Shell>
+      </PublicShell>
     );
   }
 
   const { lot, manzana, price, currency, projectName, mapHref, sena } = result;
 
   return (
-    <Shell>
+    <PublicShell>
       <Link href={mapHref} className="text-sm font-semibold text-brand underline-offset-2">
         ← Volver al mapa
       </Link>
@@ -273,6 +268,6 @@ export default async function ReservarLotePage({
           lotLabel={`Manzana ${manzana.code} · Lote ${lot.number}`}
         />
       </div>
-    </Shell>
+    </PublicShell>
   );
 }

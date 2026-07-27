@@ -17,6 +17,7 @@ import {
   LOT_HEIGHT,
   PAD_AMENIDAD_HEX,
   PAD_EQUIPAMIENTO_HEX,
+  PAD_RAILWAY_HEX,
   PAD_Y,
   ROAD_Y,
   TERRAIN_AMPLITUDE,
@@ -241,6 +242,13 @@ export function buildGround(args: {
     if (el.isLine) continue; // LineString elements have no pave-able area
     const ring = pathToPlanRing(el.path, maxY);
     if (ring.length < 3) continue;
+    // The vía férrea is an `avenida` polygon carrying props.railway — it gets a
+    // ballast-coloured pad instead of asphalt so it doesn't read as a road.
+    if (el.props?.railway === true) {
+      padItems.push({ ring, hex: PAD_RAILWAY_HEX });
+      footprints.push(ringBbox(ring));
+      continue;
+    }
     switch (el.kind) {
       case 'calle':
       case 'avenida':

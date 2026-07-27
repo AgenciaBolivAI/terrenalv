@@ -21,7 +21,11 @@ import { SKY_COLOR } from './palette';
 import { useQuality } from './useQuality';
 
 const MIN_DISTANCE = 40;
-const MAX_DISTANCE = 900;
+// Must clear the whole site: this urbanización is a ~3 km strip, and a fixed
+// 900 m cap made it impossible to frame (it rendered cropped to a hairline).
+// Derived from the site extent at mount instead, with a floor for small plats.
+const MAX_DISTANCE_FLOOR = 900;
+const FOV = 55;
 const MAX_POLAR = (78 * Math.PI) / 180;
 
 export interface Scene3DProps {
@@ -50,21 +54,41 @@ export function Scene3D({ onUnsupported }: Scene3DProps) {
     return () => window.removeEventListener('pointerdown', onDown, true);
   }, []);
 
-  // Elevated oblique view from the south-east taking in the whole site.
-  // Plan SE = (+x, −y) → three (+x, +z).
+  // Elevated oblique view down the site's LONG axis, framed from the site's own
+  // extent and the camera fov. A fixed azimuth + max(w,h) fit only worked for a
+  // squarish plat; this urbanización is a long narrow strip and needs to be
+  // approached from its short end (the highway) looking along its length.
   const cam = useMemo(() => {
     const [x0, y0, x1, y1] = planBbox;
+    const w = Math.max(x1 - x0, 1);
+    const h = Math.max(y1 - y0, 1);
     const cx = (x0 + x1) / 2;
     const cz = -(y0 + y1) / 2;
-    const span = Math.max(x1 - x0, y1 - y0, 100);
-    const dist = Math.min(MAX_DISTANCE * 0.97, Math.max(180, span * 0.68));
-    const len = Math.hypot(0.46, 1, 0.5);
+
+    // Distance that fits the longer dimension in view at this fov, with margin.
+    const half = Math.max(w, h, 100) / 2;
+    const fit = (half * 1.25) / Math.tan(((FOV / 2) * Math.PI) / 180);
+    const dist = Math.max(180, fit);
+
+    // Look along the long axis: for a tall (north–south) site, come in low over
+    // the southern end where the Carretera and the entrance are.
+    const alongY = h >= w;
+    const dir = alongY
+      ? { x: 0.22, y: 0.72, z: 0.66 } // from the south, looking north
+      : { x: -0.66, y: 0.72, z: 0.22 }; // from the west, looking east
+    const len = Math.hypot(dir.x, dir.y, dir.z);
     const position: [number, number, number] = [
-      cx + (0.46 / len) * dist,
-      (1 / len) * dist,
-      cz + (0.5 / len) * dist,
+      cx + (dir.x / len) * dist,
+      (dir.y / len) * dist,
+      cz + (dir.z / len) * dist,
     ];
-    return { position, target: [cx, 0, cz] as [number, number, number] };
+    return {
+      position,
+      target: [cx, 0, cz] as [number, number, number],
+      maxDistance: Math.max(MAX_DISTANCE_FLOOR, dist * 1.3),
+      /** Fog/light scale with the site so a long strip isn't swallowed. */
+      extent: Math.max(w, h),
+    };
   }, [planBbox]);
 
   if (blocked) return null;
@@ -81,7 +105,7 @@ export function Scene3D({ onUnsupported }: Scene3DProps) {
       frameloop="demand"
       dpr={quality.dpr}
       flat
-      camera={{ position: cam.position, fov: 55, near: 5, far: 6000 }}
+      camera={{ position: cam.position, fov: FOV, near: 5, far: Math.max(6000, cam.extent * 3) }}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
       onPointerMissed={(e) => {
         const down = missDownRef.current;
@@ -91,12 +115,21 @@ export function Scene3D({ onUnsupported }: Scene3DProps) {
       }}
     >
       <color attach="background" args={[SKY_COLOR]} />
-      <fog attach="fog" args={[SKY_COLOR, 1400, 4800]} />
+      {/* Fog and sun scale with the site: fixed distances hid the far end of a
+          long strip and put the sun off-property entirely. */}
+      <fog attach="fog" args={[SKY_COLOR, cam.extent * 0.9, cam.extent * 2.6]} />
       <hemisphereLight args={['#eaf4fb', '#c9c0a8', 1.9]} />
-      <directionalLight position={[320, 640, -260]} intensity={1.5} />
+      <directionalLight
+        position={[
+          cam.target[0] + cam.extent * 0.35,
+          cam.extent * 0.7,
+          cam.target[2] - cam.extent * 0.3,
+        ]}
+        intensity={1.5}
+      />
 
       <ContextLossGuard onUnsupported={onUnsupported} />
-      <SceneControls planBbox={planBbox} target={cam.target} />
+      <SceneControls planBbox={planBbox} target={cam.target} maxDistance={cam.maxDistance} />
 
       <Suspense fallback={null}>
         <GroundLayer terrainSegments={quality.terrainSegments} />
@@ -116,9 +149,11 @@ export default Scene3D;
 function SceneControls({
   planBbox,
   target,
+  maxDistance,
 }: {
   planBbox: [number, number, number, number];
   target: [number, number, number];
+  maxDistance: number;
 }) {
   const controlsRef = useRef<MapControlsImpl | null>(null);
 
@@ -145,7 +180,7 @@ function SceneControls({
       makeDefault
       target={target}
       minDistance={MIN_DISTANCE}
-      maxDistance={MAX_DISTANCE}
+      maxDistance={maxDistance}
       maxPolarAngle={MAX_POLAR}
       enableDamping
       dampingFactor={0.08}

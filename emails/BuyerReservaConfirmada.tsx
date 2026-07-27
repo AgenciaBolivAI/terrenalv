@@ -7,6 +7,8 @@ export interface BuyerReservaConfirmadaProps {
   manzana?: string | null;
   lote?: string | null;
   trackingUrl?: string | null;
+  /** Public origin of the app, for the hosted logo in EmailLayout. */
+  baseUrl?: string | null;
 }
 
 export default function BuyerReservaConfirmada({
@@ -14,9 +16,10 @@ export default function BuyerReservaConfirmada({
   manzana,
   lote,
   trackingUrl,
+  baseUrl,
 }: BuyerReservaConfirmadaProps) {
   return (
-    <EmailLayout preview={`¡Pago confirmado! Tu reserva ${tracking_code} quedó asegurada`}>
+    <EmailLayout baseUrl={baseUrl} preview={`¡Pago confirmado! Tu reserva ${tracking_code} quedó asegurada`}>
       <Text style={styles.h1}>¡Pago confirmado!</Text>
       <Text style={styles.text}>
         Verificamos tu pago y tu reserva quedó <strong>confirmada</strong>.

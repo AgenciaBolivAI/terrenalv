@@ -5,14 +5,17 @@ import EmailLayout, { styles } from './EmailLayout';
 export interface BuyerReservaExpiradaProps {
   tracking_code?: string;
   trackingUrl?: string | null;
+  /** Public origin of the app, for the hosted logo in EmailLayout. */
+  baseUrl?: string | null;
 }
 
 export default function BuyerReservaExpirada({
   tracking_code = '—',
   trackingUrl,
+  baseUrl,
 }: BuyerReservaExpiradaProps) {
   return (
-    <EmailLayout preview={`Tu reserva ${tracking_code} expiró`}>
+    <EmailLayout baseUrl={baseUrl} preview={`Tu reserva ${tracking_code} expiró`}>
       <Text style={styles.h1}>Tu reserva expiró</Text>
       <Text style={styles.text}>
         El plazo de pago de tu reserva <strong>{tracking_code}</strong> terminó y el lote volvió a

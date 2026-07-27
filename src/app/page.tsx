@@ -39,8 +39,8 @@ export default function Home() {
             Estrellas del Sur
           </h1>
           <p className="mt-4 max-w-2xl mx-auto text-emerald-50/90 text-lg">
-            Lotes desde 250 m² sobre la Carretera Internacional Ruta 9
-            (Argentina–Paraguay), con mega piscina, club house y áreas verdes.
+            Lotes desde 250 m² con entrada por la Carretera Internacional Ruta 9
+            (Argentina–Paraguay), mega piscina, club house y áreas verdes.
             Elige tu lote en el mapa y resérvalo en minutos.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
@@ -69,8 +69,8 @@ export default function Home() {
       <section className="mx-auto max-w-6xl px-4 py-14 grid gap-6 sm:grid-cols-3">
         {[
           {
-            title: 'Sobre la Ruta 9',
-            body: 'Frente a la Carretera Internacional Argentina–Paraguay, a minutos de Zanja Honda. Acceso directo todo el año.',
+            title: 'Entrada por la Ruta 9',
+            body: 'El ingreso da directo a la Carretera Internacional Argentina–Paraguay, a minutos de Zanja Honda. Acceso todo el año.',
           },
           {
             title: 'Mega piscina y club house',
