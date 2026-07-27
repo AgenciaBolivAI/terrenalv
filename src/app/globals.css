@@ -1,26 +1,80 @@
 @import "tailwindcss";
 
+/* Terrenalv brand: deep green + earth brown (from the TERRENALV S.R.L. logo). */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --brand-green: #14532d;
+  --brand-green-light: #16a34a;
+  --brand-brown: #7c4f2c;
+  --brand-cream: #faf8f4;
+  --ink: #1c1917;
+
+  /* Lot status colors (shared by the 2D map, 3D scene, and legends). */
+  --lot-disponible: #86efac;
+  --lot-disponible-stroke: #16a34a;
+  --lot-reservado: #fdba74;
+  --lot-reservado-stroke: #ea580c;
+  --lot-vendido: #d6d3d1;
+  --lot-vendido-stroke: #78716c;
+  --lot-no-disponible: #e7e5e4;
+  --lot-no-disponible-stroke: #a8a29e;
+  --lot-sin-precio: #f0fdf4;
+
+  --background: var(--brand-cream);
+  --foreground: var(--ink);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-brand: var(--brand-green);
+  --color-brand-light: var(--brand-green-light);
+  --color-earth: var(--brand-brown);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---- Map plat styling: status via CSS classes so a legend-mode switch never
+   re-renders lot paths. Reserved gets a hatch (not color-only). ---- */
+.lot-path {
+  stroke-width: 0.35;
+  cursor: pointer;
+  transition: fill 200ms ease;
+}
+.lot-path.st-disponible { fill: var(--lot-disponible); stroke: var(--lot-disponible-stroke); }
+.lot-path.st-disponible.sin-precio { fill: var(--lot-sin-precio); stroke: #86efac; }
+.lot-path.st-reservado { fill: url(#hatch-reservado); stroke: var(--lot-reservado-stroke); }
+.lot-path.st-vendido { fill: var(--lot-vendido); stroke: var(--lot-vendido-stroke); }
+.lot-path.st-no_disponible { fill: var(--lot-no-disponible); stroke: var(--lot-no-disponible-stroke); }
+
+.mz-outline { fill: #ffffff; stroke: #57534e; stroke-width: 0.9; }
+.mz-area_verde { fill: #bbf7d0; }
+.mz-equipamiento { fill: #fbcfe8; }
+.mz-amenidad { fill: #bae6fd; }
+.el-calle { fill: #e7e5e4; }
+.el-avenida { fill: #d6d3d1; }
+.el-area_verde { fill: #bbf7d0; }
+.el-amenidad { fill: #7dd3fc; }
+
+.map-label {
+  font-weight: 700;
+  fill: #44403c;
+  pointer-events: none;
+  user-select: none;
+}
+
+@keyframes pulse-selected {
+  0%, 100% { stroke-opacity: 1; }
+  50% { stroke-opacity: 0.35; }
+}
+.lot-path.selected {
+  stroke: #1d4ed8;
+  stroke-width: 1.4;
+  animation: pulse-selected 1.6s ease-in-out infinite;
 }
