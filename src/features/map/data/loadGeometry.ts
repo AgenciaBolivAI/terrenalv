@@ -7,7 +7,12 @@
 import { createClient as createAnonClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { ElementKind, ManzanaKind } from '@/lib/db-types';
 import type { Ring } from '../lib/types';
-import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/lib/supabase/config';
+import {
+  BUILTIN_ANON_KEY,
+  CAN_RETRY_BUILTIN,
+  SUPABASE_ANON_KEY,
+  SUPABASE_URL,
+} from '@/lib/supabase/config';
 import type { GeometrySnapshot, SnapshotElement, SnapshotLot, SnapshotManzana } from './types';
 
 export interface MapProjectInfo {
@@ -60,13 +65,16 @@ function reportFailure(slug: string, reason: LoadFailure, detail?: string): null
   return null;
 }
 
-function anonClient(): SupabaseClient | null {
-  const url = SUPABASE_URL;
-  const key = SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  return createAnonClient(url, key, {
+function anonClient(key: string = SUPABASE_ANON_KEY): SupabaseClient | null {
+  if (!SUPABASE_URL || !key) return null;
+  return createAnonClient(SUPABASE_URL, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+}
+
+/** A wrong key configured in the environment must not take the map down. */
+function isAuthError(message: string): boolean {
+  return /invalid api key|jwt|unauthorized|api key/i.test(message);
 }
 
 function isValidSnapshot(x: unknown): x is GeometrySnapshot {
@@ -75,14 +83,28 @@ function isValidSnapshot(x: unknown): x is GeometrySnapshot {
   return Array.isArray(s.manzanas) && Array.isArray(s.lots) && Array.isArray(s.elements);
 }
 
-async function loadFromDb(slug: string): Promise<GeometryLoadResult | null> {
-  const supabase = anonClient();
+async function loadFromDb(
+  slug: string,
+  key: string = SUPABASE_ANON_KEY,
+): Promise<GeometryLoadResult | null> {
+  const supabase = anonClient(key);
   if (!supabase) return reportFailure(slug, 'sin_configuracion');
   try {
     const { data, error } = await supabase
       .rpc('get_map_manifest', { p_slug: slug })
       .abortSignal(AbortSignal.timeout(6000));
-    if (error) return reportFailure(slug, 'sin_conexion', error.message);
+    if (error) {
+      // The environment supplied a key this project rejects — fall back to the
+      // built-in pair rather than serving "Mapa en preparación" to buyers.
+      if (isAuthError(error.message) && key === SUPABASE_ANON_KEY && CAN_RETRY_BUILTIN) {
+        console.error(
+          `[mapa] ${slug}: la clave de NEXT_PUBLIC_SUPABASE_ANON_KEY fue rechazada ` +
+            '(Invalid API key) — reintentando con la clave incorporada',
+        );
+        return loadFromDb(slug, BUILTIN_ANON_KEY);
+      }
+      return reportFailure(slug, 'sin_conexion', error.message);
+    }
     if (!data) return reportFailure(slug, 'proyecto_no_encontrado');
     const manifest = data as ManifestPayload;
     if (!manifest.project_id || !Number.isFinite(manifest.geometry_version)) {

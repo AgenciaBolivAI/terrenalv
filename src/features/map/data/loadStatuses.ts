@@ -8,7 +8,12 @@
 //    the last known state instead of clobbering it with fabricated statuses.
 
 import { createClient as createAnonClient } from '@supabase/supabase-js';
-import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/lib/supabase/config';
+import {
+  BUILTIN_ANON_KEY,
+  CAN_RETRY_BUILTIN,
+  SUPABASE_ANON_KEY,
+  SUPABASE_URL,
+} from '@/lib/supabase/config';
 import type { LotStatusEntry, StatusSnapshot } from './types';
 
 function fallbackSnapshot(lotIds: string[]): StatusSnapshot {
@@ -28,9 +33,10 @@ function isValid(x: unknown): x is StatusSnapshot {
 export async function loadStatuses(
   projectId: string,
   fallbackLotIds?: string[],
+  keyOverride?: string,
 ): Promise<StatusSnapshot | null> {
   const url = SUPABASE_URL;
-  const key = SUPABASE_ANON_KEY;
+  const key = keyOverride ?? SUPABASE_ANON_KEY;
 
   if (projectId.startsWith('seed-') || !url || !key) {
     return fallbackLotIds ? fallbackSnapshot(fallbackLotIds) : null;
@@ -44,6 +50,16 @@ export async function loadStatuses(
       .rpc('get_lot_statuses', { p_project_id: projectId })
       .abortSignal(AbortSignal.timeout(8000));
     if (error || !isValid(data)) {
+      // Same self-heal as the geometry loader: a rejected env key must not make
+      // every lot look unavailable.
+      if (
+        error &&
+        /invalid api key|jwt|unauthorized|api key/i.test(error.message) &&
+        !keyOverride &&
+        CAN_RETRY_BUILTIN
+      ) {
+        return loadStatuses(projectId, fallbackLotIds, BUILTIN_ANON_KEY);
+      }
       return fallbackLotIds ? fallbackSnapshot(fallbackLotIds) : null;
     }
     const snapshot = data as StatusSnapshot;
