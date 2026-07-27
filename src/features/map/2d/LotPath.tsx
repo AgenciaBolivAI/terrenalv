@@ -34,6 +34,8 @@ function LotPathInner({ lot }: { lot: MapLot }) {
         if (!down) return;
         const travel = Math.hypot(e.clientX - down.x, e.clientY - down.y);
         if (travel < TAP_SLOP_PX) {
+          // Keep the svg-level "tap empty map = deselect" handler from firing.
+          e.stopPropagation();
           useMapStore.getState().selectLot(lot.id);
         }
       }}

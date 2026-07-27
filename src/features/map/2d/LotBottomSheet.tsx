@@ -50,6 +50,16 @@ export function LotBottomSheet({ project }: { project: MapProjectInfo }) {
     }
   }, [selectedLotId]);
 
+  // Escape closes (vaul only handles Esc in modal mode).
+  useEffect(() => {
+    if (!selectedLotId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') selectLot(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedLotId, selectLot]);
+
   const lot = selectedLotId ? lots.get(selectedLotId) : undefined;
   const manzana = lot ? manzanas.find((m) => m.id === lot.manzanaId) : undefined;
   const open = !!lot;
@@ -86,26 +96,41 @@ export function LotBottomSheet({ project }: { project: MapProjectInfo }) {
           className="fixed inset-x-0 bottom-0 z-50 flex h-full max-h-[94%] flex-col rounded-t-2xl border-t border-stone-200 bg-white shadow-[0_-8px_30px_rgba(0,0,0,0.15)] outline-none"
         >
           {lot ? (
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-8 pt-3">
-              <div className="mx-auto mb-3 h-1.5 w-10 shrink-0 rounded-full bg-stone-300" aria-hidden="true" />
-
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <Drawer.Title className="truncate text-lg font-bold text-stone-900">
-                    Manzana {manzana?.code ?? '—'} · Lote {lot.number}
-                  </Drawer.Title>
-                  <p className="mt-0.5 text-xs text-stone-500">
-                    {manzana?.sector ? `Sector ${manzana.sector}` : project.name}
-                    {lot.corner ? ' · Lote esquinero' : ''}
-                  </p>
+            <>
+              {/* Drag/close header: NOT scrollable, so swipe-down always dismisses. */}
+              <div className="shrink-0 px-5 pt-3">
+                <div className="mx-auto mb-2 h-1.5 w-10 rounded-full bg-stone-300" aria-hidden="true" />
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Drawer.Title className="truncate text-lg font-bold text-stone-900">
+                      Manzana {manzana?.code ?? '—'} · Lote {lot.number}
+                    </Drawer.Title>
+                    <p className="mt-0.5 text-xs text-stone-500">
+                      {manzana?.sector ? `Sector ${manzana.sector}` : project.name}
+                      {lot.corner ? ' · Lote esquinero' : ''}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ${STATUS_BADGE[st]}`}
+                    >
+                      {STATUS_LABEL[st]}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => selectLot(null)}
+                      aria-label="Cerrar"
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-stone-100 text-stone-500 active:bg-stone-200"
+                    >
+                      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                        <path d="M5 5l10 10M15 5L5 15" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
-                <span
-                  className={`mt-0.5 shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ${STATUS_BADGE[st]}`}
-                >
-                  {STATUS_LABEL[st]}
-                </span>
               </div>
 
+              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-8">
               <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
                 <div className="rounded-xl bg-stone-50 px-2 py-2.5">
                   <dt className="text-[10px] font-semibold uppercase tracking-wide text-stone-500">Frente</dt>
@@ -188,7 +213,8 @@ export function LotBottomSheet({ project }: { project: MapProjectInfo }) {
                   Compartir por WhatsApp
                 </button>
               </div>
-            </div>
+              </div>
+            </>
           ) : (
             <Drawer.Title className="sr-only">Lote</Drawer.Title>
           )}

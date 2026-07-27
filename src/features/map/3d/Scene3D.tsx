@@ -39,6 +39,17 @@ export function Scene3D({ onUnsupported }: Scene3DProps) {
     if (blocked) onUnsupported();
   }, [blocked, onUnsupported]);
 
+  // Tap on empty ground closes the lot sheet (same gesture as the 2D map).
+  // Guarded by pointer travel so camera drags never deselect.
+  const missDownRef = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      missDownRef.current = { x: e.clientX, y: e.clientY };
+    };
+    window.addEventListener('pointerdown', onDown, true);
+    return () => window.removeEventListener('pointerdown', onDown, true);
+  }, []);
+
   // Elevated oblique view from the south-east taking in the whole site.
   // Plan SE = (+x, −y) → three (+x, +z).
   const cam = useMemo(() => {
@@ -72,6 +83,12 @@ export function Scene3D({ onUnsupported }: Scene3DProps) {
       flat
       camera={{ position: cam.position, fov: 55, near: 5, far: 6000 }}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
+      onPointerMissed={(e) => {
+        const down = missDownRef.current;
+        if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) return;
+        const store = useMapStore.getState();
+        if (store.selectedLotId) store.selectLot(null);
+      }}
     >
       <color attach="background" args={[SKY_COLOR]} />
       <fog attach="fog" args={[SKY_COLOR, 1400, 4800]} />
