@@ -32,6 +32,12 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# .env.production holds ONLY the two public Supabase values (the anon key ships
+# in the browser bundle by design; RLS is what protects the data). Committing
+# them means a fresh deploy renders the map with no dashboard setup. Real
+# secrets — SUPABASE_SERVICE_ROLE_KEY, RESEND_API_KEY, TURNSTILE_SECRET_KEY —
+# stay in Vercel env vars, which override anything here.
+!.env.production
 
 # vercel
 .vercel
