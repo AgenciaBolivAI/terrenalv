@@ -13,7 +13,7 @@ import type { LotStatusEntry, MapElement, MapLot, MapManzana } from '../data/typ
 export type ViewMode = '2d' | '3d';
 export type LodBucket = 0 | 1 | 2;
 
-export interface LotLiveState extends LotStatusEntry {}
+export type LotLiveState = LotStatusEntry;
 
 interface MapState {
   // Geometry (write-once at load)

@@ -211,10 +211,12 @@ declare
   v_pay record;
   v_grace int;
 begin
+  -- Generous: the tracking page polls while awaiting verification (~2/min max);
+  -- this only stops scripted enumeration.
   if p_ip_hash is not null and (
       select count(*) from private.reservation_attempts
       where ip_hash = p_ip_hash and action = 'status_lookup'
-        and created_at > now() - interval '1 hour') >= 30 then
+        and created_at > now() - interval '1 hour') >= 200 then
     raise exception 'RATE_LIMITED';
   end if;
   perform private.log_attempt(p_ip_hash, null, null, 'status_lookup', true, null);

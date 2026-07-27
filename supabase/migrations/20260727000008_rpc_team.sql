@@ -2,6 +2,16 @@
 -- self-authorize via private.assert_team()/assert_admin() — UI gating is convenience,
 -- these checks are the enforcement. Lock ordering everywhere: reservation → lot.
 
+-- Service-role calls (seed scripts, future bank webhooks) carry no auth.uid();
+-- they authenticate by the service key itself, so the role claim is sufficient.
+create or replace function private.is_service()
+returns boolean
+language sql
+stable
+as $$
+  select coalesce((select auth.jwt()->>'role'), '') = 'service_role';
+$$;
+
 create or replace function private.assert_team()
 returns uuid
 language plpgsql
@@ -9,7 +19,7 @@ stable
 set search_path = public, private
 as $$
 begin
-  if not private.is_team() then
+  if not private.is_team() and not private.is_service() then
     raise exception 'NO_AUTORIZADO';
   end if;
   return auth.uid();
@@ -23,7 +33,7 @@ stable
 set search_path = public, private
 as $$
 begin
-  if not private.is_admin() then
+  if not private.is_admin() and not private.is_service() then
     raise exception 'NO_AUTORIZADO';
   end if;
   return auth.uid();

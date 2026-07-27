@@ -1,0 +1,219 @@
+// Geometry loader. Primary path: get_map_manifest RPC (anon) → published
+// snapshot JSON from the public `maps` bucket. Dev fallback (server only):
+// seed/generated-geometry.json adapted to the GeometrySnapshot shape, so the
+// map is tangible before the Supabase project exists. Never throws — a null
+// result means the page renders "Mapa en preparación".
+
+import { createClient as createAnonClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { ElementKind, ManzanaKind } from '@/lib/db-types';
+import type { Ring } from '../lib/types';
+import type { GeometrySnapshot, SnapshotElement, SnapshotLot, SnapshotManzana } from './types';
+
+export interface MapProjectInfo {
+  projectId: string;
+  slug: string;
+  name: string;
+  currency: 'USD' | 'BOB';
+  geometryVersion: number;
+  statusRev: number;
+  /** 'seed' = filesystem fallback: realtime + reservations are disabled. */
+  source: 'db' | 'seed';
+}
+
+export interface GeometryLoadResult {
+  project: MapProjectInfo;
+  snapshot: GeometrySnapshot;
+}
+
+interface ManifestPayload {
+  project_id: string;
+  slug: string;
+  name: string;
+  currency: 'USD' | 'BOB';
+  geometry_version: number;
+  status_rev: number;
+}
+
+function anonClient(): SupabaseClient | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
+  return createAnonClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+function isValidSnapshot(x: unknown): x is GeometrySnapshot {
+  if (!x || typeof x !== 'object') return false;
+  const s = x as GeometrySnapshot;
+  return Array.isArray(s.manzanas) && Array.isArray(s.lots) && Array.isArray(s.elements);
+}
+
+async function loadFromDb(slug: string): Promise<GeometryLoadResult | null> {
+  const supabase = anonClient();
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase
+      .rpc('get_map_manifest', { p_slug: slug })
+      .abortSignal(AbortSignal.timeout(6000));
+    if (error || !data) return null;
+    const manifest = data as ManifestPayload;
+    if (!manifest.project_id || !Number.isFinite(manifest.geometry_version)) return null;
+    if (manifest.geometry_version < 1) return null; // never published
+
+    const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const url = `${base}/storage/v1/object/public/maps/${manifest.slug}/geometry-v${manifest.geometry_version}.json`;
+    // Content-addressed by version → safe to cache.
+    const res = await fetch(url, {
+      cache: 'force-cache',
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const snapshot: unknown = await res.json();
+    if (!isValidSnapshot(snapshot)) return null;
+
+    return {
+      project: {
+        projectId: manifest.project_id,
+        slug: manifest.slug,
+        name: manifest.name,
+        currency: manifest.currency === 'BOB' ? 'BOB' : 'USD',
+        geometryVersion: manifest.geometry_version,
+        statusRev: manifest.status_rev ?? 0,
+        source: 'db',
+      },
+      snapshot,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Seed fallback (server-side only): adapt seed/generated-geometry.json.
+// ---------------------------------------------------------------------------
+
+interface SeedLot {
+  number: string | number;
+  ring: Ring;
+  frontage_m: number | null;
+  depth_m: number | null;
+  area_m2: number;
+  is_corner: boolean;
+}
+interface SeedManzana {
+  code: string;
+  sector: string | null;
+  kind: string;
+  ring: Ring;
+  needs_review?: boolean;
+  lots?: SeedLot[];
+}
+interface SeedElement {
+  kind: string;
+  name?: string | null;
+  ring: Ring;
+  props?: Record<string, unknown>;
+}
+interface SeedFile {
+  manzanas?: SeedManzana[];
+  elements?: SeedElement[];
+}
+
+function seedToSnapshot(seed: SeedFile): GeometrySnapshot | null {
+  const manzanas: SnapshotManzana[] = [];
+  const lots: SnapshotLot[] = [];
+  const elements: SnapshotElement[] = [];
+
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+
+  for (const m of seed.manzanas ?? []) {
+    if (!Array.isArray(m.ring) || m.ring.length < 3 || !m.code) continue;
+    const mzId = `seed-${m.code}`;
+    for (const [x, y] of m.ring) {
+      if (x < x0) x0 = x;
+      if (y < y0) y0 = y;
+      if (x > x1) x1 = x;
+      if (y > y1) y1 = y;
+    }
+    manzanas.push({
+      id: mzId,
+      code: m.code,
+      kind: (m.kind as ManzanaKind) ?? 'residencial',
+      sector: m.sector ?? null,
+      needs_review: !!m.needs_review,
+      ring: m.ring,
+    });
+    for (const l of m.lots ?? []) {
+      if (!Array.isArray(l.ring) || l.ring.length < 3) continue;
+      lots.push({
+        id: `seed-${m.code}-${l.number}`,
+        mz: mzId,
+        n: String(l.number),
+        f: l.frontage_m ?? null,
+        d: l.depth_m ?? null,
+        a: l.area_m2 ?? 0,
+        corner: !!l.is_corner,
+        ring: l.ring,
+      });
+    }
+  }
+  if (!manzanas.length || !Number.isFinite(x0)) return null;
+
+  (seed.elements ?? []).forEach((el, i) => {
+    if (!Array.isArray(el.ring) || el.ring.length < 3) return;
+    elements.push({
+      id: `seed-el-${i}`,
+      kind: (el.kind as ElementKind) ?? 'calle',
+      name: el.name ?? null,
+      props: el.props ?? {},
+      geojson: { type: 'Polygon', coordinates: [[...el.ring, el.ring[0]]] },
+    });
+  });
+
+  return { v: 0, bbox: [x0, y0, x1, y1], manzanas, lots, elements };
+}
+
+async function loadFromSeed(slug: string): Promise<GeometryLoadResult | null> {
+  if (typeof window !== 'undefined') return null; // filesystem is server-only
+  try {
+    // Indirect dynamic import: keeps node builtins out of any client bundle
+    // if this module ever gets pulled into one (it is server+client capable).
+    const dynamicImport = new Function('m', 'return import(m)') as (
+      m: string,
+    ) => Promise<Record<string, unknown>>;
+    const [fsMod, pathMod] = await Promise.all([
+      dynamicImport('node:fs'),
+      dynamicImport('node:path'),
+    ]);
+    const readFileSync = fsMod.readFileSync as typeof import('node:fs')['readFileSync'];
+    const join = pathMod.join as typeof import('node:path')['join'];
+    const raw = readFileSync(join(process.cwd(), 'seed', 'generated-geometry.json'), 'utf8');
+    const snapshot = seedToSnapshot(JSON.parse(raw) as SeedFile);
+    if (!snapshot) return null;
+    return {
+      project: {
+        projectId: 'seed-estrellas-del-sur',
+        slug,
+        name: 'Estrellas del Sur',
+        currency: 'USD',
+        geometryVersion: 0,
+        statusRev: 0,
+        source: 'seed',
+      },
+      snapshot,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve the published geometry for a project slug, or null (map not ready). */
+export async function loadGeometry(slug: string): Promise<GeometryLoadResult | null> {
+  const fromDb = await loadFromDb(slug);
+  if (fromDb) return fromDb;
+  return loadFromSeed(slug);
+}
