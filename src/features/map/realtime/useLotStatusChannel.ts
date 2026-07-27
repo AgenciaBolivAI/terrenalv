@@ -74,7 +74,6 @@ export function useLotStatusChannel(projectId: string | null): void {
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVisibility);
 
-    let hadFirstSubscribe = false;
     // Private topic: the DB trigger publishes with private=true and a SELECT-only
     // policy on realtime.messages lets clients RECEIVE but never PUBLISH. With a
     // public topic anyone holding the anon key could broadcast fake 'vendido'
@@ -106,7 +105,7 @@ export function useLotStatusChannel(projectId: string | null): void {
           // replayed by broadcast, so without this a lot reserved in that
           // window stays green until the next focus event.
           void resync(true);
-          hadFirstSubscribe = true;
+
         }
       });
 
