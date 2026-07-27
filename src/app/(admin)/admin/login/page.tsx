@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
+import { Logo } from '@/components/Logo';
 import LoginClient from '@/features/admin/auth/LoginClient';
 
 export const metadata: Metadata = {
@@ -15,9 +16,9 @@ export default function AdminLoginPage() {
   return (
     <main className="flex min-h-dvh items-center justify-center bg-stone-100 px-4 py-10">
       <div className="w-full max-w-sm">
-        <div className="mb-6 text-center">
-          <p className="text-2xl font-black tracking-[0.2em] text-brand">TERRENALV</p>
-          <p className="mt-1 text-sm text-stone-500">Panel del equipo — Estrellas del Sur</p>
+        <div className="mb-6 flex flex-col items-center text-center">
+          <Logo className="h-9 w-auto" />
+          <p className="mt-2 text-sm text-stone-500">Panel del equipo — Estrellas del Sur</p>
         </div>
         <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
           {hasEnv ? (
@@ -32,7 +33,15 @@ export default function AdminLoginPage() {
           )}
         </div>
         <p className="mt-6 text-center text-xs text-stone-400">
-          Terrenalv S.R.L. — Santa Cruz, Bolivia
+          Terrenalv S.R.L. — Santa Cruz, Bolivia ·{' '}
+          <a
+            href="https://bolivai.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-stone-600"
+          >
+            Made by BolivAI
+          </a>
         </p>
       </div>
     </main>

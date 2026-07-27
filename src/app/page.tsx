@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { waLink } from '@/lib/format';
+import { Logo } from '@/components/Logo';
 
 const WHATSAPP_VENTAS = '+59169000000'; // TODO: replace with the real sales number
 
@@ -7,14 +8,11 @@ export default function Home() {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-[--color-brand] text-white">
+      <header className="sticky top-0 z-20 bg-brand text-white">
         <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
-          <div className="leading-tight">
-            <p className="font-extrabold tracking-wide text-lg">
-              TERREN<span className="text-amber-300">ALV</span>
-              <span className="ml-1 text-[10px] align-top opacity-80">S.R.L.</span>
-            </p>
-          </div>
+          <Link href="/" aria-label="Inicio">
+            <Logo variant="inverse" className="h-7 w-auto" />
+          </Link>
           <nav className="flex items-center gap-2">
             <Link
               href="/estrellas-del-sur/mapa"
@@ -33,7 +31,7 @@ export default function Home() {
       </header>
 
       {/* Hero */}
-      <section className="bg-linear-to-b from-[--color-brand] to-emerald-900 text-white">
+      <section className="bg-linear-to-b from-brand to-emerald-900 text-white">
         <div className="mx-auto max-w-6xl px-4 py-16 sm:py-24 text-center">
           <p className="text-amber-300 font-semibold tracking-widest text-sm uppercase">
             Urbanización · Zanja Honda, Santa Cruz
@@ -82,7 +80,7 @@ export default function Home() {
           },
         ].map((f) => (
           <div key={f.title} className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
-            <h3 className="font-bold text-lg text-[--color-brand]">{f.title}</h3>
+            <h3 className="font-bold text-lg text-brand">{f.title}</h3>
             <p className="mt-2 text-stone-600">{f.body}</p>
           </div>
         ))}
@@ -91,7 +89,7 @@ export default function Home() {
       {/* How it works */}
       <section className="bg-white border-y border-stone-200">
         <div className="mx-auto max-w-6xl px-4 py-14">
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-center text-[--color-brand]">
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-center text-brand">
             ¿Cómo reservo mi lote?
           </h2>
           <ol className="mt-8 grid gap-6 sm:grid-cols-4">
@@ -102,7 +100,7 @@ export default function Home() {
               ['4', 'Confirmación', 'Nuestro equipo verifica tu pago y el lote queda a tu nombre.'],
             ].map(([n, title, body]) => (
               <li key={n} className="text-center">
-                <div className="mx-auto w-12 h-12 rounded-full bg-[--color-brand] text-white font-black text-xl flex items-center justify-center">
+                <div className="mx-auto w-12 h-12 rounded-full bg-brand text-white font-black text-xl flex items-center justify-center">
                   {n}
                 </div>
                 <p className="mt-3 font-bold">{title}</p>
@@ -113,7 +111,7 @@ export default function Home() {
           <p className="mt-8 text-center">
             <Link
               href="/estrellas-del-sur/mapa"
-              className="inline-block rounded-2xl bg-[--color-brand] text-white font-bold px-8 py-4 hover:bg-emerald-800 transition"
+              className="inline-block rounded-2xl bg-brand text-white font-bold px-8 py-4 hover:bg-emerald-800 transition"
             >
               Ver lotes disponibles
             </Link>
@@ -125,10 +123,8 @@ export default function Home() {
       <footer className="mt-auto bg-stone-900 text-stone-300">
         <div className="mx-auto max-w-6xl px-4 py-10 grid gap-6 sm:grid-cols-3 text-sm">
           <div>
-            <p className="font-extrabold text-white text-base">
-              TERREN<span className="text-amber-400">ALV</span> S.R.L.
-            </p>
-            <p className="mt-2">
+            <Logo variant="inverse" className="h-8 w-auto" />
+            <p className="mt-3">
               Empresa boliviana de desarrollo urbano. Proyecto Ciudadela Prados del Sur y
               Urbanización Estrellas del Sur.
             </p>

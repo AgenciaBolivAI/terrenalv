@@ -4,6 +4,7 @@
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { Logo } from '@/components/Logo';
 import { MapShell } from '@/features/map/2d/MapShell';
 import { loadGeometry } from '@/features/map/data/loadGeometry';
 import { loadStatuses } from '@/features/map/data/loadStatuses';
@@ -17,7 +18,7 @@ export const metadata: Metadata = {
 function MapaEnPreparacion() {
   return (
     <main className="flex h-[100dvh] flex-col items-center justify-center gap-3 px-6 text-center">
-      <span className="text-[11px] font-bold tracking-[0.25em] text-earth">TERRENALV</span>
+      <Logo className="h-6 w-auto" />
       <h1 className="text-2xl font-bold text-brand">Mapa en preparación</h1>
       <p className="max-w-xs text-sm leading-relaxed text-stone-600">
         Estamos preparando el plano interactivo de la urbanización. Vuelve a intentarlo en unos
@@ -56,7 +57,7 @@ export default async function MapaPage({
         <div className="pointer-events-auto flex w-full max-w-90 items-center justify-between gap-3 rounded-full bg-white/95 py-1.5 pl-4 pr-1.5 shadow-md backdrop-blur">
           <div className="min-w-0 leading-tight">
             <p className="truncate text-sm font-bold text-brand">{geo.project.name}</p>
-            <p className="text-[9px] font-bold tracking-[0.22em] text-earth">TERRENALV</p>
+            <Logo className="mt-0.5 h-3 w-auto" srl={false} />
           </div>
           <Link
             href="/"

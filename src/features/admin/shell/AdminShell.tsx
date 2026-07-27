@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { Profile } from '@/lib/db-types';
+import { Logo } from '@/components/Logo';
 import SignOutButton from '@/features/admin/auth/SignOutButton';
 import { ToastProvider } from '@/features/admin/ui/toast';
 import {
@@ -72,8 +73,8 @@ export default function AdminShell({
           {/* Desktop sidebar */}
           <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-stone-200 bg-white md:flex">
             <div className="px-5 py-5">
-              <p className="text-lg font-black tracking-[0.18em] text-brand">TERRENALV</p>
-              <p className="text-xs text-stone-500">{projectName}</p>
+              <Logo className="h-7 w-auto" />
+              <p className="mt-1 text-xs text-stone-500">{projectName}</p>
             </div>
             <nav className="flex-1 space-y-1 px-3">
               {nav.map((item) => (
@@ -97,6 +98,16 @@ export default function AdminShell({
               <SignOutButton className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-600 hover:bg-stone-50">
                 <IconLogout className="h-4 w-4" /> Cerrar sesión
               </SignOutButton>
+              <p className="mt-3 text-center text-[10px] text-stone-400">
+                <a
+                  href="https://bolivai.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-stone-600"
+                >
+                  Made by BolivAI
+                </a>
+              </p>
             </div>
           </aside>
 
@@ -104,8 +115,8 @@ export default function AdminShell({
           <div className="flex min-h-dvh flex-col md:pl-60">
             <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-stone-200 bg-white/95 px-4 backdrop-blur">
               <div className="min-w-0 md:hidden">
-                <p className="text-sm font-black tracking-[0.15em] text-brand">TERRENALV</p>
-                <p className="-mt-0.5 truncate text-[11px] text-stone-500">{projectName}</p>
+                <Logo className="h-5 w-auto" srl={false} />
+                <p className="truncate text-[11px] text-stone-500">{projectName}</p>
               </div>
               <p className="hidden text-sm font-semibold text-stone-700 md:block">{projectName}</p>
               <div className="flex items-center gap-1">

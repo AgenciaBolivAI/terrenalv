@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
+import { Logo } from '@/components/Logo';
 import AdminShell from '@/features/admin/shell/AdminShell';
 import SignOutButton from '@/features/admin/auth/SignOutButton';
 import { getAdminContext } from '@/features/admin/lib/get-admin-context';
@@ -13,9 +14,9 @@ export const metadata: Metadata = {
 function CenteredCard({ children }: { children: React.ReactNode }) {
   return (
     <main className="flex min-h-dvh items-center justify-center bg-stone-100 px-4">
-      <div className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-6 text-center shadow-sm">
-        <p className="text-lg font-black tracking-[0.18em] text-brand">TERRENALV</p>
-        <div className="mt-4">{children}</div>
+      <div className="flex w-full max-w-sm flex-col items-center rounded-2xl border border-stone-200 bg-white p-6 text-center shadow-sm">
+        <Logo className="h-7 w-auto" />
+        <div className="mt-4 w-full">{children}</div>
       </div>
     </main>
   );
