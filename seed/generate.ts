@@ -21,6 +21,36 @@ const rectRing = ([x, y, w, h]: [number, number, number, number]): Ring => [
 ];
 
 /**
+ * Every manzana on the plano is a rounded rectangle (the R9.00 corners). Built
+ * directly as four tessellated quarter-arcs; the subdivision engine clips lots
+ * against the real outline, so corner lots inherit the curve automatically.
+ */
+function roundedRectRing(
+  [x, y, w, h]: [number, number, number, number],
+  radius = 9,
+  seg = 5,
+): Ring {
+  const r = Math.min(radius, Math.min(w, h) / 3);
+  if (r <= 0.5) return rectRing([x, y, w, h]);
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const ring: Ring = [];
+  // Corner centres, CCW from the SW corner.
+  const corners: [number, number, number][] = [
+    [x + r, y + r, Math.PI], // SW: 180° → 270°
+    [x + w - r, y + r, -Math.PI / 2], // SE: 270° → 360°
+    [x + w - r, y + h - r, 0], // NE: 0° → 90°
+    [x + r, y + h - r, Math.PI / 2], // NW: 90° → 180°
+  ];
+  for (const [cx, cy, start] of corners) {
+    for (let i = 0; i <= seg; i++) {
+      const a = start + (Math.PI / 2) * (i / seg);
+      ring.push([round2(cx + r * Math.cos(a)), round2(cy + r * Math.sin(a))]);
+    }
+  }
+  return ring;
+}
+
+/**
  * A point just outside the block on the given side. subdivideManzana uses it to
  * pick which LONG chain is row A (nearest wins), so the hint must sit off a long
  * edge: 'W'/'E' for a tall block, 'S'/'N' for a wide one. Defaulting to 'S' on a
@@ -59,7 +89,7 @@ let totalLots = 0;
 const allWarnings: string[] = [];
 
 for (const block of BLOCKS) {
-  const ring = rectRing(block.rect);
+  const ring = roundedRectRing(block.rect);
   const out: OutManzana = {
     code: block.code,
     sector: block.sector,

@@ -62,7 +62,7 @@ const BAND_W = LOT_DEPTH * 2; // 50 — one double-loaded band
 const BANDS = 6; // across the width, per the full sheet
 
 /** Segment along the strip: corner 12 + 15×10 + corner 12 = 174 m of frontage. */
-const SEG_LEN = 174;
+const SEG_LEN = 177.5; // 174 m of frontage + the two R9 corner fillets
 const SEG_FRONTS = '12; 15x10; 12';
 const SEG_PITCH = SEG_LEN + CALLE;
 /** Full-length body segments; the final partial segment covers 4 of 6 bands. */
