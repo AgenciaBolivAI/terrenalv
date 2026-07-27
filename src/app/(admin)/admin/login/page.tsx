@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { Logo } from '@/components/Logo';
 import LoginClient from '@/features/admin/auth/LoginClient';
+import { hasSupabaseConfig } from '@/lib/supabase/config';
 
 export const metadata: Metadata = {
   title: 'Ingresar al panel',
@@ -9,9 +10,7 @@ export const metadata: Metadata = {
 };
 
 export default function AdminLoginPage() {
-  const hasEnv = !!(
-    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  );
+  const hasEnv = hasSupabaseConfig;
 
   return (
     <main className="flex min-h-dvh items-center justify-center bg-stone-100 px-4 py-10">

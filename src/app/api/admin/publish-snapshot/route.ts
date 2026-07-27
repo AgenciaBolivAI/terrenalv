@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { hasSupabaseConfig } from '@/lib/supabase/config';
 
 export const runtime = 'nodejs';
 
@@ -14,7 +15,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * {slug}/geometry-v{N}.json (content-addressed by version → cache forever).
  */
 export async function POST(req: NextRequest) {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+  if (!hasSupabaseConfig) {
     return NextResponse.json({ error: 'Sin conexión a la base de datos.' }, { status: 503 });
   }
 

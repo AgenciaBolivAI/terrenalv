@@ -7,6 +7,7 @@
 
 import { useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/lib/supabase/config';
 import type { LotStatus } from '@/lib/db-types';
 import { loadStatuses } from '../data/loadStatuses';
 import type { LotStatusEvent } from '../data/types';
@@ -29,8 +30,8 @@ export function useLotStatusChannel(projectId: string | null): void {
     if (
       !projectId ||
       projectId.startsWith('seed-') ||
-      !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-      !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      !SUPABASE_URL ||
+      !SUPABASE_ANON_KEY
     ) {
       return;
     }

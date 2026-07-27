@@ -7,6 +7,7 @@
 import { createClient as createAnonClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { ElementKind, ManzanaKind } from '@/lib/db-types';
 import type { Ring } from '../lib/types';
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/lib/supabase/config';
 import type { GeometrySnapshot, SnapshotElement, SnapshotLot, SnapshotManzana } from './types';
 
 export interface MapProjectInfo {
@@ -60,8 +61,8 @@ function reportFailure(slug: string, reason: LoadFailure, detail?: string): null
 }
 
 function anonClient(): SupabaseClient | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const url = SUPABASE_URL;
+  const key = SUPABASE_ANON_KEY;
   if (!url || !key) return null;
   return createAnonClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -89,7 +90,7 @@ async function loadFromDb(slug: string): Promise<GeometryLoadResult | null> {
     }
     if (manifest.geometry_version < 1) return reportFailure(slug, 'sin_publicar');
 
-    const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const base = SUPABASE_URL;
     const url = `${base}/storage/v1/object/public/maps/${manifest.slug}/geometry-v${manifest.geometry_version}.json`;
     // Content-addressed by version → safe to cache indefinitely.
     let snapshot: unknown = null;

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { hasSupabaseConfig } from '@/lib/supabase/config';
 
 export const runtime = 'nodejs';
 
@@ -21,7 +22,7 @@ const inviteSchema = z.object({
  * creates the profile from the metadata.
  */
 export async function POST(req: NextRequest) {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+  if (!hasSupabaseConfig) {
     return NextResponse.json({ error: 'Sin conexión a la base de datos.' }, { status: 503 });
   }
 

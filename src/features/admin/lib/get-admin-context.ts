@@ -3,6 +3,7 @@ import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 import type { Profile } from '@/lib/db-types';
 import { PROJECT_SLUG } from './constants';
+import { hasSupabaseConfig } from '@/lib/supabase/config';
 
 export interface AdminProject {
   id: string;
@@ -29,7 +30,7 @@ export type AdminContext =
  * crashing the server component (the DB may not exist yet).
  */
 export async function getAdminContext(): Promise<AdminContext> {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+  if (!hasSupabaseConfig) {
     return { ok: false, reason: 'env' };
   }
   try {

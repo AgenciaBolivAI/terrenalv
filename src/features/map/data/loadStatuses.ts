@@ -8,6 +8,7 @@
 //    the last known state instead of clobbering it with fabricated statuses.
 
 import { createClient as createAnonClient } from '@supabase/supabase-js';
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/lib/supabase/config';
 import type { LotStatusEntry, StatusSnapshot } from './types';
 
 function fallbackSnapshot(lotIds: string[]): StatusSnapshot {
@@ -28,8 +29,8 @@ export async function loadStatuses(
   projectId: string,
   fallbackLotIds?: string[],
 ): Promise<StatusSnapshot | null> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const url = SUPABASE_URL;
+  const key = SUPABASE_ANON_KEY;
 
   if (projectId.startsWith('seed-') || !url || !key) {
     return fallbackLotIds ? fallbackSnapshot(fallbackLotIds) : null;
