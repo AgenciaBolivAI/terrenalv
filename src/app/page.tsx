@@ -151,6 +151,13 @@ export default function Home() {
                 Consultar mi reserva
               </Link>
             </p>
+            <p className="mt-1">
+              {/* Discreet but present: the sales team needs a way in that isn't
+                  a memorised URL. The route is auth-gated either way. */}
+              <Link className="text-stone-500 underline hover:text-stone-300" href="/admin">
+                Acceso equipo
+              </Link>
+            </p>
           </div>
         </div>
         <p className="text-center text-xs text-stone-500 pb-6">

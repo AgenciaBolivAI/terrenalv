@@ -34,6 +34,31 @@ interface ManifestPayload {
   status_rev: number;
 }
 
+/**
+ * Why the map has no geometry. "Mapa en preparación" is the right thing to show
+ * a BUYER for every one of these, but they are very different operationally —
+ * a missing env var is an outage, an unpublished project is expected. Without
+ * this distinction a misconfigured deploy looks exactly like a healthy one.
+ */
+type LoadFailure =
+  | 'sin_configuracion' // Supabase env vars absent → deploy misconfigured
+  | 'sin_conexion' // RPC failed / timed out
+  | 'proyecto_no_encontrado' // slug not found or not 'activo'
+  | 'sin_publicar' // project exists, geometry never published
+  | 'sin_geometria'; // published but the snapshot is empty/invalid
+
+function reportFailure(slug: string, reason: LoadFailure, detail?: string): null {
+  // Server-side only; the buyer sees the friendly state either way.
+  const level = reason === 'sin_configuracion' || reason === 'sin_conexion' ? 'error' : 'warn';
+  console[level](
+    `[mapa] ${slug}: ${reason}${detail ? ` — ${detail}` : ''}` +
+      (reason === 'sin_configuracion'
+        ? ' (falta NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY en el entorno)'
+        : ''),
+  );
+  return null;
+}
+
 function anonClient(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -51,15 +76,18 @@ function isValidSnapshot(x: unknown): x is GeometrySnapshot {
 
 async function loadFromDb(slug: string): Promise<GeometryLoadResult | null> {
   const supabase = anonClient();
-  if (!supabase) return null;
+  if (!supabase) return reportFailure(slug, 'sin_configuracion');
   try {
     const { data, error } = await supabase
       .rpc('get_map_manifest', { p_slug: slug })
       .abortSignal(AbortSignal.timeout(6000));
-    if (error || !data) return null;
+    if (error) return reportFailure(slug, 'sin_conexion', error.message);
+    if (!data) return reportFailure(slug, 'proyecto_no_encontrado');
     const manifest = data as ManifestPayload;
-    if (!manifest.project_id || !Number.isFinite(manifest.geometry_version)) return null;
-    if (manifest.geometry_version < 1) return null; // never published
+    if (!manifest.project_id || !Number.isFinite(manifest.geometry_version)) {
+      return reportFailure(slug, 'proyecto_no_encontrado');
+    }
+    if (manifest.geometry_version < 1) return reportFailure(slug, 'sin_publicar');
 
     const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const url = `${base}/storage/v1/object/public/maps/${manifest.slug}/geometry-v${manifest.geometry_version}.json`;
@@ -84,7 +112,7 @@ async function loadFromDb(slug: string): Promise<GeometryLoadResult | null> {
       });
       snapshot = fromDb;
     }
-    if (!isValidSnapshot(snapshot)) return null;
+    if (!isValidSnapshot(snapshot)) return reportFailure(slug, 'sin_geometria');
 
     return {
       project: {
@@ -98,8 +126,8 @@ async function loadFromDb(slug: string): Promise<GeometryLoadResult | null> {
       },
       snapshot,
     };
-  } catch {
-    return null;
+  } catch (err) {
+    return reportFailure(slug, 'sin_conexion', err instanceof Error ? err.message : String(err));
   }
 }
 
