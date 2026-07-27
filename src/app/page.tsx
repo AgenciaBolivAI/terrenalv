@@ -4,7 +4,7 @@ import { Logo } from '@/components/Logo';
 import { ActiveReservationBanner } from '@/features/reservations/components/ActiveReservationBanner';
 import { MiReservaLink } from '@/features/reservations/components/MiReservaLink';
 
-const WHATSAPP_VENTAS = '+59169000000'; // TODO: replace with the real sales number
+const WHATSAPP_VENTAS = '+59175511996'; // Ventas Terrenalv
 
 export default function Home() {
   return (
