@@ -3,9 +3,11 @@
 // "Buscar mi reserva": tracking-code input → /reserva/[code].
 // Accepts a pasted full URL or a loosely formatted code and extracts the code.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { trackingCodeSchema } from '@/lib/validation';
+import { getActiveReservation } from '@/lib/client/session-state';
+import { ActiveReservationBanner } from './ActiveReservationBanner';
 
 const CODE_IN_TEXT = /[A-Z]{2,5}-[0-9A-Z]{4}-[0-9A-Z]{4}/;
 
@@ -14,6 +16,12 @@ export function SearchReservationForm() {
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Session continuity: prefill the code stored on this device.
+  useEffect(() => {
+    const stored = getActiveReservation();
+    if (stored) setValue((v) => v || stored.code);
+  }, []);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -30,7 +38,9 @@ export function SearchReservationForm() {
   }
 
   return (
-    <form onSubmit={submit} noValidate className="space-y-3">
+    <div className="space-y-4">
+      <ActiveReservationBanner />
+      <form onSubmit={submit} noValidate className="space-y-3">
       <label htmlFor="track-code" className="block text-sm font-semibold text-stone-700">
         Código de seguimiento
       </label>
@@ -54,6 +64,7 @@ export function SearchReservationForm() {
       <p className="text-center text-xs text-stone-500">
         Lo recibiste al reservar tu lote. También puedes pegar el enlace completo.
       </p>
-    </form>
+      </form>
+    </div>
   );
 }

@@ -5,6 +5,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Logo } from '@/components/Logo';
+import { ActiveReservationBanner } from '@/features/reservations/components/ActiveReservationBanner';
 import { MapShell } from '@/features/map/2d/MapShell';
 import { loadGeometry } from '@/features/map/data/loadGeometry';
 import { loadStatuses } from '@/features/map/data/loadStatuses';
@@ -69,6 +70,10 @@ export default async function MapaPage({
       </header>
 
       <MapShell snapshot={geo.snapshot} statuses={statuses} project={geo.project} />
+
+      <div className="pointer-events-none absolute inset-x-0 top-16 z-20 flex justify-center px-3">
+        <ActiveReservationBanner variant="floating" />
+      </div>
     </div>
   );
 }

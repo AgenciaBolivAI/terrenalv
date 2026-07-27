@@ -12,6 +12,7 @@ import {
   TransformWrapper,
   type ReactZoomPanPinchContentRef,
 } from 'react-zoom-pan-pinch';
+import { getMapView, saveMapView } from '@/lib/client/session-state';
 import { useMapStore } from '../store/useMapStore';
 import { getViewBox, type ViewportController } from './viewbox';
 
@@ -116,6 +117,33 @@ export function PlanViewport({ controllerRef, children }: PlanViewportProps) {
     [],
   );
 
+  // ---- Session continuity: come back to the same spot after leaving the map
+  // (e.g. to a lot's reserve page). Saved on hide/unmount, restored on init.
+  const persistView = useCallback(() => {
+    const args = lastArgsRef.current;
+    if (!args) return;
+    saveMapView({
+      scale: args.scale,
+      positionX: args.x,
+      positionY: args.y,
+      selectedLotId: useMapStore.getState().selectedLotId,
+    });
+  }, []);
+
+  useEffect(() => {
+    const onHide = () => persistView();
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') persistView();
+    };
+    window.addEventListener('pagehide', onHide);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', onHide);
+      document.removeEventListener('visibilitychange', onVisibility);
+      persistView();
+    };
+  }, [persistView]);
+
   // ---- Imperative camera for the search box --------------------------------
   useEffect(() => {
     if (!controllerRef) return;
@@ -163,6 +191,12 @@ export function PlanViewport({ controllerRef, children }: PlanViewportProps) {
           doubleClick={{ mode: 'zoomIn', step: 0.7 }}
           wheel={{ step: 0.2 }}
           onInit={(ref) => {
+            const stored = getMapView();
+            if (stored && fit !== null && stored.scale >= fit * 0.85 && stored.scale <= MAX_SCALE) {
+              ref.setTransform(stored.positionX, stored.positionY, stored.scale, 0);
+              scheduleTransform(stored.scale, stored.positionX, stored.positionY);
+              return;
+            }
             const st = ref.state;
             scheduleTransform(st.scale, st.positionX, st.positionY);
           }}

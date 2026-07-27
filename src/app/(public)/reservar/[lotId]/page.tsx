@@ -267,7 +267,11 @@ export default async function ReservarLotePage({
         <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-brand">
           Tus datos
         </h2>
-        <ReserveForm lotId={lot.id} mapHref={mapHref} />
+        <ReserveForm
+          lotId={lot.id}
+          mapHref={mapHref}
+          lotLabel={`Manzana ${manzana.code} · Lote ${lot.number}`}
+        />
       </div>
     </Shell>
   );

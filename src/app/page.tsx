@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { waLink } from '@/lib/format';
 import { Logo } from '@/components/Logo';
+import { ActiveReservationBanner } from '@/features/reservations/components/ActiveReservationBanner';
+import { MiReservaLink } from '@/features/reservations/components/MiReservaLink';
 
 const WHATSAPP_VENTAS = '+59169000000'; // TODO: replace with the real sales number
 
@@ -20,12 +22,9 @@ export default function Home() {
             >
               Ver mapa
             </Link>
-            <Link
-              href="/reserva"
-              className="hidden sm:block rounded-full px-4 py-2 text-sm font-semibold hover:bg-white/10"
-            >
+            <MiReservaLink className="hidden sm:block rounded-full px-4 py-2 text-sm font-semibold hover:bg-white/10">
               Mi reserva
-            </Link>
+            </MiReservaLink>
           </nav>
         </div>
       </header>
@@ -59,6 +58,9 @@ export default function Home() {
             >
               Hablar por WhatsApp
             </a>
+          </div>
+          <div className="mx-auto mt-6 max-w-md text-stone-900">
+            <ActiveReservationBanner />
           </div>
         </div>
       </section>

@@ -6,6 +6,11 @@
 //    30 s while en_verificacion. Terminal statuses stop polling.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  getActiveReservation,
+  saveActiveReservation,
+  updateActiveReservationStatus,
+} from '@/lib/client/session-state';
 import type { TrackedReservation } from '../lib/api';
 import { fetchReservationStatusClient } from '../lib/api';
 
@@ -42,6 +47,23 @@ export function useReservationStatus(code: string, initial: TrackedReservation) 
   }, [refetch]);
 
   const status = snap.data.status;
+
+  // Keep this device's session anchor in sync: adopt the reservation if none is
+  // stored (opened from a forwarded link on the buyer's own phone), update the
+  // stored status, and drop it on dead ends (expirada/cancelada).
+  useEffect(() => {
+    const stored = getActiveReservation();
+    if (!stored && (status === 'pendiente_pago' || status === 'en_verificacion'
+        || status === 'rechazo_reintento' || status === 'confirmada')) {
+      saveActiveReservation({
+        code,
+        lotLabel: `Manzana ${snap.data.manzana} · Lote ${snap.data.lote}`,
+        status,
+      });
+    } else {
+      updateActiveReservationStatus(code, status);
+    }
+  }, [code, status, snap.data.manzana, snap.data.lote]);
   const live =
     status === 'pendiente_pago' || status === 'en_verificacion' || status === 'rechazo_reintento';
 

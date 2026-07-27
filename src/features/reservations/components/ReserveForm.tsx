@@ -4,10 +4,16 @@
 // correo opcional, términos. Validates with the SAME zod schema the API uses
 // (instant UX; the database re-validates everything anyway).
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { reserveFormSchema } from '@/lib/validation';
+import {
+  clearFormDraft,
+  getFormDraft,
+  saveActiveReservation,
+  saveFormDraft,
+} from '@/lib/client/session-state';
 import type { CreateReservationResponse, ReservationApiError } from '../lib/api';
 import { TurnstileWidget } from './TurnstileWidget';
 
@@ -16,7 +22,15 @@ type FieldErrors = Partial<Record<'full_name' | 'ci' | 'phone' | 'email' | 'acce
 const inputClass =
   'w-full rounded-xl border border-stone-300 bg-white px-3 py-3 text-base text-stone-900 outline-none placeholder:text-stone-400 focus:border-brand-light focus:ring-2 focus:ring-green-100';
 
-export function ReserveForm({ lotId, mapHref }: { lotId: string; mapHref: string }) {
+export function ReserveForm({
+  lotId,
+  mapHref,
+  lotLabel,
+}: {
+  lotId: string;
+  mapHref: string;
+  lotLabel?: string;
+}) {
   const router = useRouter();
   const [fullName, setFullName] = useState('');
   const [ci, setCi] = useState('');
@@ -29,6 +43,39 @@ export function ReserveForm({ lotId, mapHref }: { lotId: string; mapHref: string
   const [serverError, setServerError] = useState<string | null>(null);
   const [serverErrorCode, setServerErrorCode] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const restored = useRef(false);
+
+  // Restore the draft once (mobile browsers kill the tab during the bank round-trip).
+  useEffect(() => {
+    if (restored.current) return;
+    restored.current = true;
+    const draft = getFormDraft();
+    if (!draft) return;
+    if (draft.full_name) setFullName(draft.full_name);
+    if (draft.ci) {
+      const [num, c] = draft.ci.split('-');
+      setCi(num ?? '');
+      if (c) setComp(c);
+    }
+    if (draft.phone) setPhone(draft.phone);
+    if (draft.email) setEmail(draft.email);
+  }, []);
+
+  // Persist the draft as they type (debounced).
+  useEffect(() => {
+    if (!restored.current) return;
+    const t = setTimeout(() => {
+      if (fullName || ci || phone || email) {
+        saveFormDraft({
+          full_name: fullName,
+          ci: ci + (comp ? `-${comp.toUpperCase()}` : ''),
+          phone,
+          email,
+        });
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [fullName, ci, comp, phone, email]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -80,6 +127,13 @@ export function ReserveForm({ lotId, mapHref }: { lotId: string; mapHref: string
         setSending(false);
         return;
       }
+      // The reservation is now this device's session anchor; the draft is done.
+      saveActiveReservation({
+        code: json.tracking_code,
+        lotLabel: lotLabel ?? json.reference_code ?? '',
+        status: 'pendiente_pago',
+      });
+      clearFormDraft();
       router.push(`/reserva/${encodeURIComponent(json.tracking_code)}?nuevo=1`);
     } catch {
       setServerError('Sin conexión. Revisa tu internet e intenta de nuevo.');
