@@ -18,9 +18,28 @@ Next.js 15 · Supabase (PostGIS, RLS, Realtime, pg_cron) · Vercel · es-BO
 | **Panel del equipo** | **`/admin`** — también enlazado como *"Acceso equipo"* en el pie del inicio |
 | Editor de mapa (solo admin) | `/admin/mapa` |
 
-El panel es **solo por invitación**: no existe registro público. El primer
-administrador se crea directamente en la base de datos; a partir de ahí, los
-demás se invitan desde `/admin/equipo`.
+El panel es **solo por invitación**: no existe registro público.
+
+**Cuenta de administrador:** `celiel13@gmail.com` — creada directamente en la
+base de datos para romper el círculo (invitar requiere el panel, y el panel
+requería un usuario). Para cambiar la contraseña: Supabase → Authentication →
+Users. **A partir de aquí, los demás se invitan desde `/admin/equipo`** — no
+vuelvas a crear usuarios a mano.
+
+### Precios (esto es lo que habilita las reservas)
+
+Un lote sin precio se ve en el mapa pero **no se puede reservar**
+(`LOT_NOT_PRICED`). El precio es `precio_manual ?? precio/m² de su categoría ×
+superficie`, así que hay dos pasos:
+
+1. **`/admin/lotes` → "Categorías y precios"** — fija el precio/m² de cada
+   categoría A–E. Con las categorías en 0 nada es reservable.
+2. **Asignar la categoría a los lotes** — por manzana con "Actualización masiva
+   de precios", o lote por lote en la tabla. También existe el precio manual
+   por lote, que tiene prioridad sobre la categoría.
+
+> Los precios cargados hoy son **provisionales** ($us 30/m² → 250 m² = $us
+> 7.500) para poder probar el flujo completo. Reemplázalos por los comerciales.
 
 ---
 

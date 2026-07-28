@@ -106,9 +106,16 @@ export function PlanViewport({ controllerRef, children }: PlanViewportProps) {
     }, CULL_SETTLE_MS);
   }, [vb.minX, vb.minY]);
 
+  /** Constant on-screen label size. Written every frame (one style property,
+   *  no React), unlike the throttled LOD/cull work below. */
+  const applyScaleVar = useCallback((scale: number) => {
+    containerRef.current?.style.setProperty('--map-scale', String(scale));
+  }, []);
+
   const scheduleTransform = useCallback(
     (scale: number, x: number, y: number) => {
       lastArgsRef.current = { scale, x, y };
+      applyScaleVar(scale);
       const now = performance.now();
       const elapsed = now - lastRunRef.current;
       if (elapsed >= THROTTLE_MS) {
@@ -122,7 +129,7 @@ export function PlanViewport({ controllerRef, children }: PlanViewportProps) {
         }, THROTTLE_MS - elapsed);
       }
     },
-    [applyTransform],
+    [applyTransform, applyScaleVar],
   );
 
   useEffect(

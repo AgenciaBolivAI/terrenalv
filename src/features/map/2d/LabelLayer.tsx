@@ -19,14 +19,13 @@ export function LabelLayer() {
   for (const lot of lots.values()) {
     if (!intersectsPadded(lot.bbox, viewportBbox, 0.1)) continue;
     const [x0, y0, x1, y1] = lot.bbox;
-    const fontSize = Math.min(8, Math.max(2.2, Math.min(x1 - x0, y1 - y0) * 0.42));
     labels.push(
       <text
         key={lot.id}
         x={(x0 + x1) / 2}
         y={(y0 + y1) / 2}
         className="map-label"
-        fontSize={fontSize}
+        style={{ ['--label-px' as string]: 11 }}
         fontWeight={500}
         textAnchor="middle"
         dominantBaseline="central"

@@ -60,7 +60,7 @@ function ManzanaGroupInner({ manzana }: { manzana: MapManzana }) {
             x={m.labelCenter[0]}
             y={m.labelCenter[1]}
             className="map-label"
-            fontSize={Math.min(18, Math.max(8, minDim * 0.35))}
+            style={{ ['--label-px' as string]: 16 }}
             textAnchor="middle"
             dominantBaseline="central"
           >
@@ -86,7 +86,7 @@ function ManzanaGroupInner({ manzana }: { manzana: MapManzana }) {
           x={(x0 + x1) / 2}
           y={y0 - 1.5}
           className="map-label"
-          fontSize={5}
+          style={{ ['--label-px' as string]: 11 }}
           opacity={0.8}
           textAnchor="middle"
         >

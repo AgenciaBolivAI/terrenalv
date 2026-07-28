@@ -85,7 +85,7 @@ function ElementsLayerInner({ elements }: { elements: MapElement[] }) {
             x={el.labelCenter[0]}
             y={el.labelCenter[1]}
             className="map-label"
-            fontSize={7}
+            style={{ ['--label-px' as string]: 12 }}
             opacity={0.65}
             textAnchor="middle"
             dominantBaseline="central"

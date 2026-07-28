@@ -64,11 +64,16 @@ body {
 /* Vía férrea: ballast, not asphalt (sleepers come from the hatch pattern). */
 .el-railway { fill: #c9c2b6; }
 
+/* Map labels live inside the zoomed SVG, so a font-size in user units grows
+   with the zoom (at 8x a "5" became 40px — the giant M-47 text). Dividing by
+   --map-scale, which PlanViewport sets imperatively on every transform, keeps
+   them a constant size ON SCREEN with zero React re-renders. */
 .map-label {
   font-weight: 700;
   fill: #44403c;
   pointer-events: none;
   user-select: none;
+  font-size: calc(var(--label-px, 12) * 1px / var(--map-scale, 1));
 }
 
 @keyframes pulse-selected {

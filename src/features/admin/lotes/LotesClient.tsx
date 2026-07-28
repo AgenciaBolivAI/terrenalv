@@ -19,6 +19,7 @@ import { Badge, EmptyState, Spinner, btnPrimary, btnSecondary, inputClass } from
 import { Dialog } from '@/features/admin/ui/dialog';
 import { IconChevronLeft } from '@/features/admin/ui/icons';
 import { useToast } from '@/features/admin/ui/toast';
+import CategoryPrices from './CategoryPrices';
 
 interface Manzana {
   id: string;
@@ -459,6 +460,12 @@ export default function LotesClient({ projectId, role, currency }: Props) {
     return (
       <div className="mx-auto max-w-6xl">
         <h1 className="mb-3 text-lg font-bold text-stone-900">Lotes por manzana</h1>
+        <CategoryPrices
+          categories={cats}
+          currency={currency}
+          isAdmin={isAdmin}
+          onSaved={() => void fetchAll()}
+        />
         {manzanas.length === 0 ? (
           <EmptyState
             title="Mapa en preparación"
