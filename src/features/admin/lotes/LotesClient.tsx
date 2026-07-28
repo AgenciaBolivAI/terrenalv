@@ -51,9 +51,11 @@ interface Props {
   projectId: string | null;
   role: TeamRole;
   currency: 'USD' | 'BOB';
+  /** From the dashboard inventory cards: show these lots across all manzanas. */
+  initialStatus?: LotStatus | null;
 }
 
-export default function LotesClient({ projectId, role, currency }: Props) {
+export default function LotesClient({ projectId, role, currency, initialStatus = null }: Props) {
   const supabase = useMemo(() => createClient(), []);
   const { push } = useToast();
   const isAdmin = role === 'admin';
@@ -65,6 +67,7 @@ export default function LotesClient({ projectId, role, currency }: Props) {
   const [resCodes, setResCodes] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [selectedMz, setSelectedMz] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<LotStatus | null>(initialStatus);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [busy, setBusy] = useState(false);
 
@@ -146,13 +149,33 @@ export default function LotesClient({ projectId, role, currency }: Props) {
     [catById],
   );
 
-  const mzLots = useMemo(
-    () =>
-      lots
+  const mzByCode = useMemo(() => new Map(manzanas.map((m) => [m.id, m.code])), [manzanas]);
+
+  /**
+   * Rows for the table. Two ways in: a manzana (the normal path), or a status
+   * filter from the dashboard, which lists matching lots across every manzana
+   * — clicking "1 Reservados" has to land on that lot, not on the grid.
+   */
+  const mzLots = useMemo(() => {
+    if (selectedMz) {
+      return lots
         .filter((l) => l.manzana_id === selectedMz)
-        .sort((a, b) => a.number.localeCompare(b.number, 'es', { numeric: true })),
-    [lots, selectedMz],
-  );
+        .sort((a, b) => a.number.localeCompare(b.number, 'es', { numeric: true }));
+    }
+    if (statusFilter) {
+      return lots
+        .filter((l) => l.status === statusFilter)
+        .sort(
+          (a, b) =>
+            (mzByCode.get(a.manzana_id) ?? '').localeCompare(
+              mzByCode.get(b.manzana_id) ?? '',
+              'es',
+              { numeric: true },
+            ) || a.number.localeCompare(b.number, 'es', { numeric: true }),
+        );
+    }
+    return [];
+  }, [lots, selectedMz, statusFilter, mzByCode]);
 
   const statsByMz = useMemo(() => {
     const map = new Map<string, { total: number; byStatus: Record<LotStatus, number>; review: boolean }>();
@@ -211,6 +234,26 @@ export default function LotesClient({ projectId, role, currency }: Props) {
           />
         ),
       }),
+      ...(selectedMz
+        ? []
+        : [
+            columnHelper.display({
+              id: 'manzana',
+              header: 'Manzana',
+              cell: ({ row }) => (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedMz(row.original.manzana_id);
+                    setRowSelection({});
+                  }}
+                  className="font-semibold text-brand hover:underline"
+                >
+                  {mzByCode.get(row.original.manzana_id) ?? '—'}
+                </button>
+              ),
+            }),
+          ]),
       columnHelper.accessor('number', {
         header: 'Lote',
         cell: (info) => (
@@ -347,7 +390,7 @@ export default function LotesClient({ projectId, role, currency }: Props) {
       }),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [cats, catById, currency, isAdmin, resCodes, lotPrice],
+    [cats, catById, currency, isAdmin, resCodes, lotPrice, selectedMz, mzByCode],
   );
 
   const table = useReactTable({
@@ -471,8 +514,8 @@ export default function LotesClient({ projectId, role, currency }: Props) {
     );
   }
 
-  // ---- Manzana grid ----
-  if (!selectedMz) {
+  // ---- Manzana grid (only when nothing narrows the view) ----
+  if (!selectedMz && !statusFilter) {
     return (
       <div className="mx-auto max-w-6xl">
         <h1 className="mb-3 text-lg font-bold text-stone-900">Lotes por manzana</h1>
@@ -533,7 +576,7 @@ export default function LotesClient({ projectId, role, currency }: Props) {
     );
   }
 
-  // ---- Lot table for the selected manzana ----
+  // ---- Lot table: one manzana, or one status across all of them ----
   return (
     <div className="mx-auto max-w-6xl">
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -541,15 +584,36 @@ export default function LotesClient({ projectId, role, currency }: Props) {
           type="button"
           onClick={() => {
             setSelectedMz(null);
+            // Back out of the manzana first; the status list stays underneath.
+            if (!selectedMz) setStatusFilter(null);
             setRowSelection({});
           }}
           className="inline-flex items-center gap-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-sm text-stone-600 hover:bg-stone-50"
         >
-          <IconChevronLeft className="h-4 w-4" /> Manzanas
+          <IconChevronLeft className="h-4 w-4" />
+          {selectedMz && statusFilter ? LOT_STATUS_LABEL[statusFilter] : 'Manzanas'}
         </button>
-        <h1 className="text-lg font-bold text-stone-900">Manzana {currentMz?.code}</h1>
+        <h1 className="text-lg font-bold text-stone-900">
+          {selectedMz
+            ? `Manzana ${currentMz?.code}`
+            : statusFilter
+              ? `Lotes ${LOT_STATUS_LABEL[statusFilter].toLowerCase()}`
+              : 'Lotes'}
+        </h1>
         <span className="text-sm text-stone-400">{mzLots.length} lotes</span>
-        {isAdmin ? (
+        {!selectedMz && statusFilter ? (
+          <button
+            type="button"
+            onClick={() => {
+              setStatusFilter(null);
+              setRowSelection({});
+            }}
+            className="rounded-full bg-stone-100 px-2.5 py-1 text-xs font-medium text-stone-600 hover:bg-stone-200"
+          >
+            Quitar filtro ✕
+          </button>
+        ) : null}
+        {isAdmin && selectedMz ? (
           <button
             type="button"
             onClick={() => {
@@ -616,7 +680,11 @@ export default function LotesClient({ projectId, role, currency }: Props) {
           </tbody>
         </table>
         {mzLots.length === 0 ? (
-          <p className="py-8 text-center text-sm text-stone-400">Esta manzana no tiene lotes.</p>
+          <p className="py-8 text-center text-sm text-stone-400">
+            {selectedMz
+              ? 'Esta manzana no tiene lotes.'
+              : `No hay lotes ${statusFilter ? LOT_STATUS_LABEL[statusFilter].toLowerCase() : ''}.`}
+          </p>
         ) : null}
       </div>
       {!isAdmin ? (

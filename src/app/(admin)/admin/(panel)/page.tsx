@@ -182,7 +182,11 @@ export default async function DashboardPage() {
           </h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {LOT_CARDS.map((c, i) => (
-              <Link key={c.status} href="/admin/lotes" className="rounded-lg bg-stone-50 p-3 hover:bg-stone-100">
+              <Link
+                key={c.status}
+                href={`/admin/lotes?estado=${c.status}`}
+                className="rounded-lg bg-stone-50 p-3 hover:bg-stone-100"
+              >
                 <p className={`text-xl font-bold ${c.accent}`}>{lotCounts[i].count ?? 0}</p>
                 <p className="text-xs text-stone-500">{c.label}</p>
               </Link>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { formatMoney, formatDateTime } from '@/lib/format';
+import { formatMoney, formatDateTime, waLink } from '@/lib/format';
 import type { TeamRole } from '@/lib/db-types';
 import { sinceLabel, untilLabel } from '@/features/admin/lib/time';
 import {
@@ -11,11 +11,12 @@ import {
 } from '@/features/admin/lib/labels';
 import {
   DEFAULT_WA_TEMPLATES,
+  fillTemplate,
   type WhatsappTemplates,
 } from '@/features/admin/lib/whatsapp';
 import { TEAM_NOTIFICATION_EVENT } from '@/features/admin/shell/NotificationBell';
 import { Badge, EmptyState, Spinner, inputClass } from '@/features/admin/ui/bits';
-import { IconSearch } from '@/features/admin/ui/icons';
+import { IconSearch, IconWhatsapp } from '@/features/admin/ui/icons';
 import { useToast } from '@/features/admin/ui/toast';
 import ReservationDetail from './ReservationDetail';
 import {
@@ -356,14 +357,23 @@ export default function ReservationsClient({ projectId, role, initialTab, openId
           {rows.map((r) => {
             const pay = reservePayment(r);
             const monto = pay ? formatMoney(pay.amount_bob, 'BOB') : formatMoney(r.amount_due, r.amount_due_currency);
+            const waText = fillTemplate(waTemplates.contacto, {
+              nombre: r.buyer_full_name.split(' ')[0] ?? '',
+              codigo: r.tracking_code,
+              lote: r.lot?.number ?? '',
+              manzana: r.lot?.manzana?.code ?? '',
+            });
             return (
-              <li key={r.id}>
+              // The WhatsApp link is a sibling of the row button, not a child:
+              // nesting interactive elements breaks keyboard and screen readers.
+              <li
+                key={r.id}
+                className={`flex items-center ${selectedId === r.id ? 'bg-green-50/70' : ''}`}
+              >
                 <button
                   type="button"
                   onClick={() => openRow(r.id)}
-                  className={`flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-stone-50 sm:px-4 ${
-                    selectedId === r.id ? 'bg-green-50/70' : ''
-                  }`}
+                  className="flex min-w-0 flex-1 items-center gap-3 px-3 py-3 text-left hover:bg-stone-50 sm:px-4"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="flex flex-wrap items-center gap-x-2 text-sm">
@@ -374,6 +384,12 @@ export default function ReservationsClient({ projectId, role, initialTab, openId
                       Mz {r.lot?.manzana?.code ?? '—'} · Lote {r.lot?.number ?? '—'} ·{' '}
                       {rowTimeLabel(tab, r)}
                     </p>
+                    {/* Contact details in the list: chasing a payment shouldn't
+                        require opening every reservation one by one. */}
+                    <p className="mt-0.5 truncate text-xs text-stone-400">
+                      {r.buyer_phone}
+                      {r.buyer_email ? ` · ${r.buyer_email}` : ''} · CI {r.buyer_ci}
+                    </p>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">
                     <span className="text-sm font-bold text-stone-900">{monto}</span>
@@ -382,6 +398,17 @@ export default function ReservationsClient({ projectId, role, initialTab, openId
                     </Badge>
                   </div>
                 </button>
+                <a
+                  href={waLink(r.buyer_phone, waText)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Escribir por WhatsApp a ${r.buyer_full_name}`}
+                  title={`WhatsApp ${r.buyer_phone}`}
+                  className="mr-2 inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-green-600 px-2.5 py-2 text-xs font-semibold text-white hover:bg-green-700 sm:mr-3"
+                >
+                  <IconWhatsapp className="h-4 w-4" />
+                  <span className="hidden sm:inline">WhatsApp</span>
+                </a>
               </li>
             );
           })}
