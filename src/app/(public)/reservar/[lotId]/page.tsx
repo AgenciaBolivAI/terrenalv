@@ -260,10 +260,14 @@ export default async function ReservarLotePage({
         />
       </div>
 
+      {/* Con un plan a la vista, "el saldo se coordina con la oficina" se
+          contradice con las cuotas que el comprador acaba de leer. */}
       <p className="mt-3 rounded-xl bg-green-50 p-3 text-xs text-stone-600">
-        {sena
-          ? 'Hoy pagas solo la seña para asegurar tu lote. Se aplica al precio total; el saldo se coordina con la oficina.'
-          : 'Pagas una seña para asegurar tu lote. El monto exacto y las instrucciones de pago aparecen al confirmar tu reserva.'}
+        {!sena
+          ? 'Pagas una seña para asegurar tu lote. El monto exacto y las instrucciones de pago aparecen al confirmar tu reserva.'
+          : financing
+            ? 'Hoy pagas solo la seña para asegurar tu lote. Se aplica al precio total; la cuota inicial y el plan de cuotas se firman en oficina.'
+            : 'Hoy pagas solo la seña para asegurar tu lote. Se aplica al precio total; el saldo se coordina con la oficina.'}
       </p>
 
       <div className="mt-5">
