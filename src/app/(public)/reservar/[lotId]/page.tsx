@@ -7,6 +7,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { computeFinancing, type FinancingBreakdown } from '@/lib/financing';
+import { loadFinancingPlan } from '@/lib/server/financing';
 import { getSetting } from '@/lib/server/settings';
 import { LotSummaryCard } from '@/features/reservations/components/LotSummaryCard';
 import { PublicShell } from '@/features/reservations/components/PublicShell';
@@ -58,6 +60,7 @@ type LoadResult =
       projectName: string;
       mapHref: string;
       sena: { amount: number; currency: 'USD' | 'BOB' } | null;
+      financing: FinancingBreakdown | null;
     };
 
 function firstRel<T>(rel: T | T[] | null): T | null {
@@ -133,7 +136,10 @@ async function loadData(lotId: string): Promise<LoadResult> {
     }
 
     const currency = project?.currency ?? 'USD';
-    const sena = await estimateSena(lot.project_id, price, currency);
+    const [sena, plan] = await Promise.all([
+      estimateSena(lot.project_id, price, currency),
+      loadFinancingPlan(supabase, lot.project_id),
+    ]);
 
     return {
       state: 'ok',
@@ -144,6 +150,7 @@ async function loadData(lotId: string): Promise<LoadResult> {
       projectName: project?.name ?? 'Estrellas del Sur',
       mapHref,
       sena,
+      financing: computeFinancing(price, plan),
     };
   } catch {
     return { state: 'not_ready' };
@@ -227,7 +234,7 @@ export default async function ReservarLotePage({
     );
   }
 
-  const { lot, manzana, price, currency, projectName, mapHref, sena } = result;
+  const { lot, manzana, price, currency, projectName, mapHref, sena, financing } = result;
 
   return (
     <PublicShell>
@@ -249,6 +256,7 @@ export default async function ReservarLotePage({
           currency={currency}
           amountDue={sena?.amount ?? null}
           amountDueCurrency={sena?.currency ?? 'BOB'}
+          financing={financing}
         />
       </div>
 

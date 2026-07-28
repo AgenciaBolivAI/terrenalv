@@ -1,6 +1,8 @@
 // Lot summary card — primitive props so both the RSC reserve page and the
 // client tracking view can render it. No hooks: server-component friendly.
 
+import type { FinancingBreakdown } from '@/lib/financing';
+import { formatPct } from '@/lib/financing';
 import { formatArea, formatMoney } from '@/lib/format';
 
 export interface LotSummaryProps {
@@ -14,6 +16,8 @@ export interface LotSummaryProps {
   currency?: 'USD' | 'BOB';
   amountDue?: number | null;
   amountDueCurrency?: 'USD' | 'BOB';
+  /** Payment plan for this price. Null hides the rows entirely. */
+  financing?: FinancingBreakdown | null;
   title?: string;
 }
 
@@ -22,6 +26,16 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex items-baseline justify-between gap-3 py-1.5">
       <dt className="text-sm text-stone-500">{label}</dt>
       <dd className="text-right text-sm font-semibold text-stone-800">{value}</dd>
+    </div>
+  );
+}
+
+/** The two numbers a buyer actually decides on: today's cash and the monthly. */
+function HighlightRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 py-2">
+      <dt className="text-sm font-semibold text-stone-700">{label}</dt>
+      <dd className="text-right text-base font-bold text-brand">{value}</dd>
     </div>
   );
 }
@@ -38,8 +52,12 @@ export function LotSummaryCard(props: LotSummaryProps) {
     currency = 'USD',
     amountDue,
     amountDueCurrency = 'BOB',
+    financing,
     title = 'Resumen del lote',
   } = props;
+
+  const hasPrice = typeof price === 'number' && price > 0;
+  const plan = hasPrice ? (financing ?? null) : null;
 
   return (
     <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
@@ -55,18 +73,38 @@ export function LotSummaryCard(props: LotSummaryProps) {
         {frontageM && depthM ? (
           <Row label="Frente × fondo" value={`${frontageM} m × ${depthM} m`} />
         ) : null}
-        {typeof price === 'number' && price > 0 ? (
-          <Row label="Precio del lote" value={formatMoney(price, currency)} />
+        {hasPrice ? <Row label="Precio del lote" value={formatMoney(price, currency)} /> : null}
+
+        {plan ? (
+          <>
+            <Row
+              label={`Cuota inicial (${formatPct(plan.downPaymentPct)})`}
+              value={formatMoney(plan.downPayment, currency)}
+            />
+            <HighlightRow
+              label={`Cuota mensual (${plan.months} meses)`}
+              value={formatMoney(plan.monthly, currency)}
+            />
+          </>
         ) : null}
+
         {typeof amountDue === 'number' && amountDue > 0 ? (
-          <div className="flex items-baseline justify-between gap-3 py-2">
-            <dt className="text-sm font-semibold text-stone-700">Seña a pagar hoy</dt>
-            <dd className="text-right text-base font-bold text-brand">
-              {formatMoney(amountDue, amountDueCurrency)}
-            </dd>
-          </div>
+          <HighlightRow
+            label="Seña a pagar hoy"
+            value={formatMoney(amountDue, amountDueCurrency)}
+          />
         ) : null}
       </dl>
+
+      {plan ? (
+        <p className="mt-2 text-xs leading-relaxed text-stone-500">
+          Saldo a financiar {formatMoney(plan.financed, currency)} en {plan.months} cuotas
+          {plan.annualInterestPct > 0
+            ? `, interés ${formatPct(plan.annualInterestPct)} anual`
+            : ', sin interés'}
+          .{plan.note ? ` ${plan.note}` : ''}
+        </p>
+      ) : null}
     </section>
   );
 }

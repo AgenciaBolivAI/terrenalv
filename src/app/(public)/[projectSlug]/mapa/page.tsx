@@ -9,6 +9,8 @@ import { ActiveReservationBanner } from '@/features/reservations/components/Acti
 import { MapShell } from '@/features/map/2d/MapShell';
 import { loadGeometry } from '@/features/map/data/loadGeometry';
 import { loadStatuses } from '@/features/map/data/loadStatuses';
+import { loadFinancingPlan } from '@/lib/server/financing';
+import { createClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,10 +49,14 @@ export default async function MapaPage({
     return <MapaEnPreparacion />;
   }
 
-  const statuses = await loadStatuses(
-    geo.project.projectId,
-    geo.snapshot.lots.map((l) => l.id),
-  );
+  const [statuses, financingPlan] = await Promise.all([
+    loadStatuses(
+      geo.project.projectId,
+      geo.snapshot.lots.map((l) => l.id),
+    ),
+    // financing_plan is is_public, so the anon client reads it under RLS.
+    createClient().then((c) => loadFinancingPlan(c, geo.project.projectId)),
+  ]);
 
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden bg-[#eceae3]">
@@ -69,7 +75,12 @@ export default async function MapaPage({
         </div>
       </header>
 
-      <MapShell snapshot={geo.snapshot} statuses={statuses} project={geo.project} />
+      <MapShell
+        snapshot={geo.snapshot}
+        statuses={statuses}
+        project={geo.project}
+        financingPlan={financingPlan}
+      />
 
       <div className="pointer-events-none absolute inset-x-0 top-16 z-20 flex justify-center px-3">
         <ActiveReservationBanner variant="floating" />

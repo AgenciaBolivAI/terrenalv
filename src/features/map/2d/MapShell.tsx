@@ -12,6 +12,7 @@
 
 import dynamic from 'next/dynamic';
 import { useCallback, useRef, useState } from 'react';
+import type { FinancingPlan } from '@/lib/financing';
 import type { MapProjectInfo } from '../data/loadGeometry';
 import { parseSnapshot } from '../data/parseSnapshot';
 import type { GeometrySnapshot, LotStatusEntry, StatusSnapshot } from '../data/types';
@@ -38,9 +39,11 @@ interface MapShellProps {
   snapshot: GeometrySnapshot;
   statuses: StatusSnapshot | null;
   project: MapProjectInfo;
+  /** Payment terms, resolved server-side. Null = show price only. */
+  financingPlan?: FinancingPlan | null;
 }
 
-export function MapShell({ snapshot, statuses, project }: MapShellProps) {
+export function MapShell({ snapshot, statuses, project, financingPlan = null }: MapShellProps) {
   const hydratedRef = useRef(false);
   if (!hydratedRef.current) {
     hydratedRef.current = true;
@@ -109,7 +112,7 @@ export function MapShell({ snapshot, statuses, project }: MapShellProps) {
         </div>
       ) : null}
 
-      <LotBottomSheet project={project} />
+      <LotBottomSheet project={project} financingPlan={financingPlan} />
     </div>
   );
 }

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { PaymentInstructionsSetting } from '@/lib/db-types';
+import { computeFinancing, formatPct, parseFinancingPlan, type FinancingPlan } from '@/lib/financing';
+import { formatMoney } from '@/lib/format';
 import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
 import { DEFAULT_WA_TEMPLATES, type WhatsappTemplates } from '@/features/admin/lib/whatsapp';
 import { Spinner, btnPrimary, btnSecondary, inputClass } from '@/features/admin/ui/bits';
@@ -16,6 +18,18 @@ interface ReserveAmount {
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const QR_PATH = 'qr.png';
+
+/** Shown to the buyer when no custom note is written. */
+const DEFAULT_FINANCING_NOTE = 'Plan referencial. El plan definitivo se confirma en oficina.';
+
+const DEFAULT_FINANCING: FinancingPlan = {
+  enabled: false,
+  down_payment_type: 'porcentaje',
+  down_payment_value: 30,
+  months: 36,
+  annual_interest_pct: 0,
+  note: DEFAULT_FINANCING_NOTE,
+};
 
 function Section({
   title,
@@ -81,6 +95,10 @@ export default function SettingsClient() {
   });
   const [qrPreview, setQrPreview] = useState<string | null>(null);
   const [qrUploading, setQrUploading] = useState(false);
+  // Financiamiento
+  const [financing, setFinancing] = useState<FinancingPlan>(DEFAULT_FINANCING);
+  const [samplePrice, setSamplePrice] = useState(7500);
+  const [currency, setCurrency] = useState<'USD' | 'BOB'>('USD');
   // Notificaciones
   const [emails, setEmails] = useState<string[]>([]);
   const [newEmail, setNewEmail] = useState('');
@@ -134,9 +152,24 @@ export default function SettingsClient() {
       const wt = map.get('whatsapp_templates') as Partial<WhatsappTemplates> | undefined;
       if (wt && typeof wt === 'object') setWaTpl({ ...DEFAULT_WA_TEMPLATES, ...wt });
 
+      // parseFinancingPlan returns null when disabled, so keep the raw values
+      // in the form — turning the plan off must not erase the terms.
+      const fpRaw = map.get('financing_plan');
+      const fp = parseFinancingPlan({ ...(fpRaw as object | null), enabled: true });
+      if (fp) {
+        setFinancing({
+          ...fp,
+          enabled: (fpRaw as { enabled?: unknown } | undefined)?.enabled === true,
+        });
+      }
+
       const abu = map.get('app_base_url');
       setAppBaseUrl(typeof abu === 'string' && abu ? abu : null);
       setCaptchaEnabled(map.get('captcha_enabled') === true);
+
+      const { data: proj } = await supabase.from('projects').select('currency').limit(1).maybeSingle();
+      if (!alive) return;
+      if (proj?.currency === 'USD' || proj?.currency === 'BOB') setCurrency(proj.currency);
 
       setLoading(false);
     })();
@@ -145,14 +178,17 @@ export default function SettingsClient() {
     };
   }, [supabase, refreshQrPreview]);
 
+  // `isPublic` is only passed where anon must read the value (the map reads the
+  // payment plan); null leaves the existing visibility untouched.
   const saveKeys = useCallback(
-    async (section: string, entries: [string, unknown][]) => {
+    async (section: string, entries: [string, unknown, boolean?][]) => {
       setSavingSection(section);
-      for (const [key, value] of entries) {
+      for (const [key, value, isPublic] of entries) {
         const { error } = await supabase.rpc('update_setting', {
           p_project_id: null,
           p_key: key,
           p_value: value,
+          p_is_public: isPublic ?? null,
         });
         if (error) {
           push(adminErrorCopy(error.message), 'error');
@@ -342,6 +378,154 @@ export default function SettingsClient() {
               />
             </label>
           </div>
+        </Field>
+      </Section>
+
+      {/* ---- Financiamiento ---- */}
+      <Section
+        title="Plan de pago"
+        saving={savingSection === 'financiamiento'}
+        onSave={() =>
+          void saveKeys(
+            'financiamiento',
+            [['financing_plan', { ...financing, note: financing.note || DEFAULT_FINANCING_NOTE }, true]],
+          )
+        }
+      >
+        <p className="text-xs text-stone-500">
+          El comprador ve la cuota inicial y la cuota mensual calculadas sobre el precio de cada
+          lote, en el mapa y al reservar. No genera cuotas ni estados de cuenta: es informativo.
+        </p>
+
+        <label className="flex items-center gap-2 text-sm text-stone-700">
+          <input
+            type="checkbox"
+            checked={financing.enabled}
+            onChange={(e) => setFinancing((f) => ({ ...f, enabled: e.target.checked }))}
+            className="accent-brand"
+          />
+          Mostrar el plan de pago al comprador
+        </label>
+
+        <Field label="Cuota inicial">
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={financing.down_payment_type}
+              onChange={(e) =>
+                setFinancing((f) => ({
+                  ...f,
+                  down_payment_type: e.target.value as FinancingPlan['down_payment_type'],
+                }))
+              }
+              className={`${inputClass} w-auto`}
+            >
+              <option value="porcentaje">Porcentaje del precio</option>
+              <option value="fijo">Monto fijo</option>
+            </select>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={financing.down_payment_value}
+              onChange={(e) =>
+                setFinancing((f) => ({ ...f, down_payment_value: Number(e.target.value) }))
+              }
+              className={`${inputClass} w-32`}
+            />
+            <span className="self-center text-sm text-stone-500">
+              {financing.down_payment_type === 'porcentaje'
+                ? '%'
+                : currency === 'BOB'
+                  ? 'Bs'
+                  : '$us'}
+            </span>
+          </div>
+        </Field>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Plazo (meses)" hint="En cuántas cuotas se paga el saldo">
+            <input
+              type="number"
+              min={1}
+              max={600}
+              value={financing.months}
+              onChange={(e) => setFinancing((f) => ({ ...f, months: Number(e.target.value) }))}
+              className={inputClass}
+            />
+          </Field>
+          <Field label="Interés anual (%)" hint="0 = sin interés">
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step="0.01"
+              value={financing.annual_interest_pct}
+              onChange={(e) =>
+                setFinancing((f) => ({ ...f, annual_interest_pct: Number(e.target.value) }))
+              }
+              className={inputClass}
+            />
+          </Field>
+        </div>
+
+        <Field label="Nota para el comprador" hint="Aparece bajo el plan de pago">
+          <input
+            value={financing.note ?? ''}
+            onChange={(e) => setFinancing((f) => ({ ...f, note: e.target.value }))}
+            placeholder={DEFAULT_FINANCING_NOTE}
+            className={inputClass}
+          />
+        </Field>
+
+        {/* Lo que verá el comprador, con los valores del formulario. */}
+        <Field label="Vista previa" hint="Escribe el precio de un lote real para comprobar">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-stone-500">{currency === 'BOB' ? 'Bs' : '$us'}</span>
+            <input
+              type="number"
+              min={0}
+              step="1"
+              value={samplePrice}
+              onChange={(e) => setSamplePrice(Number(e.target.value))}
+              className={`${inputClass} w-36`}
+            />
+          </div>
+          {(() => {
+            const preview = computeFinancing(
+              samplePrice,
+              parseFinancingPlan({ ...financing, enabled: true }),
+            );
+            if (!preview) {
+              return (
+                <p className="mt-2 text-xs text-amber-700">
+                  Con estos valores no se muestra ningún plan (revisa el precio, la cuota inicial y
+                  el plazo).
+                </p>
+              );
+            }
+            return (
+              <dl className="mt-2 rounded-lg bg-stone-50 px-3 py-2 text-sm">
+                <div className="flex justify-between py-0.5">
+                  <dt className="text-stone-500">
+                    Cuota inicial ({formatPct(preview.downPaymentPct)})
+                  </dt>
+                  <dd className="font-semibold text-stone-800">
+                    {formatMoney(preview.downPayment, currency)}
+                  </dd>
+                </div>
+                <div className="flex justify-between py-0.5">
+                  <dt className="text-stone-500">Cuota mensual ({preview.months} meses)</dt>
+                  <dd className="font-bold text-brand">
+                    {formatMoney(preview.monthly, currency)}
+                  </dd>
+                </div>
+                <div className="flex justify-between py-0.5 text-xs">
+                  <dt className="text-stone-400">Total pagado</dt>
+                  <dd className="text-stone-500">{formatMoney(preview.totalPaid, currency)}</dd>
+                </div>
+              </dl>
+            );
+          })()}
         </Field>
       </Section>
 

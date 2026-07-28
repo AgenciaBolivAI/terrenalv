@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { Drawer } from 'vaul';
 import type { LotStatus } from '@/lib/db-types';
+import { computeFinancing, formatPct, type FinancingPlan } from '@/lib/financing';
 import { formatArea, formatMoney, waLink } from '@/lib/format';
 import type { MapProjectInfo } from '../data/loadGeometry';
 import { useMapStore } from '../store/useMapStore';
@@ -29,7 +30,13 @@ const STATUS_BADGE: Record<LotStatus, string> = {
   no_disponible: 'bg-stone-100 text-stone-500 ring-stone-200',
 };
 
-export function LotBottomSheet({ project }: { project: MapProjectInfo }) {
+export function LotBottomSheet({
+  project,
+  financingPlan = null,
+}: {
+  project: MapProjectInfo;
+  financingPlan?: FinancingPlan | null;
+}) {
   const selectedLotId = useMapStore((s) => s.selectedLotId);
   const lots = useMapStore((s) => s.lots);
   const manzanas = useMapStore((s) => s.manzanas);
@@ -66,6 +73,7 @@ export function LotBottomSheet({ project }: { project: MapProjectInfo }) {
 
   const st: LotStatus = entry?.st ?? 'no_disponible';
   const priced = !!entry?.priced && typeof entry?.price === 'number';
+  const financing = priced ? computeFinancing(entry?.price, financingPlan) : null;
   const isSeed = !!lot && lot.id.startsWith('seed-');
   const flipped =
     !!lot &&
@@ -160,6 +168,38 @@ export function LotBottomSheet({ project }: { project: MapProjectInfo }) {
                   <span className="text-sm font-semibold text-stone-500">Precio por confirmar</span>
                 )}
               </div>
+
+              {financing ? (
+                <div className="mt-2 rounded-xl border border-stone-200 px-4 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-stone-500">
+                    Plan de pago
+                  </p>
+                  <dl className="mt-1.5 space-y-1">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <dt className="text-xs text-stone-600">
+                        Cuota inicial ({formatPct(financing.downPaymentPct)})
+                      </dt>
+                      <dd className="text-sm font-bold text-stone-800">
+                        {formatMoney(financing.downPayment, project.currency)}
+                      </dd>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <dt className="text-xs text-stone-600">
+                        Cuota mensual ({financing.months} meses)
+                      </dt>
+                      <dd className="text-base font-extrabold text-brand">
+                        {formatMoney(financing.monthly, project.currency)}
+                      </dd>
+                    </div>
+                  </dl>
+                  <p className="mt-1.5 text-[11px] leading-snug text-stone-400">
+                    {financing.annualInterestPct > 0
+                      ? `Interés ${formatPct(financing.annualInterestPct)} anual.`
+                      : 'Sin interés.'}
+                    {financing.note ? ` ${financing.note}` : ''}
+                  </p>
+                </div>
+              ) : null}
 
               {flipped ? (
                 <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-medium text-orange-800">
