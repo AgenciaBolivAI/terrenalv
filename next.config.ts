@@ -1,17 +1,22 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // sharp is a NATIVE module: the JS is tiny and the actual codec lives in a
-  // per-platform package (@img/sharp-linux-x64 + its libvips). Next traces the
-  // JS, treats sharp as "external", and shipped the function WITHOUT those
-  // binaries — so on Vercel the import threw
-  //   "Could not load the sharp module using the linux-x64 runtime"
-  // and every payment-proof upload 500'd before the route's own code ran.
+  // Belt and braces for sharp's native binary, which broke every payment-proof
+  // upload with "Could not load the sharp module using the linux-x64 runtime".
   //
-  // The lockfile already resolves the linux binaries correctly; they just have
-  // to be forced into the function's file trace. Only the linux variants are
-  // listed: globbing all of @img would drag darwin/win32/wasm libvips (tens of
-  // MB each) into the bundle. Paths that don't exist on the builder are ignored.
+  // Two things had to be true and neither was:
+  //   1. The binary must be INSTALLED. npm had recorded @img/sharp-linux-x64 as
+  //      a skipped optional dependency, so every cache-restored install
+  //      reported "up to date" and never fetched it — hence
+  //      `npm ci --include=optional` in vercel.json.
+  //   2. It must be TRACED into the function. The Turbopack build traced none
+  //      of it; the webpack build picks up sharp and its platform package
+  //      automatically (route.js.nft.json lists 74 sharp files plus the
+  //      platform @img package), so `build` no longer passes --turbopack.
+  //
+  // These globs pin the linux binaries explicitly on top of that. Only the
+  // linux variants: globbing all of @img would drag darwin/win32/wasm libvips
+  // (tens of MB each) in. Paths absent on the build machine are ignored.
   outputFileTracingIncludes: {
     '/api/reservas/[code]/comprobante': [
       './node_modules/sharp/**/*',
