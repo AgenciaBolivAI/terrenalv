@@ -31,8 +31,18 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
   );
 }
 
-export const inputClass =
-  'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none focus:border-brand focus:ring-2 focus:ring-brand-light/30 disabled:bg-stone-100 disabled:text-stone-400';
+/**
+ * Input styling WITHOUT a width — use this whenever the caller sets its own
+ * (`w-32`, `flex-1`, …). Appending a width to a string that already contains
+ * `w-full` leaves two competing utilities and CSS source order picks the
+ * winner, not the order they were written. That is what made the buyer's
+ * carnet field un-typeable, so the width is no longer baked in here.
+ */
+export const inputBase =
+  'rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none focus:border-brand focus:ring-2 focus:ring-brand-light/30 disabled:bg-stone-100 disabled:text-stone-400';
+
+/** The common case: fills its container. */
+export const inputClass = `w-full ${inputBase}`;
 
 export const btnPrimary =
   'inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-light disabled:opacity-50 disabled:pointer-events-none';

@@ -19,8 +19,15 @@ import { TurnstileWidget, type TurnstileHandle } from './TurnstileWidget';
 
 type FieldErrors = Partial<Record<'full_name' | 'ci' | 'phone' | 'email' | 'accept_terms', string>>;
 
-const inputClass =
-  'w-full rounded-xl border border-stone-300 bg-white px-3 py-3 text-base text-stone-900 outline-none placeholder:text-stone-400 focus:border-brand-light focus:ring-2 focus:ring-green-100';
+// Width lives at the call site, never in the base. Appending `flex-1` or `w-24`
+// to a class string that already contains `w-full` produces two competing width
+// utilities, and CSS source order decides the winner — not the order you wrote
+// them. That is what collapsed the CI field to a sliver and let the 2-character
+// complemento take the row, so a carnet number could not be typed at all.
+// `text-base` (16px) is also deliberate: iOS zooms the page on focus below that.
+const inputBase =
+  'rounded-xl border border-stone-300 bg-white px-3 py-3 text-base text-stone-900 outline-none placeholder:text-stone-400 focus:border-brand-light focus:ring-2 focus:ring-green-100';
+const inputClass = `w-full ${inputBase}`;
 
 export function ReserveForm({
   lotId,
@@ -178,7 +185,7 @@ export function ReserveForm({
             onChange={(e) => setCi(e.target.value.replace(/[^0-9]/g, ''))}
             maxLength={10}
             placeholder="7896541"
-            className={`${inputClass} flex-1`}
+            className={`${inputBase} min-w-0 flex-1`}
           />
           <input
             aria-label="Complemento del carnet (opcional)"
@@ -186,7 +193,7 @@ export function ReserveForm({
             onChange={(e) => setComp(e.target.value.replace(/[^0-9a-zA-Z]/g, '').toUpperCase())}
             maxLength={2}
             placeholder="Compl."
-            className={`${inputClass} w-24`}
+            className={`${inputBase} w-24 shrink-0`}
           />
         </div>
         <p className="mt-1 text-xs text-stone-500">El complemento (ej. 1E) es opcional.</p>
@@ -198,7 +205,7 @@ export function ReserveForm({
           Celular (WhatsApp)
         </label>
         <div className="flex items-stretch gap-2">
-          <span className="flex items-center rounded-xl border border-stone-200 bg-stone-100 px-3 text-base font-semibold text-stone-600">
+          <span className="flex shrink-0 items-center rounded-xl border border-stone-200 bg-stone-100 px-3 text-base font-semibold text-stone-600">
             +591
           </span>
           <input
@@ -210,7 +217,7 @@ export function ReserveForm({
             onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ''))}
             maxLength={8}
             placeholder="70000000"
-            className={`${inputClass} flex-1`}
+            className={`${inputBase} min-w-0 flex-1`}
           />
         </div>
         {fieldErrors.phone ? <p className="mt-1 text-xs text-red-600">{fieldErrors.phone}</p> : null}

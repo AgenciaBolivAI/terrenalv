@@ -17,7 +17,7 @@ import type { PricingCategory } from '@/lib/db-types';
 import { computeFinancing, formatPct, type FinancingPlan } from '@/lib/financing';
 import { formatMoney } from '@/lib/format';
 import { useToast } from '@/features/admin/ui/toast';
-import { inputClass } from '@/features/admin/ui/bits';
+import { inputBase } from '@/features/admin/ui/bits';
 
 /** A 250 m² lot is the dominant size on this plano — makes the number concrete. */
 const TYPICAL_AREA = 250;
@@ -147,7 +147,7 @@ export default function CategoryPrices({
                         inputMode="decimal"
                         value={draft[c.id] ?? ''}
                         onChange={(e) => setDraft((d) => ({ ...d, [c.id]: e.target.value }))}
-                        className={`${inputClass} w-28`}
+                        className={`${inputBase} w-28`}
                         aria-label={`Precio por m² categoría ${c.code}`}
                       />
                       <span className="text-xs text-stone-500">/m²</span>

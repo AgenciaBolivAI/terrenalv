@@ -7,7 +7,7 @@ import { computeFinancing, formatPct, parseFinancingPlan, type FinancingPlan } f
 import { formatMoney } from '@/lib/format';
 import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
 import { DEFAULT_WA_TEMPLATES, type WhatsappTemplates } from '@/features/admin/lib/whatsapp';
-import { Spinner, btnPrimary, btnSecondary, inputClass } from '@/features/admin/ui/bits';
+import { Spinner, btnPrimary, btnSecondary, inputBase, inputClass } from '@/features/admin/ui/bits';
 import { useToast } from '@/features/admin/ui/toast';
 
 interface ReserveAmount {
@@ -294,7 +294,7 @@ export default function SettingsClient() {
             <select
               value={reserveAmount.type}
               onChange={(e) => setReserveAmount((r) => ({ ...r, type: e.target.value as ReserveAmount['type'] }))}
-              className={`${inputClass} w-auto`}
+              className={`${inputBase} w-auto`}
             >
               <option value="fijo">Monto fijo</option>
               <option value="porcentaje">Porcentaje del precio</option>
@@ -307,14 +307,14 @@ export default function SettingsClient() {
                 step="0.01"
                 value={reserveAmount.value ?? 0}
                 onChange={(e) => setReserveAmount((r) => ({ ...r, value: Number(e.target.value) }))}
-                className={`${inputClass} w-32`}
+                className={`${inputBase} w-32`}
               />
             ) : null}
             {reserveAmount.type === 'fijo' ? (
               <select
                 value={reserveAmount.currency ?? 'BOB'}
                 onChange={(e) => setReserveAmount((r) => ({ ...r, currency: e.target.value as 'USD' | 'BOB' }))}
-                className={`${inputClass} w-auto`}
+                className={`${inputBase} w-auto`}
               >
                 <option value="BOB">Bs</option>
                 <option value="USD">$us</option>
@@ -417,7 +417,7 @@ export default function SettingsClient() {
                   down_payment_type: e.target.value as FinancingPlan['down_payment_type'],
                 }))
               }
-              className={`${inputClass} w-auto`}
+              className={`${inputBase} w-auto`}
             >
               <option value="porcentaje">Porcentaje del precio</option>
               <option value="fijo">Monto fijo</option>
@@ -430,7 +430,7 @@ export default function SettingsClient() {
               onChange={(e) =>
                 setFinancing((f) => ({ ...f, down_payment_value: Number(e.target.value) }))
               }
-              className={`${inputClass} w-32`}
+              className={`${inputBase} w-32`}
             />
             <span className="self-center text-sm text-stone-500">
               {financing.down_payment_type === 'porcentaje'
@@ -487,7 +487,7 @@ export default function SettingsClient() {
               step="1"
               value={samplePrice}
               onChange={(e) => setSamplePrice(Number(e.target.value))}
-              className={`${inputClass} w-36`}
+              className={`${inputBase} w-36`}
             />
           </div>
           {(() => {
