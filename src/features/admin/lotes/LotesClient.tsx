@@ -164,13 +164,17 @@ export default function LotesClient({ projectId, role, currency }: Props) {
     return map;
   }, [lots]);
 
-  async function updateLot(lotId: string, patch: Partial<Pick<LotRow, 'category_id' | 'price_override'>>) {
+  async function updateLot(
+    lotId: string,
+    patch: Partial<Pick<LotRow, 'category_id' | 'price_override' | 'frontage_m' | 'depth_m'>>,
+  ) {
     const { error } = await supabase.from('lots').update(patch).eq('id', lotId);
     if (error) {
       push(adminErrorCopy(error.message), 'error');
-      return;
+      return false;
     }
     setLots((prev) => prev.map((l) => (l.id === lotId ? { ...l, ...patch } : l)));
+    return true;
   }
 
   // ---- Table ----
@@ -217,11 +221,14 @@ export default function LotesClient({ projectId, role, currency }: Props) {
       columnHelper.display({
         id: 'dims',
         header: 'Frente × Fondo',
-        cell: ({ row }) => {
-          const f = row.original.frontage_m;
-          const d = row.original.depth_m;
-          return f && d ? `${Number(f)} × ${Number(d)} m` : '—';
-        },
+        cell: ({ row }) => (
+          <DimsCell
+            lot={row.original}
+            isAdmin={isAdmin}
+            onSave={(patch) => updateLot(row.original.id, patch)}
+            onInvalid={(msg) => push(msg, 'error')}
+          />
+        ),
       }),
       columnHelper.accessor('area_m2', {
         header: 'Superficie',
@@ -574,7 +581,7 @@ export default function LotesClient({ projectId, role, currency }: Props) {
       ) : null}
 
       <div className="overflow-x-auto rounded-xl border border-stone-200 bg-white">
-        <table className="w-full min-w-[720px] text-sm">
+        <table className="w-full min-w-[800px] text-sm">
           <thead>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className="border-b border-stone-200 bg-stone-50 text-left">
@@ -717,6 +724,103 @@ export default function LotesClient({ projectId, role, currency }: Props) {
             void fetchAll();
           }}
         />
+      ) : null}
+    </div>
+  );
+}
+
+/** "12.00" → "12", null → "". Nobody types the trailing zeros back in. */
+function dimText(v: number | null): string {
+  return v == null || !Number.isFinite(Number(v)) ? '' : String(Number(v));
+}
+
+const MAX_DIM_M = 1000; // mirrors lots_frontage_m_max_check / lots_depth_m_max_check
+
+/**
+ * Frente × fondo, editable in place.
+ *
+ * These come off the plano, not off the polygon: the automatic subdivision
+ * gets them approximately right and the team corrects them against the printed
+ * plan. They are also buyer-facing (the lot sheet shows "Frente × fondo"), so
+ * a bad value is visible immediately — hence validation here, a CHECK in the
+ * database, and a revert when the write is refused.
+ */
+function DimsCell({
+  lot,
+  isAdmin,
+  onSave,
+  onInvalid,
+}: {
+  lot: LotRow;
+  isAdmin: boolean;
+  onSave: (patch: Partial<Pick<LotRow, 'frontage_m' | 'depth_m'>>) => Promise<boolean>;
+  onInvalid: (message: string) => void;
+}) {
+  const [draft, setDraft] = useState({ f: dimText(lot.frontage_m), d: dimText(lot.depth_m) });
+
+  // Re-sync after a save or a refetch replaces the row.
+  useEffect(() => {
+    setDraft({ f: dimText(lot.frontage_m), d: dimText(lot.depth_m) });
+  }, [lot.frontage_m, lot.depth_m]);
+
+  const f = Number(lot.frontage_m);
+  const d = Number(lot.depth_m);
+  const area = Number(lot.area_m2);
+  // Lots are rarely perfect rectangles, so only flag a real discrepancy.
+  const mismatch = f > 0 && d > 0 && area > 0 && Math.abs(f * d - area) / area > 0.1;
+
+  if (!isAdmin) {
+    return <span>{f > 0 && d > 0 ? `${f} × ${d} m` : '—'}</span>;
+  }
+
+  async function commit(which: 'f' | 'd') {
+    const raw = draft[which].replace(',', '.').trim();
+    const stored = which === 'f' ? lot.frontage_m : lot.depth_m;
+    const revert = () => setDraft((p) => ({ ...p, [which]: dimText(stored) }));
+
+    const next = raw === '' ? null : Number(raw);
+    if (next !== null && (!Number.isFinite(next) || next <= 0 || next > MAX_DIM_M)) {
+      onInvalid(`Medida inválida: escribe un número entre 0 y ${MAX_DIM_M} m.`);
+      revert();
+      return;
+    }
+    if (next === (stored == null ? null : Number(stored))) return;
+
+    const ok = await onSave(which === 'f' ? { frontage_m: next } : { depth_m: next });
+    if (!ok) revert();
+  }
+
+  const field = (which: 'f' | 'd', label: string) => (
+    <input
+      inputMode="decimal"
+      aria-label={`${label} del lote ${lot.number} (m)`}
+      value={draft[which]}
+      onChange={(e) => setDraft((p) => ({ ...p, [which]: e.target.value }))}
+      onBlur={() => void commit(which)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') {
+          setDraft((p) => ({ ...p, [which]: dimText(which === 'f' ? lot.frontage_m : lot.depth_m) }));
+          e.currentTarget.blur();
+        }
+      }}
+      className="w-14 rounded-lg border border-stone-200 px-1.5 py-1 text-right text-xs"
+    />
+  );
+
+  return (
+    <div className="flex items-center gap-1">
+      {field('f', 'Frente')}
+      <span className="text-xs text-stone-400">×</span>
+      {field('d', 'Fondo')}
+      <span className="text-xs text-stone-400">m</span>
+      {mismatch ? (
+        <span
+          className="text-[10px] text-amber-600"
+          title={`Frente × fondo = ${Math.round(f * d)} m², pero la superficie del lote es ${area} m². Revisa contra el plano.`}
+        >
+          ≠
+        </span>
       ) : null}
     </div>
   );
