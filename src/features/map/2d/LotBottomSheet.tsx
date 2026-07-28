@@ -130,7 +130,7 @@ export function LotBottomSheet({
                       type="button"
                       onClick={() => selectLot(null)}
                       aria-label="Cerrar"
-                      className="flex h-8 w-8 items-center justify-center rounded-full bg-stone-100 text-stone-500 active:bg-stone-200"
+                      className="flex h-11 w-11 items-center justify-center rounded-full bg-stone-100 text-stone-500 active:bg-stone-200"
                     >
                       <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
                         <path d="M5 5l10 10M15 5L5 15" />

@@ -28,7 +28,9 @@ export function CopyButton({ value, label = 'Copiar' }: { value: string; label?:
     <button
       type="button"
       onClick={copy}
-      className={`shrink-0 rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${
+      // min-h-11 = 44px: this copies the reference code that has to go in the
+      // transfer glosa, and it is tapped with a thumb.
+      className={`min-h-11 shrink-0 rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${
         copied
           ? 'border-green-300 bg-green-50 text-green-700'
           : 'border-stone-300 bg-white text-stone-700 active:bg-stone-100'
