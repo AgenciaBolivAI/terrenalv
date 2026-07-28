@@ -10,6 +10,7 @@ import {
   type RowSelectionState,
 } from '@tanstack/react-table';
 import { createClient } from '@/lib/supabase/client';
+import { parseFinancingPlan, type FinancingPlan } from '@/lib/financing';
 import { formatMoney } from '@/lib/format';
 import type { LotStatus, PricingCategory, TeamRole } from '@/lib/db-types';
 import { ciSchema, phoneSchema } from '@/lib/validation';
@@ -60,6 +61,7 @@ export default function LotesClient({ projectId, role, currency }: Props) {
   const [manzanas, setManzanas] = useState<Manzana[]>([]);
   const [lots, setLots] = useState<LotRow[]>([]);
   const [cats, setCats] = useState<PricingCategory[]>([]);
+  const [financing, setFinancing] = useState<FinancingPlan | null>(null);
   const [resCodes, setResCodes] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [selectedMz, setSelectedMz] = useState<string | null>(null);
@@ -83,7 +85,7 @@ export default function LotesClient({ projectId, role, currency }: Props) {
       return;
     }
     setLoading(true);
-    const [mzRes, lotRes, catRes] = await Promise.all([
+    const [mzRes, lotRes, catRes, planRes] = await Promise.all([
       supabase
         .from('manzanas')
         .select('id, code, kind, sector, needs_review')
@@ -102,11 +104,18 @@ export default function LotesClient({ projectId, role, currency }: Props) {
         .select('id, project_id, code, name, color_hex, price_per_m2, sort_order')
         .eq('project_id', projectId)
         .order('sort_order'),
+      supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'financing_plan')
+        .is('project_id', null)
+        .maybeSingle(),
     ]);
     const lotsData = (lotRes.data ?? []) as LotRow[];
     setManzanas((mzRes.data ?? []) as Manzana[]);
     setLots(lotsData);
     setCats((catRes.data ?? []) as PricingCategory[]);
+    setFinancing(parseFinancingPlan(planRes.data?.value));
 
     const activeIds = lotsData.map((l) => l.active_reservation_id).filter(Boolean) as string[];
     if (activeIds.length > 0) {
@@ -471,6 +480,7 @@ export default function LotesClient({ projectId, role, currency }: Props) {
           categories={cats}
           currency={currency}
           isAdmin={isAdmin}
+          financing={financing}
           onSaved={() => void fetchAll()}
         />
         {manzanas.length === 0 ? (

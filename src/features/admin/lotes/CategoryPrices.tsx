@@ -10,9 +10,11 @@
 // pricing_categories already allows admin writes (RLS `categories_admin_write`)
 // and every change is captured by the tg_audit_pricing_category trigger.
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { PricingCategory } from '@/lib/db-types';
+import { computeFinancing, formatPct, type FinancingPlan } from '@/lib/financing';
 import { formatMoney } from '@/lib/format';
 import { useToast } from '@/features/admin/ui/toast';
 import { inputClass } from '@/features/admin/ui/bits';
@@ -24,11 +26,14 @@ export default function CategoryPrices({
   categories,
   currency,
   isAdmin,
+  financing,
   onSaved,
 }: {
   categories: PricingCategory[];
   currency: 'USD' | 'BOB';
   isAdmin: boolean;
+  /** Current payment plan, so the price and its cuotas are read together. */
+  financing: FinancingPlan | null;
   onSaved: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
@@ -89,6 +94,32 @@ export default function CategoryPrices({
         </span>
       </button>
 
+      {/* El precio y sus cuotas se deciden juntos, pero el plan vive en
+          Configuración. Al menos que se vea desde aquí, y con un enlace. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-stone-100 px-4 py-2 text-xs">
+        <span className="font-semibold text-stone-700">Plan de pago</span>
+        {financing ? (
+          <span className="text-stone-500">
+            Cuota inicial{' '}
+            {financing.down_payment_type === 'porcentaje'
+              ? formatPct(financing.down_payment_value)
+              : formatMoney(financing.down_payment_value, currency)}{' '}
+            · {financing.months} cuotas
+            {financing.annual_interest_pct > 0
+              ? ` al ${formatPct(financing.annual_interest_pct)} anual`
+              : ' sin interés'}
+          </span>
+        ) : (
+          <span className="text-amber-700">No se muestra al comprador</span>
+        )}
+        <Link
+          href="/admin/configuracion"
+          className="ml-auto font-semibold text-brand hover:underline"
+        >
+          Editar plan
+        </Link>
+      </div>
+
       {open ? (
         <div className="border-t border-stone-100 px-4 py-3">
           {!isAdmin ? (
@@ -121,9 +152,19 @@ export default function CategoryPrices({
                       />
                       <span className="text-xs text-stone-500">/m²</span>
                       <span className="min-w-0 flex-1 text-xs text-stone-500">
-                        {preview
-                          ? `un lote de ${TYPICAL_AREA} m² = ${formatMoney(preview, currency)}`
-                          : 'sin precio → no reservable'}
+                        {preview ? (
+                          <>
+                            un lote de {TYPICAL_AREA} m² = {formatMoney(preview, currency)}
+                            {(() => {
+                              const cuota = computeFinancing(preview, financing);
+                              return cuota
+                                ? ` · inicial ${formatMoney(cuota.downPayment, currency)} · ${formatMoney(cuota.monthly, currency)}/mes`
+                                : '';
+                            })()}
+                          </>
+                        ) : (
+                          'sin precio → no reservable'
+                        )}
                       </span>
                       <button
                         type="button"
