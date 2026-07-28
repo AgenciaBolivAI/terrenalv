@@ -5,7 +5,6 @@
 
 import { NextResponse } from 'next/server';
 import { createHash, randomUUID } from 'node:crypto';
-import sharp from 'sharp';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { hashClientIp } from '@/lib/server/client-ip';
@@ -42,6 +41,34 @@ function sniffKind(buf: Buffer): Sniffed | null {
 
 function errorJson(message: string, code: string | null, status: number) {
   return NextResponse.json({ error: message, code }, { status });
+}
+
+/**
+ * sharp is loaded lazily, and only for images.
+ *
+ * As a top-level import it was a single point of failure for the whole route:
+ * when the native binary was missing on the serverless runtime the module threw
+ * before any handler code ran, so Next returned a bare 500 with no JSON body —
+ * the buyer saw "no pudimos subir el comprobante" with nothing to act on, and
+ * even PDF uploads died despite never needing sharp.
+ *
+ * Imported here, a broken binary costs only the image path: PDFs still work and
+ * the buyer gets told exactly what to do instead.
+ */
+/** The callable factory, i.e. sharp(buffer) — not the module namespace. */
+type SharpFactory = (typeof import('sharp'))['default'];
+let sharpPromise: Promise<SharpFactory | null> | undefined;
+
+function loadSharp(): Promise<SharpFactory | null> {
+  if (!sharpPromise) {
+    sharpPromise = import('sharp')
+      .then((m): SharpFactory | null => m.default)
+      .catch((err: unknown) => {
+        console.error('[comprobante] sharp no disponible en este runtime:', err);
+        return null;
+      });
+  }
+  return sharpPromise;
 }
 
 export async function POST(
@@ -132,6 +159,17 @@ export async function POST(
       ext = 'pdf';
       contentType = 'application/pdf';
     } else {
+      const sharp = await loadSharp();
+      if (!sharp) {
+        // Storing the image unprocessed would ship the buyer's EXIF/GPS to
+        // storage, which is exactly what this route exists to prevent. Refuse,
+        // but point at the path that still works.
+        return errorJson(
+          'No pudimos procesar la imagen en este momento. Sube el PDF del banco, o inténtalo de nuevo en unos minutos.',
+          'IMAGE_PROCESSING_UNAVAILABLE',
+          503,
+        );
+      }
       try {
         // .rotate() applies EXIF orientation; the re-encode (no withMetadata)
         // strips EXIF/GPS/ICC deterministically.
