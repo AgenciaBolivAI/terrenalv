@@ -41,6 +41,22 @@ superficie`, así que hay dos pasos:
 > Los precios cargados hoy son **provisionales** ($us 30/m² → 250 m² = $us
 > 7.500) para poder probar el flujo completo. Reemplázalos por los comerciales.
 
+### Plan de pago (cuota inicial y cuota mensual)
+
+**`/admin/configuracion` → "Plan de pago"**. Sobre el precio de cada lote se
+calcula la **cuota inicial** (porcentaje o monto fijo) y la **cuota mensual**
+(plazo en meses, con o sin interés). Se muestran en el mapa y en la página de
+reserva; la vista previa del panel deja comprobar los números con el precio de
+un lote real antes de guardar.
+
+Es **informativo**: no genera cuotas, vencimientos ni estados de cuenta. El
+seguimiento de cuotas sigue siendo v2 (`payments.purpose = 'cuota'` ya existe en
+el esquema). La casilla *"Mostrar el plan de pago al comprador"* lo oculta sin
+borrar los términos.
+
+> Los términos cargados hoy también son **provisionales**: 30 % de cuota
+> inicial, 36 meses, sin interés. Cámbialos antes de publicitar el proyecto.
+
 ---
 
 ## Variables de entorno

@@ -13,7 +13,9 @@ import { formatArea, formatMoney, waLink } from '@/lib/format';
 import type { MapProjectInfo } from '../data/loadGeometry';
 import { useMapStore } from '../store/useMapStore';
 
-const SNAP_PEEK = 0.52;
+// The peek snap has to clear everything down to "Reservar este lote"; the
+// payment plan added a row, so it needs a little more height than before.
+const SNAP_PEEK = 0.6;
 const SNAP_FULL = 0.94;
 
 const STATUS_LABEL: Record<LotStatus, string> = {
@@ -169,36 +171,32 @@ export function LotBottomSheet({
                 )}
               </div>
 
+              {/* Deliberately compact: this sits above the "Reservar" button,
+                  and at the peek snap a taller block pushes the CTA off screen
+                  on a small phone. */}
               {financing ? (
-                <div className="mt-2 rounded-xl border border-stone-200 px-4 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-stone-500">
-                    Plan de pago
-                  </p>
-                  <dl className="mt-1.5 space-y-1">
-                    <div className="flex items-baseline justify-between gap-3">
-                      <dt className="text-xs text-stone-600">
-                        Cuota inicial ({formatPct(financing.downPaymentPct)})
-                      </dt>
-                      <dd className="text-sm font-bold text-stone-800">
-                        {formatMoney(financing.downPayment, project.currency)}
-                      </dd>
-                    </div>
-                    <div className="flex items-baseline justify-between gap-3">
-                      <dt className="text-xs text-stone-600">
-                        Cuota mensual ({financing.months} meses)
-                      </dt>
-                      <dd className="text-base font-extrabold text-brand">
-                        {formatMoney(financing.monthly, project.currency)}
-                      </dd>
-                    </div>
-                  </dl>
-                  <p className="mt-1.5 text-[11px] leading-snug text-stone-400">
-                    {financing.annualInterestPct > 0
-                      ? `Interés ${formatPct(financing.annualInterestPct)} anual.`
-                      : 'Sin interés.'}
-                    {financing.note ? ` ${financing.note}` : ''}
-                  </p>
-                </div>
+                <dl className="mt-2 rounded-xl border border-stone-200 px-4 py-2.5">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="text-xs text-stone-600">
+                      Cuota inicial ({formatPct(financing.downPaymentPct)})
+                    </dt>
+                    <dd className="text-sm font-bold text-stone-800">
+                      {formatMoney(financing.downPayment, project.currency)}
+                    </dd>
+                  </div>
+                  <div className="mt-0.5 flex items-baseline justify-between gap-3">
+                    <dt className="text-xs text-stone-600">
+                      {financing.months} cuotas
+                      {financing.annualInterestPct > 0
+                        ? ` al ${formatPct(financing.annualInterestPct)} anual`
+                        : ' sin interés'}
+                    </dt>
+                    <dd className="text-base font-extrabold text-brand">
+                      {formatMoney(financing.monthly, project.currency)}
+                      <span className="text-xs font-semibold text-stone-500">/mes</span>
+                    </dd>
+                  </div>
+                </dl>
               ) : null}
 
               {flipped ? (
