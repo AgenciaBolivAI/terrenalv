@@ -1,5 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "//installCommand": "npm install reuses Vercel's restored node_modules cache and reports 'up to date' in under a second. That is fine for normal packages, but npm remembers which OPTIONAL dependencies it once skipped and will not revisit them while a node_modules tree exists — so sharp's @img/sharp-linux-x64 was never installed on the build machine, and every payment-proof upload failed with 'Could not load the sharp module using the linux-x64 runtime'. Adding the packages to package.json did not help: the install still short-circuited on the cache. npm ci deletes node_modules and installs from the lockfile, so optional dependencies are resolved fresh against the real platform. Costs a few seconds per build; buys a payment flow that works.",
   "installCommand": "npm ci --include=optional"
 }
