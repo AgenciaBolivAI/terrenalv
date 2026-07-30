@@ -115,14 +115,23 @@ for (const block of BLOCKS) {
       depthA: block.depthA,
       frontagesA,
       frontagesB,
+      numbering: {
+        start: block.startNumber,
+        directionA: block.directionA,
+        directionB: block.directionB,
+      },
     });
     out.lots = result.lots;
+    // Only manzanas still cut from the generic pattern need reviewing; the ones
+    // transcribed from the sheet are the source of truth.
+    out.needs_review = block.transcribed !== true;
     out.subdivision_spec = {
       rows,
       depthA: block.depthA ?? null,
       frontA: block.frontA,
       frontB: block.frontB ?? block.frontA,
       hint: block.hint ?? 'S',
+      origen: block.transcribed ? 'plano' : 'patron',
     };
     totalLots += result.lots.length;
     for (const w of result.warnings) allWarnings.push(`${block.code}: ${w}`);

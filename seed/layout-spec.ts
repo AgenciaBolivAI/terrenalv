@@ -52,7 +52,62 @@ export interface BlockSpec {
   depthA?: number;
   /** Side row A fronts. Body blocks are wide and shallow, so 'S'. */
   hint?: SideHint;
+  /** First lot number printed on the sheet for this manzana. */
+  startNumber?: number;
+  directionA?: 'forward' | 'reverse';
+  directionB?: 'forward' | 'reverse';
+  /**
+   * True when the lots come from SHEET below — i.e. read off the plano rather
+   * than generated from the dominant pattern. Drives `needs_review`, so the
+   * panel shows at a glance which manzanas are still approximate.
+   */
+  transcribed?: boolean;
 }
+
+/**
+ * A manzana read VERBATIM off the plano.
+ *
+ * Everything not listed here is cut with the dominant pattern (12 m corners,
+ * 10 m lots between), which makes every lot the same size — and on the real
+ * sheet they are not. Frontages run 10, 11.50, 12, 13, 14.50, 15, 17, 18, 20,
+ * 22, 25… and depths 25, 30, 30.41, 36.41, 42.x depending on the block. A
+ * pattern cannot invent that; it has to be transcribed.
+ *
+ * The fastest source is NOT the drawing — it is the per-lot area tables printed
+ * along the top of the sheet (lot number → superficie). With the row depth,
+ * `frente = superficie ÷ fondo`, so one table gives the lot count, the numbering
+ * and every frontage for that manzana at once.
+ *
+ * Example, once M-87's table is legible:
+ *   'M-87': {
+ *     frontsA: '13.95; 12.47; 12.00; 16x10.00; 14.00',
+ *     frontsB: '13.93; 12.25; 12.00; 16x10.00; 14.12',
+ *     depth: 30.41,
+ *     start: 1,
+ *   },
+ */
+export interface SheetManzana {
+  /** Frontages along the outer edge, west → east, verbatim. */
+  frontsA: string;
+  /** The opposite edge. Defaults to frontsA when the sheet shows them equal. */
+  frontsB?: string;
+  /** Lot depth where it is not the usual 30.00. */
+  depth?: number;
+  /** First lot number printed for this manzana. */
+  start?: number;
+  directionA?: 'forward' | 'reverse';
+  directionB?: 'forward' | 'reverse';
+}
+
+/**
+ * Transcribed manzanas. EMPTY on purpose: the close-up photographs available so
+ * far resolve the manzana outlines, the áreas verdes/equipamiento and the
+ * summary area table, but not the individual lot frontages — counting a run of
+ * "10.00" labels off them is guesswork, and guessing is what produced the
+ * uniform lots in the first place. Entries land here as the tables become
+ * legible, and each one stops being `needs_review` the moment it does.
+ */
+export const SHEET: Record<string, SheetManzana> = {};
 
 export interface ElementSpec {
   kind: 'calle' | 'avenida' | 'ciclovia' | 'area_verde' | 'equipamiento' | 'amenidad' | 'perimetro';
@@ -401,6 +456,48 @@ function frontsFor(len: number): string {
   return `12; ${inner}x10; 12`;
 }
 
+/**
+ * A residential manzana: transcribed from the sheet when SHEET has it, cut with
+ * the dominant pattern when it does not. Only the pattern case is
+ * `needs_review`.
+ */
+function residencial(
+  code: string,
+  sector: string,
+  rect: BlockSpec['rect'],
+  len: number,
+): BlockSpec {
+  const sheet = SHEET[code];
+  if (sheet) {
+    return {
+      code,
+      sector,
+      kind: 'residencial',
+      rect,
+      rows: 2,
+      hint: 'S',
+      frontA: sheet.frontsA,
+      frontB: sheet.frontsB ?? sheet.frontsA,
+      depthA: sheet.depth,
+      startNumber: sheet.start,
+      directionA: sheet.directionA,
+      directionB: sheet.directionB,
+      transcribed: true,
+    };
+  }
+  return {
+    code,
+    sector,
+    kind: 'residencial',
+    rect,
+    rows: 2,
+    hint: 'S',
+    frontA: frontsFor(len),
+    frontB: frontsFor(len),
+    transcribed: false,
+  };
+}
+
 function buildBlocks(): BlockSpec[] {
   const blocks: BlockSpec[] = [];
 
@@ -414,16 +511,7 @@ function buildBlocks(): BlockSpec[] {
       const rect: BlockSpec['rect'] = [x, yy, len, h];
       blocks.push(
         cell.kind === 'residencial'
-          ? {
-              code: cell.code,
-              sector: sectorFor(x),
-              kind: cell.kind,
-              rect,
-              rows: 2,
-              hint: 'S',
-              frontA: frontsFor(len),
-              frontB: frontsFor(len),
-            }
+          ? residencial(cell.code, sectorFor(x), rect, len)
           : { code: cell.code, sector: sectorFor(x), kind: cell.kind, rect },
       );
     }
@@ -441,16 +529,7 @@ function buildBlocks(): BlockSpec[] {
     ['M-2', EAST_B_X, EAST_S_Y, EAST_B_W],
   ];
   for (const [code, x, y, w] of east) {
-    blocks.push({
-      code,
-      sector: 'Acceso',
-      kind: 'residencial',
-      rect: [x, y, w, EAST_BAND_H],
-      rows: 2,
-      hint: 'S',
-      frontA: frontsFor(w),
-      frontB: frontsFor(w),
-    });
+    blocks.push(residencial(code, 'Acceso', [x, y, w, EAST_BAND_H], w));
   }
 
   return blocks;
