@@ -85,11 +85,17 @@ por qué — `sin_configuracion`, `sin_conexion`, `proyecto_no_encontrado`,
 
 ## Estado de los datos
 
-La geometría está sembrada desde las fotos del plano y la maqueta: **96
-manzanas, 2.958 lotes**, cada manzana marcada `needs_review` y **todos los lotes
-sin precio**. Un lote sin precio se ve en el mapa pero **no se puede reservar**
-(`LOT_NOT_PRICED`) — poner precios es lo que habilita la venta, manzana por
-manzana, desde `/admin/lotes`.
+La geometría está sembrada desde las fotos del plano y la maqueta. Cada manzana
+se marca `needs_review`. Un lote sin precio se ve en el mapa pero **no se puede
+reservar** (`LOT_NOT_PRICED`) — poner precios es lo que habilita la venta,
+manzana por manzana, desde `/admin/lotes`.
+
+> **En la base de datos hoy:** 96 manzanas / 2.958 lotes — una versión
+> paramétrica anterior. `seed/` ya contiene la transcripción corregida del plano
+> (**88 manzanas M-1…M-88, 1.814 lotes, lote típico 10 × 30 = 300 m²**), pero
+> **todavía no está publicada**: reemplazarla borra precios, categorías y
+> cualquier reserva viva. Ver `seed/layout-spec.ts` para qué se leyó del plano y
+> con cuánta confianza, y `seed/preview-plano.png` para el resultado.
 
 Para corregir la geometría contra el plano real: `/admin/mapa` (dibujo,
 subdivisión automática, importación CSV, publicar).
