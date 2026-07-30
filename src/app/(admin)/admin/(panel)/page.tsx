@@ -51,7 +51,7 @@ export default async function DashboardPage() {
     return (
       <EmptyState
         title="Proyecto no encontrado"
-        hint="Ejecuta las migraciones de la base de datos para crear 'Estrellas del Sur'."
+        hint="Ejecuta las migraciones de la base de datos para crear 'Prados del Sur'."
       />
     );
   }

@@ -132,7 +132,7 @@ async function buildEmail(
       // The outbox payload lacks reference/vencimiento — enrich from the DB.
       const extra = code !== '—' ? await lookupReservation(admin, code) : null;
       return {
-        subject: `Tu reserva ${code} — Estrellas del Sur`,
+        subject: `Tu reserva ${code} — Prados del Sur`,
         react: createElement(BuyerReservaCreada, {
           tracking_code: code,
           manzana: (p.manzana as string) ?? extra?.manzana ?? '—',
@@ -148,7 +148,7 @@ async function buildEmail(
     case 'buyer_reserva_confirmada': {
       const extra = code !== '—' ? await lookupReservation(admin, code) : null;
       return {
-        subject: `¡Pago confirmado! Reserva ${code} — Estrellas del Sur`,
+        subject: `¡Pago confirmado! Reserva ${code} — Prados del Sur`,
         react: createElement(BuyerReservaConfirmada, {
           tracking_code: code,
           manzana: extra?.manzana ?? null,
@@ -171,7 +171,7 @@ async function buildEmail(
       };
     case 'buyer_reserva_expirada':
       return {
-        subject: `Tu reserva ${code} expiró — Estrellas del Sur`,
+        subject: `Tu reserva ${code} expiró — Prados del Sur`,
         react: createElement(BuyerReservaExpirada, { tracking_code: code, trackingUrl, baseUrl: base }),
       };
     default:

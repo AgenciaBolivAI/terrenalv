@@ -243,7 +243,7 @@ function seedToSnapshot(seed: SeedFile): GeometrySnapshot | null {
 }
 
 /** The only slug the on-disk seed geometry describes. */
-const SEED_SLUG = 'estrellas-del-sur';
+const SEED_SLUG = 'prados-del-sur';
 
 async function loadFromSeed(slug: string): Promise<GeometryLoadResult | null> {
   if (typeof window !== 'undefined') return null; // filesystem is server-only
@@ -264,9 +264,9 @@ async function loadFromSeed(slug: string): Promise<GeometryLoadResult | null> {
     if (!snapshot) return null;
     return {
       project: {
-        projectId: 'seed-estrellas-del-sur',
+        projectId: 'seed-prados-del-sur',
         slug,
-        name: 'Estrellas del Sur',
+        name: 'Prados del Sur',
         currency: 'USD',
         geometryVersion: 0,
         statusRev: 0,

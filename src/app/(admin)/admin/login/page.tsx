@@ -17,7 +17,7 @@ export default function AdminLoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
           <Logo className="h-9 w-auto" />
-          <p className="mt-2 text-sm text-stone-500">Panel del equipo — Estrellas del Sur</p>
+          <p className="mt-2 text-sm text-stone-500">Panel del equipo — Prados del Sur</p>
         </div>
         <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
           {hasEnv ? (

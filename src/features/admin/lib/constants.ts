@@ -1,4 +1,4 @@
 // Admin panel constants. The app is single-project for now; the slug matches
 // the bootstrap migration row.
-export const PROJECT_SLUG = 'estrellas-del-sur';
-export const PROJECT_NAME = 'Estrellas del Sur';
+export const PROJECT_SLUG = 'prados-del-sur';
+export const PROJECT_NAME = 'Prados del Sur';

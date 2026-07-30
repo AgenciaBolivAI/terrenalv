@@ -26,6 +26,19 @@ const nextConfig: NextConfig = {
       './node_modules/@img/sharp-libvips-linuxmusl-x64/**/*',
     ],
   },
+
+  // The project was published as "Estrellas del Sur" before the plano and the
+  // maqueta confirmed it is Prados del Sur. Anything already shared on the old
+  // URL — WhatsApp messages, the printed sign — has to keep working.
+  async redirects() {
+    return [
+      {
+        source: '/estrellas-del-sur/:path*',
+        destination: '/prados-del-sur/:path*',
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

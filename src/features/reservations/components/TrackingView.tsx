@@ -18,7 +18,7 @@ import { PaymentSection } from './PaymentSection';
 import { ProofUploader } from './ProofUploader';
 import { CancelReservation } from './CancelReservation';
 
-const MAP_URL = '/estrellas-del-sur/mapa';
+const MAP_URL = '/prados-del-sur/mapa';
 
 function ShareButton({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
@@ -27,7 +27,7 @@ function ShareButton({ code }: { code: string }) {
     if (typeof navigator.share === 'function') {
       try {
         await navigator.share({
-          title: 'Mi reserva — Estrellas del Sur',
+          title: 'Mi reserva — Prados del Sur',
           text: `Seguimiento de mi reserva ${code}`,
           url,
         });

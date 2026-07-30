@@ -1,4 +1,4 @@
-# Terrenalv — Estrellas del Sur
+# Terrenalv — Prados del Sur
 
 Plataforma de reserva de lotes para Terrenalv S.R.L. (Santa Cruz, Bolivia).
 Reemplaza el plano impreso con alfileres por un mapa interactivo: el comprador
@@ -13,7 +13,7 @@ Next.js 15 · Supabase (PostGIS, RLS, Realtime, pg_cron) · Vercel · es-BO
 
 | Qué | Dónde |
 |---|---|
-| Mapa público | `/estrellas-del-sur/mapa` |
+| Mapa público | `/prados-del-sur/mapa` |
 | Consultar una reserva | `/reserva` (o `/reserva/<código>`) |
 | **Panel del equipo** | **`/admin`** — también enlazado como *"Acceso equipo"* en el pie del inicio |
 | Editor de mapa (solo admin) | `/admin/mapa` |
@@ -38,8 +38,8 @@ superficie`, así que hay dos pasos:
    de precios", o lote por lote en la tabla. También existe el precio manual
    por lote, que tiene prioridad sobre la categoría.
 
-> Los precios cargados hoy son **provisionales** ($us 30/m² → 250 m² = $us
-> 7.500) para poder probar el flujo completo. Reemplázalos por los comerciales.
+> Los precios cargados hoy son **provisionales** ($us 30/m² → 300 m² = $us
+> 9.000) para poder probar el flujo completo. Reemplázalos por los comerciales.
 
 ### Plan de pago (cuota inicial y cuota mensual)
 

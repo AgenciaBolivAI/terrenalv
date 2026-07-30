@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const FALLBACK_MAP = '/estrellas-del-sur/mapa';
+const FALLBACK_MAP = '/prados-del-sur/mapa';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface ManzanaRel {
@@ -147,7 +147,7 @@ async function loadData(lotId: string): Promise<LoadResult> {
       manzana,
       price,
       currency,
-      projectName: project?.name ?? 'Estrellas del Sur',
+      projectName: project?.name ?? 'Prados del Sur',
       mapHref,
       sena,
       financing: computeFinancing(price, plan),

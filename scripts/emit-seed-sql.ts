@@ -45,7 +45,7 @@ declare
   v_project uuid;
   v_id uuid;
 begin
-  select id into v_project from public.projects where slug = 'estrellas-del-sur';
+  select id into v_project from public.projects where slug = 'prados-del-sur';
   if v_project is null then raise exception 'proyecto no encontrado'; end if;
   v_id := ((public.save_manzana(
     v_project,
@@ -69,7 +69,7 @@ writeFileSync(
 do $seed$
 declare v_project uuid;
 begin
-  select id into v_project from public.projects where slug = 'estrellas-del-sur';
+  select id into v_project from public.projects where slug = 'prados-del-sur';
   perform public.save_map_elements(v_project, ${jsonLit(
     geometry.elements.map((e) => ({ kind: e.kind, name: e.name, ring: e.ring, props: e.props })),
   )});
@@ -84,7 +84,7 @@ writeFileSync(
 do $seed$
 declare v_project uuid; v_snapshot jsonb;
 begin
-  select id into v_project from public.projects where slug = 'estrellas-del-sur';
+  select id into v_project from public.projects where slug = 'prados-del-sur';
   v_snapshot := public.publish_geometry(v_project);
   raise notice 'published v%', v_snapshot->>'v';
 end $seed$;
@@ -92,7 +92,7 @@ select p.geometry_version,
        (select count(*) from public.manzanas m where m.project_id = p.id) as manzanas,
        (select count(*) from public.lots l where l.project_id = p.id and l.deleted_at is null) as lotes,
        (select count(*) from public.map_elements e where e.project_id = p.id) as elementos
-from public.projects p where p.slug = 'estrellas-del-sur';`,
+from public.projects p where p.slug = 'prados-del-sur';`,
 );
 
 function sqlStr(s: string): string {

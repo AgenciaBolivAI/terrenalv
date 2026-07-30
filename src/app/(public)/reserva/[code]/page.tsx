@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const MAP_URL = '/estrellas-del-sur/mapa';
+const MAP_URL = '/prados-del-sur/mapa';
 
 function ErrorShell({
   title,

@@ -24,7 +24,7 @@ export default function BuscarReservaPage() {
         <p className="mt-6 text-center text-sm text-stone-500">
           ¿Aún no tienes una reserva?{' '}
           <Link
-            href="/estrellas-del-sur/mapa"
+            href="/prados-del-sur/mapa"
             className="font-semibold text-brand underline underline-offset-2"
           >
             Explora los lotes disponibles

@@ -7,11 +7,11 @@ const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin']
 
 export const metadata: Metadata = {
   title: {
-    default: 'Estrellas del Sur — Terrenalv S.R.L.',
+    default: 'Prados del Sur — Terrenalv S.R.L.',
     template: '%s — Terrenalv',
   },
   description:
-    'Urbanización Estrellas del Sur: lotes desde 250 m² con entrada por la Carretera Internacional Ruta 9, Zanja Honda, Santa Cruz. Reserva tu lote en línea con Terrenalv S.R.L.',
+    'Urbanización Prados del Sur: 88 manzanas con lotes de 300 m² sobre la carretera Santa Cruz — Camiri, Zanja Honda, Cabezas, Santa Cruz. Reserva tu lote en línea con Terrenalv S.R.L.',
 };
 
 export const viewport: Viewport = {

@@ -297,7 +297,7 @@ export default function ReservationsClient({ projectId, role, initialTab, openId
     return (
       <EmptyState
         title="Sin conexión al proyecto"
-        hint="Ejecuta las migraciones para crear el proyecto 'Estrellas del Sur'."
+        hint="Ejecuta las migraciones para crear el proyecto 'Prados del Sur'."
       />
     );
   }

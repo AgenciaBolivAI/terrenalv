@@ -17,7 +17,7 @@ export default function Home() {
           </Link>
           <nav className="flex items-center gap-2">
             <Link
-              href="/estrellas-del-sur/mapa"
+              href="/prados-del-sur/mapa"
               className="rounded-full bg-white/10 hover:bg-white/20 px-4 py-2 text-sm font-semibold"
             >
               Ver mapa
@@ -36,22 +36,24 @@ export default function Home() {
             Urbanización · Zanja Honda, Santa Cruz
           </p>
           <h1 className="mt-3 text-4xl sm:text-6xl font-black tracking-tight">
-            Estrellas del Sur
+            Prados del Sur
           </h1>
+          {/* Todo lo de abajo sale del plano y de la maqueta. No inventar
+              amenidades: el plano no tiene piscina ni club house. */}
           <p className="mt-4 max-w-2xl mx-auto text-emerald-50/90 text-lg">
-            Lotes desde 250 m² con entrada por la Carretera Internacional Ruta 9
-            (Argentina–Paraguay), mega piscina, club house y áreas verdes.
-            Elige tu lote en el mapa y resérvalo en minutos.
+            88 manzanas con lotes de 300 m² (10 × 30), sobre la carretera
+            Santa Cruz — Camiri. Casi 5 hectáreas de áreas verdes y otras 5,6 de
+            equipamiento. Elige tu lote en el mapa y resérvalo en minutos.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
             <Link
-              href="/estrellas-del-sur/mapa"
+              href="/prados-del-sur/mapa"
               className="rounded-2xl bg-amber-400 text-emerald-950 font-bold px-8 py-4 text-lg shadow-lg hover:bg-amber-300 transition"
             >
               Explorar el mapa de lotes
             </Link>
             <a
-              href={waLink(WHATSAPP_VENTAS, 'Hola Terrenalv, quiero información sobre los lotes de Estrellas del Sur.')}
+              href={waLink(WHATSAPP_VENTAS, 'Hola Terrenalv, quiero información sobre los lotes de Prados del Sur.')}
               target="_blank"
               rel="noopener noreferrer"
               className="rounded-2xl bg-white/10 border border-white/25 font-semibold px-8 py-4 text-lg hover:bg-white/20 transition"
@@ -69,12 +71,12 @@ export default function Home() {
       <section className="mx-auto max-w-6xl px-4 py-14 grid gap-6 sm:grid-cols-3">
         {[
           {
-            title: 'Entrada por la Ruta 9',
-            body: 'El ingreso da directo a la Carretera Internacional Argentina–Paraguay, a minutos de Zanja Honda. Acceso todo el año.',
+            title: 'Sobre la Santa Cruz — Camiri',
+            body: 'El ingreso da directo a la carretera, en Zanja Honda, municipio de Cabezas, provincia Cordillera. Acceso todo el año.',
           },
           {
-            title: 'Mega piscina y club house',
-            body: 'Áreas sociales de primer nivel para las familias de la ciudadela: piscina semiolímpica, parrilleros y parques.',
+            title: 'Áreas verdes y equipamiento',
+            body: 'El plano reserva 4,8 hectáreas de áreas verdes y 5,6 de equipamiento, repartidas entre las manzanas y no en un rincón del terreno.',
           },
           {
             title: 'Reserva 100% en línea',
@@ -112,7 +114,7 @@ export default function Home() {
           </ol>
           <p className="mt-8 text-center">
             <Link
-              href="/estrellas-del-sur/mapa"
+              href="/prados-del-sur/mapa"
               className="inline-block rounded-2xl bg-brand text-white font-bold px-8 py-4 hover:bg-emerald-800 transition"
             >
               Ver lotes disponibles
@@ -128,7 +130,7 @@ export default function Home() {
             <Logo variant="inverse" className="h-8 w-auto" />
             <p className="mt-3">
               Empresa boliviana de desarrollo urbano. Proyecto Ciudadela Prados del Sur y
-              Urbanización Estrellas del Sur.
+              Urbanización Prados del Sur.
             </p>
           </div>
           <div>

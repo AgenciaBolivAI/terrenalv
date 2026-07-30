@@ -14,7 +14,7 @@ const url = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
 const key = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
 const supabase = createClient(url, key, { auth: { persistSession: false } });
 
-const SLUG = 'estrellas-del-sur';
+const SLUG = 'prados-del-sur';
 
 interface SeedLot {
   number: string;

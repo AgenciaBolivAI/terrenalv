@@ -19,8 +19,8 @@ import { formatMoney } from '@/lib/format';
 import { useToast } from '@/features/admin/ui/toast';
 import { inputBase } from '@/features/admin/ui/bits';
 
-/** A 250 m² lot is the dominant size on this plano — makes the number concrete. */
-const TYPICAL_AREA = 250;
+/** 300 m² (10 × 30) is the plano's dominant lot — makes the number concrete. */
+const TYPICAL_AREA = 300;
 
 export default function CategoryPrices({
   categories,
