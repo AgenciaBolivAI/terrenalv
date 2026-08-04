@@ -178,7 +178,11 @@ def main():
     maxy = max(p[1] for p in allpts)
 
     def m(r):
-        return [[round((x - minx) / PT_PER_M, 2), round((maxy - y) / PT_PER_M, 2)] for x, y in r]
+        # float()/bool() casts are load-bearing: rings coming back from
+        # faces_of hold numpy scalars, which json.dump cannot serialise — it
+        # truncated cad/plano.json mid-write.
+        return [[round(float((x - minx) / PT_PER_M), 2), round(float((maxy - y) / PT_PER_M), 2)]
+                for x, y in r]
 
     def dims(ring_m):
         """Frontage and depth from the oriented bounding box."""
@@ -199,7 +203,7 @@ def main():
         if not best:
             return (0.0, 0.0)
         _, w, h = best
-        return (round(min(w, h), 2), round(max(w, h), 2))
+        return (round(float(min(w, h)), 2), round(float(max(w, h)), 2))
 
     manzanas = []
     for code, idxs in sorted(groups.items(), key=lambda kv: int(kv[0][2:])):
@@ -212,7 +216,7 @@ def main():
                 'ring': rm,
                 'frontage_m': f,
                 'depth_m': d,
-                'area_m2': round(Polygon(rm).area, 2),
+                'area_m2': round(float(Polygon(rm).area), 2),
             })
         u = unary_union([polys[i] for i in idxs]).buffer(0.4).buffer(-0.4)
         if u.geom_type == 'MultiPolygon':
@@ -281,28 +285,36 @@ def main():
             pick = None
         review = False
         if pick is None:
-            # No closed face contains the label — M-77's boundary is drawn as an
-            # open polyline and never closes on any layer. Taking the nearest
-            # face instead handed it a COPY of M-79's polygon, so two manzanas
-            # sat on top of each other. Fall back to the convex hull of the real
-            # linework around the label: still the surveyor's geometry, just not
-            # a closed ring, and flagged for review.
+            # M-77's boundary does not close at the global tolerance, so the
+            # first version fell back to a convex hull — which bulged 13% over
+            # its stated area and swallowed M-78 and the street beside it. A
+            # hull is not a boundary. Retry the real linework around the label
+            # at a looser snap instead: M-77 closes at 2.0/4.0 and lands within
+            # 0.4% of the area the sheet prints.
             kind = kind_by_code.get(code, 'area_verde')
             layer = VERDE if kind == 'area_verde' else EQUIP
-            near = []
-            for (x1, y1, x2, y2) in by[layer]:
-                for (px, py) in ((x1, H - y1), (x2, H - y2)):
-                    if abs(px - cx) < 420 and abs(py - cy) < 260:
-                        near.append((px, py))
-            if len(near) < 3:
+            ccy = H - cy
+            near = [s for s in by[layer]
+                    if abs((s[0] + s[2]) / 2 - cx) < 320 and abs((s[1] + s[3]) / 2 - ccy) < 280]
+            for snap, tol in ((2.0, 4.0), (3.0, 6.0), (5.0, 10.0)):
+                BL.SNAP, BL.TOL = snap, tol
+                for r in BL.faces_of(BL.node_segments(near)):
+                    a = abs(BL.area(r)) / PT_PER_M ** 2
+                    rr = flip(BL.clean_ring(r, eps=0.05))
+                    if len(rr) < 3 or not BL.inside((cx, cy), rr):
+                        continue
+                    err = abs(a - want) / want if want else 1.0
+                    if pick is None or err < pick[3]:
+                        pick = (kind, rr, a, err)
+                BL.SNAP, BL.TOL = SNAP, TOL
+                if pick and pick[3] <= 0.05:
+                    print(f'  {code}: cerrado con snap={snap} -> {pick[2]:.0f} m2 '
+                          f'({pick[3] * 100:.1f}% del plano)')
+                    break
+            if pick is None:
                 print('  cannot place', code)
                 continue
-            hull = MultiPoint(near).convex_hull
-            if hull.geom_type != 'Polygon':
-                print('  cannot place', code)
-                continue
-            pick = (kind, list(hull.exterior.coords)[:-1], hull.area, 1.0)
-            review = True
+            review = bool(pick[3] > 0.05)
         manzanas.append({
             'code': code,
             'kind': kind_by_code.get(code, pick[0]),
