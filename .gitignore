@@ -39,3 +39,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Surveyor's CAD source for the plano (28 MB, and this repo is public).
+# cad/*.py and cad/plano.json are committed — they are the extraction.
+cad/*.dwg
+cad/*.pdf
+cad/faces.json
+cad/plano_raw.json
+cad/preview.png
+cad/preview.svg
+
+__pycache__/
+*.pyc
