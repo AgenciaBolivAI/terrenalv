@@ -18,7 +18,7 @@ import json
 import math
 import re
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 import fitz
 import numpy as np
@@ -312,11 +312,112 @@ def main():
         })
 
     manzanas.sort(key=lambda mz: int(mz['code'][2:]))
+
+    # ---- elements: streets, railway, highway — from the CAD, same frame -----
+    # The first publish shipped elements:[] and the old invented street grid
+    # survived a rolled-back delete, so the Trillo and calles sat at positions
+    # from the superseded parametric model. Everything below comes from the
+    # survey layers, converted with the SAME m() transform as the lots.
+
+    def to_m_pts(segs):
+        pts = []
+        for (x1, y1, x2, y2) in segs:
+            for (px, py) in ((x1, y1), (x2, y2)):
+                pts.append(((px - minx) / PT_PER_M, (maxy - (H - py)) / PT_PER_M))
+        return pts
+
+    def orient_rect(pts, width=None, pad=0.0):
+        """Oriented bounding rectangle of a point cloud (metres)."""
+        P = np.array(pts)
+        c = P.mean(0)
+        _, _, Vt = np.linalg.svd(P - c)
+        ax, pp = Vt[0], Vt[1]
+        t = (P - c) @ ax
+        s = (P - c) @ pp
+        t0, t1 = t.min() - pad, t.max() + pad
+        s0, s1 = (-width / 2, width / 2) if width else (s.min(), s.max())
+        return [[round(v[0], 2), round(v[1], 2)] for v in
+                (c + t0 * ax + s0 * pp, c + t1 * ax + s0 * pp,
+                 c + t1 * ax + s1 * pp, c + t0 * ax + s1 * pp)]
+
+    elements = []
+
+    # Street mat: the streets ARE the space between manzanas, so close the
+    # union of all manzanas (28 m shuts every 13–30 m street) and paint it as
+    # calle underneath — ElementsLayer renders before ManzanaGroup, and
+    # manzanas have opaque fills.
+    mz_polys = []
+    for mz in manzanas:
+        p = Polygon(mz['ring'])
+        mz_polys.append(p if p.is_valid else p.buffer(0))
+    union = unary_union(mz_polys)
+    closed = union.buffer(28).buffer(-28).simplify(0.5)
+    mats = list(closed.geoms) if closed.geom_type == 'MultiPolygon' else [closed]
+    for g in mats:
+        ring = [[round(x, 2), round(y, 2)] for x, y in list(g.exterior.coords)[:-1]]
+        elements.append({'kind': 'calle', 'name': 'Calle S/N', 'ring': ring, 'props': {}})
+
+    # Áreas verdes that belong to no reserved manzana (the two at the west
+    # ends of M-3/M-4). Skip faces inside a manzana we already emitted.
+    for kind, r in extra:
+        rm = [(x - 0, y - 0) for x, y in [( (px - minx) / PT_PER_M, (maxy - py) / PT_PER_M ) for px, py in r]]
+        c = (sum(p[0] for p in rm) / len(rm), sum(p[1] for p in rm) / len(rm))
+        if any(BL.inside(c, mz['ring']) for mz in manzanas if not mz['lots']):
+            continue
+        if kind == 'area_verde' and 1500 <= Polygon(rm).area <= 5000:
+            elements.append({'kind': 'area_verde', 'name': 'Área Verde',
+                             'ring': [[round(x, 2), round(y, 2)] for x, y in rm], 'props': {}})
+
+    # Railway: the survey's own track (Lev - Linea Ferrea), a tilted band
+    # crossing the strip near the east end — not the straight corridor the old
+    # model invented. Width comes from the drawn band itself.
+    fer = to_m_pts(by[FERREA])
+    if fer:
+        P = np.array(fer)
+        cmean = P.mean(0)
+        _, _, Vt = np.linalg.svd(P - cmean)
+        spread = ((P - cmean) @ Vt[1])
+        w = float(spread.max() - spread.min())
+        elements.append({'kind': 'avenida', 'name': 'Trillo (vía férrea)',
+                         'ring': orient_rect(fer, width=max(w, 6.0), pad=15.0),
+                         'props': {'railway': True, 'width_m': round(max(w, 6.0), 1)}})
+        print('railway band width   : %.1f m' % w)
+
+    # Highway: its west edge is the full-height diagonal on the Manzano - Area
+    # Util layer just east of M-1/M-2; the sheet labels the corridor
+    # "SANTA CRUZ - CAMIRI 100.00". Extend 100 m east of that edge.
+    # Two ~860 pt diagonals live on this layer: one bounding the body at the
+    # railway, one east of M-1/M-2. The highway is the EASTERNMOST.
+    edges = [s for s in by['Urb. Dorita II - Manzano - Area Util']
+             if math.hypot(s[2] - s[0], s[3] - s[1]) > 700]
+    if edges:
+        (x1, y1, x2, y2) = max(edges, key=lambda s: max(s[0], s[2]))
+        a = ((x1 - minx) / PT_PER_M, (maxy - (H - y1)) / PT_PER_M)
+        b = ((x2 - minx) / PT_PER_M, (maxy - (H - y2)) / PT_PER_M)
+        d = np.array(b) - np.array(a)
+        d = d / np.hypot(*d)
+        n = np.array([d[1], -d[0]])
+        if n[0] < 0:
+            n = -n                      # east of the edge
+        W = 100.0
+        ring = [a, b, tuple(np.array(b) + n * W), tuple(np.array(a) + n * W)]
+        elements.append({'kind': 'avenida', 'name': 'Carretera Santa Cruz — Camiri',
+                         'ring': [[round(x, 2), round(y, 2)] for x, y in ring],
+                         'props': {'highway': True, 'width_m': W}})
+        print('highway edge         : (%.0f,%.0f)->(%.0f,%.0f) m' % (a[0], a[1], b[0], b[1]))
+
+    for g in mats:
+        ring = [[round(x, 2), round(y, 2)] for x, y in list(g.exterior.coords)[:-1]]
+        elements.append({'kind': 'perimetro', 'name': 'Perímetro', 'ring': ring, 'props': {}})
+
     total_lots = sum(len(mz['lots']) for mz in manzanas)
     print()
     print('manzanas             :', len(manzanas))
     print('lots                 :', total_lots)
-    json.dump({'manzanas': manzanas}, open('cad/plano.json', 'w'), separators=(',', ':'))
+    print('elements             :', len(elements),
+          Counter(e['kind'] for e in elements))
+    json.dump({'manzanas': manzanas, 'elements': elements},
+              open('cad/plano.json', 'w'), separators=(',', ':'))
     print('wrote cad/plano.json')
 
 

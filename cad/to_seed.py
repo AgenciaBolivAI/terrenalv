@@ -135,7 +135,9 @@ def main():
         'generated_at': '2026-08-03T00:00:00Z',
         'utm': UTM,
         'manzanas': out,
-        'elements': [],
+        # Streets, railway and highway extracted from the CAD in the same
+        # coordinate frame as the lots — see build_plano.py.
+        'elements': [e for e in D.get('elements', []) if repair(e['ring'])],
     }, open(OUT, 'w'), separators=(',', ':'))
 
     areas = [l['area_m2'] for m in out for l in m['lots']]
