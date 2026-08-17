@@ -44,11 +44,23 @@ export const inputBase =
 /** The common case: fills its container. */
 export const inputClass = `w-full ${inputBase}`;
 
-export const btnPrimary =
-  'inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-light disabled:opacity-50 disabled:pointer-events-none';
+// Shared by every button: a real press state, a visible keyboard focus ring,
+// and a transition so the change reads as a response instead of a snap.
+const btnBase =
+  'inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm transition-colors duration-150 ' +
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ' +
+  'disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none';
 
+export const btnPrimary = `${btnBase} bg-brand font-semibold text-white hover:bg-brand-light active:bg-emerald-800`;
+
+/**
+ * hover:bg-stone-50 used to be the hover here — the exact colour table rows go
+ * on hover, so every secondary button inside a table looked dead: the row lit
+ * up, the button changed by nothing. stone-100 reads against both the white
+ * card and the hovered row.
+ */
 export const btnSecondary =
-  'inline-flex items-center justify-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50 disabled:pointer-events-none';
+  `${btnBase} border border-stone-300 bg-white font-medium text-stone-700 ` +
+  'hover:border-stone-400 hover:bg-stone-100 hover:text-stone-900 active:bg-stone-200';
 
-export const btnDanger =
-  'inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 disabled:pointer-events-none';
+export const btnDanger = `${btnBase} bg-red-600 font-semibold text-white hover:bg-red-700 active:bg-red-800`;

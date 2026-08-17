@@ -468,7 +468,9 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
                 onClick={() => setStatusLot(lot)}
                 aria-label={`Cambiar estado del lote ${lot.number}`}
                 title="Cambiar estado"
-                className="rounded-md border border-stone-200 px-1.5 py-0.5 text-xs text-stone-500 hover:bg-stone-50"
+                className="cursor-pointer rounded-md border border-stone-300 bg-white px-2 py-0.5 text-xs font-medium text-stone-600
+                           transition-colors duration-150 hover:border-brand hover:bg-brand hover:text-white
+                           active:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
               >
                 Cambiar
               </button>
@@ -486,7 +488,9 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
               <button
                 type="button"
                 onClick={() => setSellLot(row.original)}
-                className="rounded-lg border border-stone-200 px-2 py-1 text-xs font-medium text-stone-600 hover:bg-stone-50"
+                className="cursor-pointer rounded-lg border border-stone-300 bg-white px-2 py-1 text-xs font-medium text-stone-600
+                           transition-colors duration-150 hover:border-brand hover:bg-brand hover:text-white
+                           active:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
               >
                 Vender en oficina
               </button>

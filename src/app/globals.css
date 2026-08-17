@@ -104,6 +104,18 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Tailwind v4's preflight sets buttons to `cursor: default`, which is the
+   browser's own default but reads as "this isn't clickable" on a web app.
+   Restore the pointer everywhere, and make the disabled case say so too. */
+button:not(:disabled),
+[role='button']:not([aria-disabled='true']),
+summary {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+
 /* ---- Map plat styling: status via CSS classes so a legend-mode switch never
    re-renders lot paths. Reserved gets a hatch (not color-only). ---- */
 .lot-path {
