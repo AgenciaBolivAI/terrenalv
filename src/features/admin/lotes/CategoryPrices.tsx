@@ -156,7 +156,7 @@ export default function CategoryPrices({
                           <>
                             un lote de {TYPICAL_AREA} m² = {formatMoney(preview, currency)}
                             {(() => {
-                              const cuota = computeFinancing(preview, financing);
+                              const cuota = computeFinancing(preview, financing, { currency });
                               return cuota
                                 ? ` · inicial ${formatMoney(cuota.downPayment, currency)} · ${formatMoney(cuota.monthly, currency)}/mes`
                                 : '';

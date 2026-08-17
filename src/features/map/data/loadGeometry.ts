@@ -267,7 +267,7 @@ async function loadFromSeed(slug: string): Promise<GeometryLoadResult | null> {
         projectId: 'seed-prados-del-sur',
         slug,
         name: 'Prados del Sur',
-        currency: 'USD',
+        currency: 'BOB',
         geometryVersion: 0,
         statusRev: 0,
         source: 'seed',

@@ -16,10 +16,10 @@ export interface FinancingPlan {
   /** Percentage of the price, or a fixed amount in down_payment_currency. */
   down_payment_value: number;
   /**
-   * Currency of a FIXED down payment. Terrenalv quotes lots in $us but the
-   * entry payment in bolivianos ("cuota inicial 500 Bs"), so the two are not
-   * necessarily the same unit and the amount has to be converted before it can
-   * be subtracted from the price. Defaults to the project currency.
+   * Currency of a FIXED down payment. Terrenalv sells in bolivianos, so this
+   * normally matches the project currency — but the field exists because it
+   * once did not, and subtracting Bs 500 from a $us price as if it were $us 500
+   * is a silent 7x error. Defaults to the project currency.
    */
   down_payment_currency?: Currency;
   months: number;
@@ -136,7 +136,7 @@ export function computeFinancing(
   if (!plan) return null;
   if (typeof price !== 'number' || !Number.isFinite(price) || price <= 0) return null;
 
-  const priceCurrency: Currency = ctx.currency ?? 'USD';
+  const priceCurrency: Currency = ctx.currency ?? 'BOB';
   const bobPerUsd = ctx.bobPerUsd && ctx.bobPerUsd > 0 ? ctx.bobPerUsd : DEFAULT_BOB_PER_USD;
   // A percentage is of the price, so it is always in the price's currency.
   const downCurrency: Currency =

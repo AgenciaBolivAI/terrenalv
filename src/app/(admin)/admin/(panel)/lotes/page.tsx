@@ -28,7 +28,7 @@ export default async function LotesPage({
     <LotesClient
       projectId={ctx.project?.id ?? null}
       role={ctx.profile.role}
-      currency={ctx.project?.currency ?? 'USD'}
+      currency={ctx.project?.currency ?? 'BOB'}
       initialStatus={initialStatus}
     />
   );

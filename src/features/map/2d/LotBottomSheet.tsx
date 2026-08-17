@@ -75,7 +75,9 @@ export function LotBottomSheet({
 
   const st: LotStatus = entry?.st ?? 'no_disponible';
   const priced = !!entry?.priced && typeof entry?.price === 'number';
-  const financing = priced ? computeFinancing(entry?.price, financingPlan) : null;
+  const financing = priced
+    ? computeFinancing(entry?.price, financingPlan, { currency: project.currency })
+    : null;
   const isSeed = !!lot && lot.id.startsWith('seed-');
   const flipped =
     !!lot &&

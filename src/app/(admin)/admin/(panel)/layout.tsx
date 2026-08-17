@@ -67,7 +67,7 @@ export default async function AdminPanelLayout({ children }: { children: React.R
       profile={ctx.profile}
       projectId={ctx.project?.id ?? null}
       projectName={ctx.project?.name ?? PROJECT_NAME}
-      currency={ctx.project?.currency ?? 'USD'}
+      currency={ctx.project?.currency ?? 'BOB'}
     >
       {children}
     </AdminShell>

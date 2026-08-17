@@ -52,14 +52,16 @@ export const revalidate = 300;
 // Todo el contenido del proyecto sale del plano CAD y de la maqueta. No
 // inventar amenidades ni cifras: si no está en el plano o en la base de datos,
 // no va en la página.
-const NUMBEROS: [string, string][] = [
-  ['88', 'manzanas'],
-  ['2.035', 'lotes en el plano'],
-  ['300 m²', 'lote típico (10 × 30)'],
-  ['4,8 ha', 'de áreas verdes'],
-  ['5,6 ha', 'de equipamiento'],
-  ['3,2 km', 'de frente sobre la vía'],
-];
+function numeros(totalLotes: number | null): [string, string][] {
+  return [
+    ['88', 'manzanas'],
+    [totalLotes ? totalLotes.toLocaleString('es-BO') : '2.104', 'lotes en el plano'],
+    ['300 m²', 'lote típico (10 × 30)'],
+    ['4,8 ha', 'de áreas verdes'],
+    ['5,6 ha', 'de equipamiento'],
+    ['3,2 km', 'de frente sobre la vía'],
+  ];
+}
 
 const PASOS: [string, string, string][] = [
   ['1', 'Explora el mapa', 'Verde = disponible. Toca un lote para ver medidas y precio reales del plano.'],
@@ -71,7 +73,7 @@ const PASOS: [string, string, string][] = [
 const FAQ: [string, string][] = [
   [
     '¿Puedo elegir exactamente qué lote quiero?',
-    'Sí. El mapa muestra los 2.035 lotes del plano oficial con su número, medidas y precio. El que reservas es exactamente ese lote, no "uno parecido".',
+    'Sí. El mapa muestra los lotes del plano oficial con su número, medidas y precio reales. El que reservas es exactamente ese lote, no "uno parecido".',
   ],
   [
     '¿Cuánto tiempo tengo para pagar la seña?',
@@ -205,7 +207,7 @@ export default async function Home() {
             </a>
           </div>
           <p className="mt-4 text-sm text-white/70">
-            Ves los 2.035 lotes del plano con su número, medidas y precio. Sin cuenta, sin costo.
+            Ves cada lote del plano con su número, medidas y precio. Sin cuenta, sin costo.
           </p>
           <div className="mx-auto mt-6 max-w-md text-stone-900">
             <ActiveReservationBanner />
@@ -217,7 +219,7 @@ export default async function Home() {
       <section className="bg-white border-b border-stone-200">
         <div className="mx-auto max-w-6xl px-4 py-10">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-6 text-center">
-            {NUMBEROS.map(([n, label]) => (
+            {numeros(live.totalLotes).map(([n, label]) => (
               <div key={label}>
                 <p className="text-3xl font-black text-brand">{n}</p>
                 <p className="mt-1 text-sm text-stone-500">{label}</p>
@@ -226,6 +228,50 @@ export default async function Home() {
           </div>
           <p className="mt-6 text-center text-xs text-stone-400">
             Cifras del plano oficial de la urbanización (levantamiento CAD, mayo 2025).
+          </p>
+        </div>
+      </section>
+
+      {/* Qué incluye — cada punto sale de los materiales de Terrenalv
+          (folletos de pasarella/ y sus videos), no de suposiciones mías. */}
+      <section className="bg-earth-pale border-b border-stone-200">
+        <div className="mx-auto max-w-6xl px-4 py-14">
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-center text-brand">
+            Qué incluye tu terreno
+          </h2>
+
+          <div className="mt-8 grid gap-6 lg:grid-cols-3 items-start">
+            {/* Club house: the headline amenity in their own material. */}
+            <div className="lg:col-span-1 rounded-2xl bg-earth text-white p-7 shadow-lg">
+              <p className="text-xs font-bold uppercase tracking-widest text-earth-tan">
+                Incluido
+              </p>
+              <h3 className="mt-2 text-2xl font-black">Club House</h3>
+              <p className="mt-3 text-white/90">
+                La ciudadela tiene su propio club house con áreas sociales para las familias de
+                Prados del Sur — ya hay lotes habilitados a pasos de él.
+              </p>
+            </div>
+
+            <ul className="lg:col-span-2 grid gap-4 sm:grid-cols-2">
+              {(
+                [
+                  ['Agua, luz, teléfono e internet', 'Servicios básicos instalados, no prometidos para después.'],
+                  ['Papeles al día', 'Registrados en Derechos Reales, todo en orden desde el primer día.'],
+                  ['Crédito directo, sin banco', 'Financiamiento propio a sola firma: sin trámites bancarios ni garantes.'],
+                  ['A 35 minutos de Santa Cruz', 'Sobre la avenida internacional, cerca de colegio, centro médico y mercado.'],
+                ] as [string, string][]
+              ).map(([t, b]) => (
+                <li key={t} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+                  <p className="font-bold text-brand">{t}</p>
+                  <p className="mt-1.5 text-sm text-stone-600">{b}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <p className="mt-6 text-center text-sm text-stone-500">
+            7 años entregando terrenos con todo en orden.
           </p>
         </div>
       </section>

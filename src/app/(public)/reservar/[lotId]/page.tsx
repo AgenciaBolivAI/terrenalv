@@ -135,7 +135,7 @@ async function loadData(lotId: string): Promise<LoadResult> {
       return { state: 'unavailable', reason: 'unpriced', mapHref };
     }
 
-    const currency = project?.currency ?? 'USD';
+    const currency = project?.currency ?? 'BOB';
     const [sena, plan] = await Promise.all([
       estimateSena(lot.project_id, price, currency),
       loadFinancingPlan(supabase, lot.project_id),
@@ -150,7 +150,7 @@ async function loadData(lotId: string): Promise<LoadResult> {
       projectName: project?.name ?? 'Prados del Sur',
       mapHref,
       sena,
-      financing: computeFinancing(price, plan),
+      financing: computeFinancing(price, plan, { currency }),
     };
   } catch {
     return { state: 'not_ready' };

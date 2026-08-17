@@ -49,7 +49,7 @@ export function LotSummaryCard(props: LotSummaryProps) {
     frontageM,
     depthM,
     price,
-    currency = 'USD',
+    currency = 'BOB',
     amountDue,
     amountDueCurrency = 'BOB',
     financing,

@@ -14,6 +14,8 @@ import { getSetting } from '@/lib/server/settings';
 const SLUG = 'prados-del-sur';
 
 export interface LandingData {
+  /** Every lot on the published plano, whatever its status. */
+  totalLotes: number | null;
   /** Lots reservable right now (status disponible, with a price). */
   disponibles: number | null;
   /** Cheapest priced lot. */
@@ -28,10 +30,11 @@ export interface LandingData {
 }
 
 const EMPTY: LandingData = {
+  totalLotes: null,
   disponibles: null,
   desde: null,
   tipico: null,
-  currency: 'USD',
+  currency: 'BOB',
   financing: null,
   sena: null,
 };
@@ -54,7 +57,7 @@ export async function loadLandingData(): Promise<LandingData> {
       .eq('slug', SLUG)
       .maybeSingle();
     if (!project) return EMPTY;
-    const currency: 'USD' | 'BOB' = project.currency === 'BOB' ? 'BOB' : 'USD';
+    const currency: 'USD' | 'BOB' = project.currency === 'USD' ? 'USD' : 'BOB';
 
     const [{ data: statuses }, plan, rate] = await Promise.all([
       anon.rpc('get_lot_statuses', { p_project_id: project.id }),
@@ -71,6 +74,9 @@ export async function loadLandingData(): Promise<LandingData> {
       .map((l) => l.price as number)
       .sort((a, b) => a - b);
 
+    // Read from the map, never hard-coded: a figure typed into the page is a
+    // figure that goes stale the next time the plano is re-seeded.
+    const totalLotes = lots.length || null;
     const disponibles = prices.length || null;
     const desde = prices[0] ?? null;
     const tipico = prices.length ? prices[Math.floor(prices.length / 2)] : null;
@@ -93,6 +99,7 @@ export async function loadLandingData(): Promise<LandingData> {
     }
 
     return {
+      totalLotes,
       disponibles,
       desde,
       tipico,

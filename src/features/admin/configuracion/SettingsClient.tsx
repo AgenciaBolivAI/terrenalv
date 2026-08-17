@@ -98,7 +98,7 @@ export default function SettingsClient() {
   // Financiamiento
   const [financing, setFinancing] = useState<FinancingPlan>(DEFAULT_FINANCING);
   const [samplePrice, setSamplePrice] = useState(7500);
-  const [currency, setCurrency] = useState<'USD' | 'BOB'>('USD');
+  const [currency, setCurrency] = useState<'USD' | 'BOB'>('BOB');
   // Notificaciones
   const [emails, setEmails] = useState<string[]>([]);
   const [newEmail, setNewEmail] = useState('');

@@ -32,10 +32,17 @@ from pdf_layers import extract
 PDF = 'cad/Urb. Ciudadela Prados del Sur_13-05-25.pdf'
 PT_PER_M = 72.0 / 25.4 / 1500 * 1000
 
-# Connectivity tolerances. These only decide which endpoints are the SAME
-# vertex; the coordinates kept are the originals, so precision is unaffected.
-# 1.0 pt = 0.53 m, far below the 10 m spacing between lot lines.
-SNAP, TOL = 1.0, 2.0
+# Connectivity tolerances: which endpoints count as the SAME vertex, and how
+# near a point must be to a segment to split it.
+#
+# 3.0 pt = 1.6 m sounds coarse next to a 10 m lot front, but the lots it
+# recovers are ones the CAD drew with a small gap at the corner, so closing
+# them is correcting the drawing rather than distorting it. Measured against
+# snap=1.0: faces 2064 -> 2103 (the plano's index says 2104), median lot area
+# unchanged at 300.3 m2, and overlapping pairs DOWN from 200 to 147 because the
+# gaps that produced slivers are gone. TOL beyond ~2 pt changes nothing — the
+# missing lots were never T-junctions.
+SNAP, TOL = 3.0, 6.0
 
 LOT_LAYER = 'Urb. Dorita II - Lotes - Area Util'
 VERDE = 'Urb. Dorita II - Manzano - Area Verde'
