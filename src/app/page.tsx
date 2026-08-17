@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import Script from 'next/script';
 import { waLink, formatMoney } from '@/lib/format';
 import { Logo } from '@/components/Logo';
 import { ActiveReservationBanner } from '@/features/reservations/components/ActiveReservationBanner';
@@ -37,7 +36,10 @@ const SOCIAL = {
 const FEATURED_TIKTOKS: { id: string; caption: string }[] = [
   { id: '7590183493653515576', caption: 'Quiénes somos: el sueño detrás de Terrenalv' },
   { id: '7667981112022502676', caption: 'Nuevos lotes habilitados en Prados del Sur' },
+  { id: '7668375936672320789', caption: 'Estos precios no vuelven' },
+  { id: '7668557245537438997', caption: 'Tu miniquinta, para disfrutar o invertir' },
   { id: '7668793237041057045', caption: '¿Dudas? Visítanos en oficina antes de invertir' },
+  { id: '7670249275229605141', caption: '¿Te imaginas pagar por algo que sí es tuyo?' },
 ];
 
 // The pin the owner identified on Google Maps (plus code beside Zanja Honda).
@@ -330,34 +332,24 @@ export default async function Home() {
           </div>
 
           <div className="mt-8 grid gap-6 lg:grid-cols-2 items-start">
-            {/* TikTok: official creator embed — shows their latest videos. */}
-            <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="font-bold text-stone-900">TikTok — @{SOCIAL.tiktokUser}</h3>
-                <a
-                  href={SOCIAL.tiktok}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm font-semibold text-brand hover:underline"
-                >
-                  Ver perfil →
-                </a>
-              </div>
-              <div className="mt-3 overflow-hidden rounded-xl min-h-125">
-                <blockquote
-                  className="tiktok-embed"
-                  cite={SOCIAL.tiktok}
-                  data-unique-id={SOCIAL.tiktokUser}
-                  data-embed-type="creator"
-                  style={{ maxWidth: '780px', minWidth: '288px', margin: 0 }}
-                >
-                  <section>
-                    <a target="_blank" rel="noopener noreferrer" href={SOCIAL.tiktok}>
-                      @{SOCIAL.tiktokUser}
-                    </a>
-                  </section>
-                </blockquote>
-              </div>
+            {/* TikTok's creator widget (data-embed-type="creator") rendered
+                "Internal Server Error" in a black box on the live page. The
+                per-video iframes above work, so the widget is gone and this
+                card just points at the profile. */}
+            <div className="flex h-full flex-col justify-center rounded-2xl border border-stone-200 bg-white p-8 text-center shadow-sm">
+              <h3 className="text-xl font-black text-stone-900">TikTok</h3>
+              <p className="mt-1 font-semibold text-stone-500">@{SOCIAL.tiktokUser}</p>
+              <p className="mt-3 text-stone-600">
+                Ahí publicamos avances de obra, lotes habilitados y entregas, casi todos los días.
+              </p>
+              <a
+                href={SOCIAL.tiktok}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-5 inline-block self-center rounded-xl bg-earth px-7 py-3.5 font-bold text-white hover:bg-earth-light"
+              >
+                Ver todos los videos
+              </a>
             </div>
 
             {/* Facebook: page timeline plugin — latest posts and videos. */}
@@ -409,7 +401,6 @@ export default async function Home() {
             ))}
           </div>
         </div>
-        <Script src="https://www.tiktok.com/embed.js" strategy="lazyOnload" />
       </section>
 
       {/* Plan de pago — live desde la base de datos */}
