@@ -1,11 +1,25 @@
 import Link from 'next/link';
 import Script from 'next/script';
 import { waLink, formatMoney } from '@/lib/format';
-import { formatPct } from '@/lib/financing';
+import { formatPct, formatTerm } from '@/lib/financing';
 import { Logo } from '@/components/Logo';
 import { ActiveReservationBanner } from '@/features/reservations/components/ActiveReservationBanner';
 import { MiReservaLink } from '@/features/reservations/components/MiReservaLink';
 import { loadLandingData } from '@/features/landing/data';
+import { Pasarella, type Slide } from '@/features/landing/Pasarella';
+
+// The company's own marketing flyers, in pasarella/. Alt text describes what
+// each one actually says — these are the source for the claims on this page
+// (club house, servicios, Derechos Reales), none of which I invented.
+const PASARELLA: Slide[] = [
+  { src: '/pasarella/01-precio.jpg', alt: 'Terreno de 300 m² desde Bs 24.800 al contado, o en cuotas sin banco. Agua y luz, internet, club house y papeles al día.' },
+  { src: '/pasarella/02-comparativa.jpg', alt: 'Prados del Sur frente a otros proyectos: agua, luz, teléfono e internet, sobre la avenida internacional, papeles al día, club house incluido, a 35 minutos de Santa Cruz.' },
+  { src: '/pasarella/03-alquiler.jpg', alt: 'Cada mes pagás alquiler por algo que nunca va a ser tuyo, o pagás cuotas por tu propio terreno. Servicios básicos, papeles al día, sin banco.' },
+  { src: '/pasarella/04-plusvalia.jpg', alt: 'Invertir en un terreno propio con plusvalía real: sobre la avenida internacional, zona de alto crecimiento, cuotas accesibles y club house incluido.' },
+  { src: '/pasarella/05-trayectoria.jpg', alt: '7 años entregando terrenos con todo en orden: papeles registrados en Derechos Reales, servicios básicos instalados y crédito directo sin banco.' },
+  { src: '/pasarella/06-avance.jpg', alt: 'Un asesor de Terrenalv frente a los lotes ya abiertos: 60% de los terrenos vendidos, papeles al día, cuotas accesibles, sin bancos.' },
+  { src: '/pasarella/07-testimonio.jpg', alt: 'Testimonio de un cliente: compró 15 terrenos buscando una inversión segura y rentable para su familia.' },
+];
 
 const WHATSAPP_VENTAS = '+59175511996'; // Ventas Terrenalv
 
@@ -81,6 +95,14 @@ const FAQ: [string, string][] = [
   ],
 ];
 
+function WhatsappIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
+      <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91S17.5 2 12.04 2Zm0 18.15h-.01a8.2 8.2 0 0 1-4.19-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.23 8.25-8.23a8.23 8.23 0 0 1 0 16.47Zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.13-.16.24-.64.8-.78.97-.15.16-.29.18-.53.06-.25-.13-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.5.11-.11.25-.29.37-.44.13-.15.17-.25.25-.42.08-.16.04-.31-.02-.43-.06-.13-.56-1.35-.77-1.84-.2-.49-.4-.42-.56-.43h-.47c-.16 0-.43.06-.65.31-.22.24-.86.84-.86 2.05s.88 2.38 1 2.54c.13.17 1.73 2.65 4.2 3.72.59.25 1.04.4 1.4.52.59.18 1.12.16 1.55.1.47-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.15-1.18-.06-.1-.22-.16-.47-.29Z" />
+    </svg>
+  );
+}
+
 function Chip({ children }: { children: React.ReactNode }) {
   return (
     <span className="rounded-full bg-white/10 border border-white/20 px-4 py-1.5 text-sm font-semibold">
@@ -115,8 +137,17 @@ export default async function Home() {
         </div>
       </header>
 
-      {/* Hero */}
-      <section className="bg-linear-to-b from-brand to-emerald-900 text-white">
+      {/* Hero — the real aerial of the land behind it: the road, the opened
+          streets and the lots already staked out. Choosing a lot is the first
+          thing the page asks for. */}
+      <section className="relative isolate text-white">
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 -z-10 bg-brand bg-cover bg-center"
+          style={{ backgroundImage: "url('/aerea-lotes.jpg')" }}
+        />
+        {/* Keeps the white text readable over a bright, sunlit photo. */}
+        <div aria-hidden="true" className="absolute inset-0 -z-10 bg-linear-to-b from-brand/85 via-brand/80 to-emerald-950/90" />
         <div className="mx-auto max-w-6xl px-4 py-16 sm:py-24 text-center">
           <p className="text-earth-tan font-semibold tracking-widest text-sm uppercase">
             Urbanización Ciudadela · Zanja Honda, Santa Cruz
@@ -155,22 +186,27 @@ export default async function Home() {
             </div>
           ) : null}
 
+          {/* Choosing the lot is THE action; WhatsApp sits beside it, not above. */}
           <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
             <Link
               href="/prados-del-sur/mapa"
-              className="rounded-2xl bg-earth text-white font-bold px-8 py-4 text-lg shadow-lg hover:bg-earth-light transition"
+              className="rounded-2xl bg-earth text-white font-black px-9 py-5 text-xl shadow-xl hover:bg-earth-light transition"
             >
-              Explorar el mapa de lotes
+              Elegir mi lote en el mapa
             </Link>
             <a
               href={waLink(WHATSAPP_VENTAS, 'Hola Terrenalv, quiero información sobre los lotes de Prados del Sur.')}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-2xl bg-white/10 border border-white/25 font-semibold px-8 py-4 text-lg hover:bg-white/20 transition"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/10 border border-white/25 font-semibold px-8 py-5 text-lg hover:bg-white/20 transition"
             >
+              <WhatsappIcon className="h-5 w-5" />
               Hablar por WhatsApp
             </a>
           </div>
+          <p className="mt-4 text-sm text-white/70">
+            Ves los 2.035 lotes del plano con su número, medidas y precio. Sin cuenta, sin costo.
+          </p>
           <div className="mx-auto mt-6 max-w-md text-stone-900">
             <ActiveReservationBanner />
           </div>
@@ -191,6 +227,21 @@ export default async function Home() {
           <p className="mt-6 text-center text-xs text-stone-400">
             Cifras del plano oficial de la urbanización (levantamiento CAD, mayo 2025).
           </p>
+        </div>
+      </section>
+
+      {/* Pasarella de fotos — antes de los videos */}
+      <section className="bg-stone-50 border-b border-stone-200">
+        <div className="mx-auto max-w-6xl px-4 py-12">
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-center text-brand">
+            El proyecto, en fotos
+          </h2>
+          <p className="mt-2 text-center text-stone-600 max-w-2xl mx-auto">
+            Terrenos, servicios, avances y clientes que ya tienen el suyo.
+          </p>
+          <div className="mt-8">
+            <Pasarella slides={PASARELLA} />
+          </div>
         </div>
       </section>
 
@@ -333,12 +384,16 @@ export default async function Home() {
               <p className="text-sm font-semibold uppercase tracking-wide text-stone-500">
                 Cuota inicial
               </p>
+              {/* A fixed cuota inicial is quoted in bolivianos even though the
+                  lot is priced in dólares — show it in its own currency. */}
               <p className="mt-2 text-3xl font-black text-stone-900">
-                {live.financing ? formatPct(live.financing.downPaymentPct) : '—'}
+                {live.financing
+                  ? formatMoney(live.financing.downPayment, live.financing.downPaymentCurrency)
+                  : '—'}
               </p>
               <p className="mt-2 text-sm text-stone-600">
                 {live.financing && live.tipico
-                  ? `${formatMoney(live.financing.downPayment, cur)} en un lote típico de ${formatMoney(live.tipico, cur)}.`
+                  ? `Con eso arrancas, sea cual sea el lote. Un lote típico cuesta ${formatMoney(live.tipico, cur)}.`
                   : 'Se confirma con tu asesor al reservar.'}
               </p>
             </div>
@@ -347,11 +402,11 @@ export default async function Home() {
                 Saldo en cuotas
               </p>
               <p className="mt-2 text-3xl font-black text-stone-900">
-                {live.financing ? `${live.financing.months} meses` : '—'}
+                {live.financing ? `hasta ${formatTerm(live.financing.months)}` : '—'}
               </p>
               <p className="mt-2 text-sm text-stone-600">
                 {live.financing
-                  ? `${formatMoney(live.financing.monthly, cur)} al mes${live.financing.annualInterestPct > 0 ? ` (${formatPct(live.financing.annualInterestPct)} anual)` : ', sin interés'}.`
+                  ? `Desde ${formatMoney(live.financing.monthly, cur)} al mes${live.financing.annualInterestPct > 0 ? ` (${formatPct(live.financing.annualInterestPct)} anual)` : ', sin interés y sin banco'}.`
                   : 'Plazo y cuota según el lote que elijas.'}
               </p>
             </div>
@@ -370,9 +425,10 @@ export default async function Home() {
               href={waLink(WHATSAPP_VENTAS, 'Hola Terrenalv, quiero proponer mi forma de pago para un lote de Prados del Sur.')}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-5 inline-block rounded-xl bg-white text-earth font-bold px-7 py-3.5 hover:bg-earth-pale transition"
+              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-white text-earth font-bold px-7 py-3.5 hover:bg-earth-pale transition"
             >
-              Proponer mi forma de pago
+              <WhatsappIcon className="h-5 w-5" />
+              Proponer mi forma de pago por WhatsApp
             </a>
           </div>
 

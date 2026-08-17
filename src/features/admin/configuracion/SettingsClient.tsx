@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { PaymentInstructionsSetting } from '@/lib/db-types';
-import { computeFinancing, formatPct, parseFinancingPlan, type FinancingPlan } from '@/lib/financing';
+import { computeFinancing, formatPct, formatTerm, parseFinancingPlan, type FinancingPlan } from '@/lib/financing';
 import { formatMoney } from '@/lib/format';
 import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
 import { DEFAULT_WA_TEMPLATES, type WhatsappTemplates } from '@/features/admin/lib/whatsapp';
@@ -432,18 +432,31 @@ export default function SettingsClient() {
               }
               className={`${inputBase} w-32`}
             />
-            <span className="self-center text-sm text-stone-500">
-              {financing.down_payment_type === 'porcentaje'
-                ? '%'
-                : currency === 'BOB'
-                  ? 'Bs'
-                  : '$us'}
-            </span>
+            {/* A fixed cuota inicial is quoted in bolivianos while the lots are
+                priced in dólares, so its currency is its own field. */}
+            {financing.down_payment_type === 'porcentaje' ? (
+              <span className="self-center text-sm text-stone-500">%</span>
+            ) : (
+              <select
+                value={financing.down_payment_currency ?? currency}
+                onChange={(e) =>
+                  setFinancing((f) => ({
+                    ...f,
+                    down_payment_currency: e.target.value as 'USD' | 'BOB',
+                  }))
+                }
+                className={`${inputBase} w-auto`}
+                aria-label="Moneda de la cuota inicial"
+              >
+                <option value="BOB">Bs</option>
+                <option value="USD">$us</option>
+              </select>
+            )}
           </div>
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Plazo (meses)" hint="En cuántas cuotas se paga el saldo">
+          <Field label="Plazo (meses)" hint="En cuántas cuotas se paga el saldo (120 = 10 años)">
             <input
               type="number"
               min={1}
@@ -494,6 +507,7 @@ export default function SettingsClient() {
             const preview = computeFinancing(
               samplePrice,
               parseFinancingPlan({ ...financing, enabled: true }),
+              { currency, bobPerUsd: exchangeRate },
             );
             if (!preview) {
               return (
@@ -510,11 +524,11 @@ export default function SettingsClient() {
                     Cuota inicial ({formatPct(preview.downPaymentPct)})
                   </dt>
                   <dd className="font-semibold text-stone-800">
-                    {formatMoney(preview.downPayment, currency)}
+                    {formatMoney(preview.downPayment, preview.downPaymentCurrency)}
                   </dd>
                 </div>
                 <div className="flex justify-between py-0.5">
-                  <dt className="text-stone-500">Cuota mensual ({preview.months} meses)</dt>
+                  <dt className="text-stone-500">Cuota mensual ({formatTerm(preview.months)})</dt>
                   <dd className="font-bold text-brand">
                     {formatMoney(preview.monthly, currency)}
                   </dd>

@@ -7,7 +7,7 @@ import 'server-only';
 import { createClient as createAnonClient } from '@supabase/supabase-js';
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/lib/supabase/config';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { computeFinancing, type FinancingBreakdown } from '@/lib/financing';
+import { computeFinancing, DEFAULT_BOB_PER_USD, type FinancingBreakdown } from '@/lib/financing';
 import { loadFinancingPlan } from '@/lib/server/financing';
 import { getSetting } from '@/lib/server/settings';
 
@@ -56,10 +56,14 @@ export async function loadLandingData(): Promise<LandingData> {
     if (!project) return EMPTY;
     const currency: 'USD' | 'BOB' = project.currency === 'BOB' ? 'BOB' : 'USD';
 
-    const [{ data: statuses }, plan] = await Promise.all([
+    const [{ data: statuses }, plan, rate] = await Promise.all([
       anon.rpc('get_lot_statuses', { p_project_id: project.id }),
       loadFinancingPlan(anon, project.id),
+      // A cuota inicial quoted in Bs against a $us price needs the rate.
+      getSetting<number>(anon, project.id, 'exchange_rate_bob_per_usd', DEFAULT_BOB_PER_USD)
+        .catch(() => DEFAULT_BOB_PER_USD),
     ]);
+    const bobPerUsd = typeof rate === 'number' && rate > 0 ? rate : DEFAULT_BOB_PER_USD;
 
     const lots = ((statuses as { lots?: StatusEntry[] } | null)?.lots ?? []) as StatusEntry[];
     const prices = lots
@@ -93,7 +97,7 @@ export async function loadLandingData(): Promise<LandingData> {
       desde,
       tipico,
       currency,
-      financing: computeFinancing(tipico, plan),
+      financing: computeFinancing(tipico, plan, { currency, bobPerUsd }),
       sena,
     };
   } catch {

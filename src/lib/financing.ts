@@ -8,18 +8,31 @@
 // This is a DISPLAY calculation. It does not create installments, schedules or
 // balances; `payments.purpose = 'cuota'` exists for that and is still v2.
 
+export type Currency = 'USD' | 'BOB';
+
 export interface FinancingPlan {
   enabled: boolean;
   down_payment_type: 'porcentaje' | 'fijo';
-  /** Percentage of the price, or a fixed amount in the project's currency. */
+  /** Percentage of the price, or a fixed amount in down_payment_currency. */
   down_payment_value: number;
+  /**
+   * Currency of a FIXED down payment. Terrenalv quotes lots in $us but the
+   * entry payment in bolivianos ("cuota inicial 500 Bs"), so the two are not
+   * necessarily the same unit and the amount has to be converted before it can
+   * be subtracted from the price. Defaults to the project currency.
+   */
+  down_payment_currency?: Currency;
   months: number;
   annual_interest_pct: number;
   note: string | null;
 }
 
 export interface FinancingBreakdown {
+  /** As the seller quotes it — may be in a different currency to the price. */
   downPayment: number;
+  downPaymentCurrency: Currency;
+  /** The same amount expressed in the price's currency, for the arithmetic. */
+  downPaymentInPrice: number;
   /** Always derived, so a fixed down payment still reads as "(30%)". */
   downPaymentPct: number;
   financed: number;
@@ -28,6 +41,21 @@ export interface FinancingBreakdown {
   annualInterestPct: number;
   totalPaid: number;
   note: string | null;
+}
+
+/** Default only — the live rate lives in settings.exchange_rate_bob_per_usd. */
+export const DEFAULT_BOB_PER_USD = 6.96;
+
+export interface FinancingContext {
+  /** Currency the lot price is expressed in. */
+  currency?: Currency;
+  /** Bs per $us, from settings.exchange_rate_bob_per_usd. */
+  bobPerUsd?: number;
+}
+
+function convert(amount: number, from: Currency, to: Currency, bobPerUsd: number): number {
+  if (from === to) return amount;
+  return from === 'BOB' ? amount / bobPerUsd : amount * bobPerUsd;
 }
 
 /** Money is rounded to cents at every step; the buyer sees the same figures. */
@@ -77,10 +105,15 @@ export function parseFinancingPlan(raw: unknown): FinancingPlan | null {
 
   const note = typeof p.note === 'string' && p.note.trim() ? p.note.trim() : null;
 
+  const dpc = p.down_payment_currency;
+  const down_payment_currency: Currency | undefined =
+    dpc === 'BOB' || dpc === 'USD' ? dpc : undefined;
+
   return {
     enabled: true,
     down_payment_type: type,
     down_payment_value: value,
+    down_payment_currency,
     months: Math.floor(months),
     annual_interest_pct: interest,
     note,
@@ -98,17 +131,36 @@ export function parseFinancingPlan(raw: unknown): FinancingPlan | null {
 export function computeFinancing(
   price: number | null | undefined,
   plan: FinancingPlan | null,
+  ctx: FinancingContext = {},
 ): FinancingBreakdown | null {
   if (!plan) return null;
   if (typeof price !== 'number' || !Number.isFinite(price) || price <= 0) return null;
+
+  const priceCurrency: Currency = ctx.currency ?? 'USD';
+  const bobPerUsd = ctx.bobPerUsd && ctx.bobPerUsd > 0 ? ctx.bobPerUsd : DEFAULT_BOB_PER_USD;
+  // A percentage is of the price, so it is always in the price's currency.
+  const downCurrency: Currency =
+    plan.down_payment_type === 'porcentaje'
+      ? priceCurrency
+      : (plan.down_payment_currency ?? priceCurrency);
 
   const rawDown =
     plan.down_payment_type === 'porcentaje'
       ? (price * plan.down_payment_value) / 100
       : plan.down_payment_value;
 
-  const downPayment = round2(Math.min(rawDown, price));
-  const financed = round2(price - downPayment);
+  // Convert before comparing with the price — Bs 500 is not $us 500.
+  const rawDownInPrice = convert(rawDown, downCurrency, priceCurrency, bobPerUsd);
+  const downPaymentInPrice = round2(Math.min(rawDownInPrice, price));
+  // Show the figure the seller actually quotes. Converting back from the
+  // rounded price-currency amount turned "Bs 500" into "Bs 500,01"; only a
+  // down payment clamped by the price needs re-deriving.
+  const downPayment =
+    rawDownInPrice <= price
+      ? round2(rawDown)
+      : round2(convert(price, priceCurrency, downCurrency, bobPerUsd));
+
+  const financed = round2(price - downPaymentInPrice);
   // Paid in full up front: there is no monthly payment to advertise.
   if (financed <= 0) return null;
 
@@ -121,14 +173,25 @@ export function computeFinancing(
 
   return {
     downPayment,
-    downPaymentPct: round2((downPayment / price) * 100),
+    downPaymentCurrency: downCurrency,
+    downPaymentInPrice,
+    downPaymentPct: round2((downPaymentInPrice / price) * 100),
     financed,
     months: plan.months,
     monthly,
     annualInterestPct: plan.annual_interest_pct,
-    totalPaid: round2(downPayment + monthly * plan.months),
+    totalPaid: round2(downPaymentInPrice + monthly * plan.months),
     note: plan.note,
   };
+}
+
+/** "10 años", "5 años y 6 meses", "36 meses" — 120 months should not read as 120. */
+export function formatTerm(months: number): string {
+  if (months < 24) return `${months} meses`;
+  const y = Math.floor(months / 12);
+  const m = months % 12;
+  const years = `${y} ${y === 1 ? 'año' : 'años'}`;
+  return m === 0 ? years : `${years} y ${m} ${m === 1 ? 'mes' : 'meses'}`;
 }
 
 /** "30 %" / "27,5 %" — es-BO, at most one decimal. */

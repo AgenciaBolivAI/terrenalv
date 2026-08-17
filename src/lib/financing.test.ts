@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeFinancing, formatPct, parseFinancingPlan } from './financing';
+import { computeFinancing, formatPct, formatTerm, parseFinancingPlan } from './financing';
 
 const PLAN = {
   enabled: true,
@@ -16,6 +16,7 @@ describe('parseFinancingPlan', () => {
       enabled: true,
       down_payment_type: 'porcentaje',
       down_payment_value: 30,
+      down_payment_currency: undefined,
       months: 36,
       annual_interest_pct: 0,
       note: 'Plan referencial.',
@@ -127,5 +128,47 @@ describe('formatPct', () => {
   it('uses es-BO decimals and drops trailing zeros', () => {
     expect(formatPct(30)).toBe('30%');
     expect(formatPct(27.5)).toBe('27,5%');
+  });
+});
+
+describe('cuota inicial in a different currency to the price', () => {
+  // Terrenalv quotes lots in $us but the entry payment in bolivianos.
+  const bs500 = parseFinancingPlan({
+    ...PLAN,
+    down_payment_type: 'fijo',
+    down_payment_value: 500,
+    down_payment_currency: 'BOB',
+    months: 120,
+  })!;
+
+  it('converts before subtracting from a $us price', () => {
+    const r = computeFinancing(9000, bs500, { currency: 'USD', bobPerUsd: 6.96 })!;
+    expect(r.downPayment).toBe(500);            // shown as Bs 500
+    expect(r.downPaymentCurrency).toBe('BOB');
+    expect(r.downPaymentInPrice).toBe(71.84);   // 500 / 6.96
+    expect(r.financed).toBe(8928.16);
+    expect(r.monthly).toBe(74.41);              // 8928.16 / 120, rounded up
+    expect(r.months).toBe(120);
+  });
+
+  it('never treats Bs 500 as $us 500', () => {
+    const wrong = computeFinancing(9000, bs500, { currency: 'USD', bobPerUsd: 6.96 })!;
+    expect(wrong.financed).not.toBe(8500);
+  });
+
+  it('a percentage stays in the price currency whatever the field says', () => {
+    const pct = parseFinancingPlan({ ...PLAN, down_payment_currency: 'BOB' })!;
+    const r = computeFinancing(9000, pct, { currency: 'USD', bobPerUsd: 6.96 })!;
+    expect(r.downPaymentCurrency).toBe('USD');
+    expect(r.downPayment).toBe(2700);
+  });
+});
+
+describe('formatTerm', () => {
+  it('reads long plans as years', () => {
+    expect(formatTerm(120)).toBe('10 años');
+    expect(formatTerm(36)).toBe('3 años');
+    expect(formatTerm(30)).toBe('2 años y 6 meses');
+    expect(formatTerm(12)).toBe('12 meses');
   });
 });
