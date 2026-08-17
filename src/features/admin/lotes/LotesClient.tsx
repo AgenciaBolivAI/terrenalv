@@ -1,12 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   createColumnHelper,
   flexRender,
   getCoreRowModel,
+  getPaginationRowModel,
   useReactTable,
+  type PaginationState,
   type RowSelectionState,
 } from '@tanstack/react-table';
 import { createClient } from '@/lib/supabase/client';
@@ -45,6 +47,14 @@ interface LotRow {
   state: string;
 }
 
+/**
+ * The fields a staged edit can carry. Exactly the columns the database grants
+ * an authenticated admin — category_id, price_override, frontage_m, depth_m.
+ * Status is deliberately absent: it moves through RPCs that keep it in step
+ * with the reservation, never through a direct column write.
+ */
+type PendingEdit = Partial<Pick<LotRow, 'category_id' | 'price_override' | 'frontage_m' | 'depth_m'>>;
+
 type BulkMode = 'set_category' | 'set_override' | 'adjust_override_pct' | 'clear_override';
 
 interface Props {
@@ -62,6 +72,9 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
 
   const [manzanas, setManzanas] = useState<Manzana[]>([]);
   const [lots, setLots] = useState<LotRow[]>([]);
+  // Read inside callbacks that must not re-create on every lot change.
+  const lotsRef = useRef<LotRow[]>([]);
+  lotsRef.current = lots;
   const [cats, setCats] = useState<PricingCategory[]>([]);
   const [financing, setFinancing] = useState<FinancingPlan | null>(null);
   const [resCodes, setResCodes] = useState<Map<string, string>>(new Map());
@@ -70,6 +83,20 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
   const [statusFilter, setStatusFilter] = useState<LotStatus | null>(initialStatus);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [busy, setBusy] = useState(false);
+
+  // A manzana can hold 50+ lots and the "todos los disponibles" view holds 2.078;
+  // paging beats scrolling to the bottom to find the last one.
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 25 });
+
+  /**
+   * Edits waiting to be saved, keyed by lot id. Category, price and dimensions
+   * used to write to the database the instant a field lost focus — no way to
+   * look over a screenful of changes before committing them, and no way to back
+   * out of a mistyped price. They are staged here until "Guardar cambios".
+   */
+  const [pending, setPending] = useState<Record<string, PendingEdit>>({});
+  /** Bumped on save/discard to remount the uncontrolled inputs with fresh values. */
+  const [formKey, setFormKey] = useState(0);
 
   // Dialogs
   const [bulkCatOpen, setBulkCatOpen] = useState(false);
@@ -81,6 +108,7 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
   const [priceCatCode, setPriceCatCode] = useState('');
   const [priceValue, setPriceValue] = useState('');
   const [sellLot, setSellLot] = useState<LotRow | null>(null);
+  const [statusLot, setStatusLot] = useState<LotRow | null>(null);
 
   const fetchAll = useCallback(async () => {
     if (!projectId) {
@@ -196,17 +224,76 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
     return map;
   }, [lots]);
 
-  async function updateLot(
-    lotId: string,
-    patch: Partial<Pick<LotRow, 'category_id' | 'price_override' | 'frontage_m' | 'depth_m'>>,
-  ) {
-    const { error } = await supabase.from('lots').update(patch).eq('id', lotId);
-    if (error) {
-      push(adminErrorCopy(error.message), 'error');
-      return false;
+  /**
+   * Stage an edit instead of writing it. Fields that end up back at their
+   * original value drop out, and a lot with nothing left changed drops out
+   * entirely — so "3 cambios sin guardar" always means three real ones.
+   */
+  const stageLot = useCallback(
+    (lotId: string, patch: PendingEdit) => {
+      setPending((prev) => {
+        const lot = lotsRef.current.find((l) => l.id === lotId);
+        if (!lot) return prev;
+        const merged: PendingEdit = { ...prev[lotId], ...patch };
+        for (const k of Object.keys(merged) as (keyof PendingEdit)[]) {
+          if (merged[k] === (lot[k] ?? null)) delete merged[k];
+        }
+        const next = { ...prev };
+        if (Object.keys(merged).length === 0) delete next[lotId];
+        else next[lotId] = merged;
+        return next;
+      });
+      return true;
+    },
+    [],
+  );
+
+  const pendingCount = Object.keys(pending).length;
+
+  function discardPending() {
+    setPending({});
+    setFormKey((k) => k + 1);
+  }
+
+  async function savePending() {
+    const entries = Object.entries(pending);
+    if (entries.length === 0) return;
+    setBusy(true);
+    const failed: string[] = [];
+    for (const [lotId, patch] of entries) {
+      const { error } = await supabase.from('lots').update(patch).eq('id', lotId);
+      if (error) {
+        const lot = lotsRef.current.find((l) => l.id === lotId);
+        failed.push(lot?.number ?? lotId);
+        console.error('lote', lot?.number, error.message);
+      }
     }
-    setLots((prev) => prev.map((l) => (l.id === lotId ? { ...l, ...patch } : l)));
-    return true;
+    // Apply only what actually landed, so a failed row keeps showing its old
+    // value instead of a change that was never written.
+    const saved = entries.filter(([id]) => {
+      const lot = lotsRef.current.find((l) => l.id === id);
+      return !failed.includes(lot?.number ?? id);
+    });
+    setLots((prev) =>
+      prev.map((l) => {
+        const patch = saved.find(([id]) => id === l.id)?.[1];
+        return patch ? { ...l, ...patch } : l;
+      }),
+    );
+    setPending({});
+    setFormKey((k) => k + 1);
+    setBusy(false);
+    if (failed.length) {
+      push(`No se pudieron guardar ${failed.length} lote(s): ${failed.join(', ')}`, 'error');
+    } else {
+      push(`${entries.length} lote(s) guardados.`, 'success');
+    }
+  }
+
+  /** The value to show for a field: the staged edit if there is one. */
+  function effective<K extends keyof PendingEdit>(lot: LotRow, key: K): LotRow[K] {
+    const p = pending[lot.id];
+    return p && key in p ? (p[key] as LotRow[K]) : lot[key];
   }
 
   // ---- Table ----
@@ -275,9 +362,10 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
         header: 'Frente × Fondo',
         cell: ({ row }) => (
           <DimsCell
+            key={`${row.original.id}-${formKey}`}
             lot={row.original}
             isAdmin={isAdmin}
-            onSave={(patch) => updateLot(row.original.id, patch)}
+            onSave={(patch) => stageLot(row.original.id, patch)}
             onInvalid={(msg) => push(msg, 'error')}
           />
         ),
@@ -290,7 +378,8 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
         header: 'Categoría',
         cell: ({ row }) => {
           const lot = row.original;
-          const cat = lot.category_id ? catById.get(lot.category_id) : undefined;
+          const catId = effective(lot, 'category_id');
+          const cat = catId ? catById.get(catId) : undefined;
           if (!isAdmin) {
             return cat ? (
               <span
@@ -305,9 +394,13 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
           }
           return (
             <select
-              value={lot.category_id ?? ''}
-              onChange={(e) => void updateLot(lot.id, { category_id: e.target.value || null })}
-              className="rounded-lg border border-stone-200 bg-white px-1.5 py-1 text-xs"
+              value={catId ?? ''}
+              onChange={(e) => stageLot(lot.id, { category_id: e.target.value || null })}
+              className={`rounded-lg border bg-white px-1.5 py-1 text-xs ${
+                pending[lot.id]?.category_id !== undefined
+                  ? 'border-amber-400 ring-1 ring-amber-200'
+                  : 'border-stone-200'
+              }`}
               style={cat ? { backgroundColor: `${cat.color_hex}22` } : undefined}
             >
               <option value="">—</option>
@@ -332,6 +425,7 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
           return (
             <div className="flex items-center gap-1">
               <input
+                key={`${lot.id}-price-${formKey}`}
                 type="number"
                 min={0}
                 step="0.01"
@@ -341,10 +435,13 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
                   const raw = e.target.value.trim();
                   const next = raw === '' ? null : Number(raw);
                   if (next !== null && (Number.isNaN(next) || next < 0)) return;
-                  if (next === (lot.price_override ?? null)) return;
-                  void updateLot(lot.id, { price_override: next });
+                  stageLot(lot.id, { price_override: next });
                 }}
-                className="w-24 rounded-lg border border-stone-200 px-1.5 py-1 text-right text-xs"
+                className={`w-24 rounded-lg border px-1.5 py-1 text-right text-xs ${
+                  pending[lot.id]?.price_override !== undefined
+                    ? 'border-amber-400 ring-1 ring-amber-200'
+                    : 'border-stone-200'
+                }`}
                 title="Precio manual (vacío = precio por categoría)"
               />
               {lot.price_override != null ? (
@@ -356,9 +453,27 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
       }),
       columnHelper.accessor('status', {
         header: 'Estado',
-        cell: (info) => (
-          <Badge className={LOT_STATUS_BADGE[info.getValue()]}>{LOT_STATUS_LABEL[info.getValue()]}</Badge>
-        ),
+        cell: ({ row }) => {
+          const lot = row.original;
+          const badge = (
+            <Badge className={LOT_STATUS_BADGE[lot.status]}>{LOT_STATUS_LABEL[lot.status]}</Badge>
+          );
+          if (!isAdmin) return badge;
+          return (
+            <div className="flex items-center gap-1.5">
+              {badge}
+              <button
+                type="button"
+                onClick={() => setStatusLot(lot)}
+                aria-label={`Cambiar estado del lote ${lot.number}`}
+                title="Cambiar estado"
+                className="rounded-md border border-stone-200 px-1.5 py-0.5 text-xs text-stone-500 hover:bg-stone-50"
+              >
+                Cambiar
+              </button>
+            </div>
+          );
+        },
       }),
       columnHelper.display({
         id: 'reserva',
@@ -389,19 +504,29 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
         },
       }),
     ],
+    // `pending` and `formKey` MUST stay here: without them the memo keeps the
+    // first render's closure and a staged edit never appears on screen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [cats, catById, currency, isAdmin, resCodes, lotPrice, selectedMz, mzByCode],
+    [cats, catById, currency, isAdmin, resCodes, lotPrice, selectedMz, mzByCode, pending, formKey, stageLot],
   );
 
   const table = useReactTable({
     data: mzLots,
     columns,
-    state: { rowSelection },
+    state: { rowSelection, pagination },
     onRowSelectionChange: setRowSelection,
+    onPaginationChange: setPagination,
     getRowId: (row) => row.id,
     getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
     enableRowSelection: true,
   });
+
+  // Changing manzana or filter shows a different set of lots; staying on page 7
+  // of the previous one lands on an empty table.
+  useEffect(() => {
+    setPagination((p) => ({ ...p, pageIndex: 0 }));
+  }, [selectedMz, statusFilter]);
 
   const selectedIds = Object.keys(rowSelection).filter((k) => rowSelection[k]);
   const currentMz = manzanas.find((m) => m.id === selectedMz) ?? null;
@@ -419,6 +544,24 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
     push(`Categoría asignada a ${selectedIds.length} lotes.`, 'success');
     setBulkCatOpen(false);
     setRowSelection({});
+    void fetchAll();
+  }
+
+  /** Block/unblock a single lot from the status dialog. */
+  async function setBlocked(lot: LotRow, blocked: boolean) {
+    setBusy(true);
+    const { error } = await supabase.rpc('admin_set_lots_blocked', {
+      p_lot_ids: [lot.id],
+      p_blocked: blocked,
+      p_note: null,
+    });
+    setBusy(false);
+    if (error) {
+      push(adminErrorCopy(error.message), 'error');
+      return;
+    }
+    push(blocked ? `Lote ${lot.number} bloqueado.` : `Lote ${lot.number} desbloqueado.`, 'success');
+    setStatusLot(null);
     void fetchAll();
   }
 
@@ -654,8 +797,26 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
         </div>
       ) : null}
 
+      {/* Unsaved edits. Sticky, because with 25 rows on screen the change you
+          made at the top must stay visible when you reach the bottom. */}
+      {isAdmin && pendingCount > 0 ? (
+        <div className="sticky top-14 z-30 mb-2 flex flex-wrap items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2">
+          <p className="text-sm font-medium text-amber-900">
+            {pendingCount} {pendingCount === 1 ? 'lote con cambios' : 'lotes con cambios'} sin guardar
+          </p>
+          <div className="ml-auto flex gap-2">
+            <button type="button" className={btnSecondary} onClick={discardPending} disabled={busy}>
+              Descartar
+            </button>
+            <button type="button" className={btnPrimary} onClick={() => void savePending()} disabled={busy}>
+              {busy ? 'Guardando…' : 'Guardar cambios'}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="overflow-x-auto rounded-xl border border-stone-200 bg-white">
-        <table className="w-full min-w-[800px] text-sm">
+        <table className="w-full min-w-200 text-sm">
           <thead>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className="border-b border-stone-200 bg-stone-50 text-left">
@@ -687,6 +848,56 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
           </p>
         ) : null}
       </div>
+
+      {/* Pagination */}
+      {mzLots.length > 0 ? (
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+          <label className="flex items-center gap-2 text-stone-500">
+            Mostrar
+            <select
+              value={pagination.pageSize}
+              onChange={(e) => setPagination({ pageIndex: 0, pageSize: Number(e.target.value) })}
+              className="rounded-lg border border-stone-200 bg-white px-2 py-1 text-sm"
+            >
+              {[10, 25, 50, 100, 250].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+              <option value={mzLots.length}>Todos ({mzLots.length})</option>
+            </select>
+            por página
+          </label>
+
+          <p className="text-stone-400">
+            {table.getState().pagination.pageIndex * pagination.pageSize + 1}–
+            {Math.min((table.getState().pagination.pageIndex + 1) * pagination.pageSize, mzLots.length)} de{' '}
+            {mzLots.length}
+          </p>
+
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              className={btnSecondary}
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+            >
+              Anterior
+            </button>
+            <span className="text-stone-500">
+              Página {table.getState().pagination.pageIndex + 1} de {Math.max(table.getPageCount(), 1)}
+            </span>
+            <button
+              type="button"
+              className={btnSecondary}
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+            >
+              Siguiente
+            </button>
+          </div>
+        </div>
+      ) : null}
       {!isAdmin ? (
         <p className="mt-2 text-xs text-stone-400">
           Solo los administradores pueden editar categorías y precios.
@@ -790,6 +1001,99 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
         </div>
       </Dialog>
 
+      {/* Change status.
+          Status is not a free-text column: "reservado" without a reservation is
+          a lot nobody can ever release, and "vendido" without a buyer is a sale
+          with no record. So each destination routes through the RPC that keeps
+          the rest of the row in step, and the one that needs a buyer says so. */}
+      <Dialog
+        open={statusLot !== null}
+        onClose={() => setStatusLot(null)}
+        title={statusLot ? `Estado del lote ${statusLot.number}` : 'Estado'}
+      >
+        {statusLot ? (
+          <div className="space-y-3">
+            <p className="text-sm text-stone-600">
+              Ahora está{' '}
+              <Badge className={LOT_STATUS_BADGE[statusLot.status]}>
+                {LOT_STATUS_LABEL[statusLot.status]}
+              </Badge>
+            </p>
+
+            {statusLot.status === 'disponible' ? (
+              <>
+                <button
+                  type="button"
+                  className={`${btnSecondary} w-full justify-start text-left`}
+                  onClick={() => {
+                    const lot = statusLot;
+                    setStatusLot(null);
+                    setSellLot(lot);
+                  }}
+                >
+                  <span className="font-semibold">Marcar como vendido</span>
+                  <span className="block text-xs text-stone-500">
+                    Pide nombre, carnet y teléfono del comprador y deja el registro de la venta.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={`${btnSecondary} w-full justify-start text-left`}
+                  disabled={busy}
+                  onClick={() => void setBlocked(statusLot, true)}
+                >
+                  <span className="font-semibold">Bloquear</span>
+                  <span className="block text-xs text-stone-500">
+                    Lo saca del mapa público sin venderlo.
+                  </span>
+                </button>
+              </>
+            ) : null}
+
+            {statusLot.status === 'no_disponible' ? (
+              <button
+                type="button"
+                className={`${btnSecondary} w-full justify-start text-left`}
+                disabled={busy}
+                onClick={() => void setBlocked(statusLot, false)}
+              >
+                <span className="font-semibold">Desbloquear</span>
+                <span className="block text-xs text-stone-500">Vuelve a estar disponible.</span>
+              </button>
+            ) : null}
+
+            {statusLot.status === 'reservado' ? (
+              <p className="rounded-lg bg-stone-50 p-3 text-sm text-stone-600">
+                Este lote tiene una reserva activa. Su estado se maneja desde la reserva —
+                confirmala, rechazala o cancelala en{' '}
+                <Link
+                  href={`/admin/reservas?open=${statusLot.active_reservation_id ?? ''}`}
+                  className="font-semibold text-brand hover:underline"
+                >
+                  Reservas
+                </Link>
+                .
+              </p>
+            ) : null}
+
+            {statusLot.status === 'vendido' ? (
+              <p className="rounded-lg bg-stone-50 p-3 text-sm text-stone-600">
+                Ya está vendido. Revertir una venta toca el historial de pagos, así que se hace
+                desde la reserva correspondiente y queda registrado en la auditoría.
+              </p>
+            ) : null}
+
+            {statusLot.status === 'disponible' ? (
+              <p className="rounded-lg bg-stone-50 p-3 text-xs text-stone-500">
+                Para dejarlo <strong>reservado</strong> hace falta una reserva con nombre, carnet y
+                teléfono — es lo que arranca el plazo de 48 horas y lo que después permite
+                liberarlo. Se crea desde el mapa público o por el equipo de ventas.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </Dialog>
+
       {sellLot ? (
         <SellOfflineDialog
           lot={sellLot}
@@ -831,7 +1135,8 @@ function DimsCell({
 }: {
   lot: LotRow;
   isAdmin: boolean;
-  onSave: (patch: Partial<Pick<LotRow, 'frontage_m' | 'depth_m'>>) => Promise<boolean>;
+  /** Staging is synchronous now; kept awaitable so the cell needn't care. */
+  onSave: (patch: Partial<Pick<LotRow, 'frontage_m' | 'depth_m'>>) => boolean | Promise<boolean>;
   onInvalid: (message: string) => void;
 }) {
   const [draft, setDraft] = useState({ f: dimText(lot.frontage_m), d: dimText(lot.depth_m) });

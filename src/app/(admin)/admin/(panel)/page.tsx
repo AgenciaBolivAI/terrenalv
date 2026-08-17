@@ -145,10 +145,29 @@ export default async function DashboardPage() {
   const confirmed30 = funnelConfirmed.count ?? 0;
   const funnelMax = Math.max(created30, 1);
 
+  // Each step drills into the queue that step lives in. The 30-day window is
+  // NOT carried across: /admin/reservas filters by state, not by date, so the
+  // list will show every reservation in that state. Said plainly in the hint
+  // under the funnel rather than letting the number and the list disagree.
   const funnel = [
-    { label: 'Reservas creadas', value: created30, cls: 'bg-brand-light' },
-    { label: 'Con comprobante', value: proof30, cls: 'bg-sky-500' },
-    { label: 'Confirmadas', value: confirmed30, cls: 'bg-brand' },
+    {
+      label: 'Reservas creadas',
+      value: created30,
+      cls: 'bg-brand-light',
+      href: '/admin/reservas',
+    },
+    {
+      label: 'Con comprobante',
+      value: proof30,
+      cls: 'bg-sky-500',
+      href: '/admin/reservas?tab=revisar',
+    },
+    {
+      label: 'Confirmadas',
+      value: confirmed30,
+      cls: 'bg-brand',
+      href: '/admin/reservas?tab=confirmadas',
+    },
   ];
 
   return (
@@ -165,10 +184,15 @@ export default async function DashboardPage() {
             <Link
               key={c.status}
               href={`/admin/reservas?tab=${c.tab}`}
-              className="rounded-xl border border-stone-200 bg-white p-4 hover:border-brand-light"
+              className="group rounded-xl border border-stone-200 bg-white p-4 transition hover:border-brand-light hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
             >
               <p className="text-2xl font-bold text-stone-900">{resCounts[i].count ?? 0}</p>
-              <p className="text-xs text-stone-500">{c.label}</p>
+              <p className="flex items-center justify-between gap-2 text-xs text-stone-500">
+                {c.label}
+                <span aria-hidden="true" className="text-stone-300 group-hover:text-brand-light">
+                  ›
+                </span>
+              </p>
             </Link>
           ))}
         </div>
@@ -185,20 +209,28 @@ export default async function DashboardPage() {
               <Link
                 key={c.status}
                 href={`/admin/lotes?estado=${c.status}`}
-                className="rounded-lg bg-stone-50 p-3 hover:bg-stone-100"
+                className="group rounded-lg bg-stone-50 p-3 transition hover:bg-stone-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
               >
                 <p className={`text-xl font-bold ${c.accent}`}>{lotCounts[i].count ?? 0}</p>
-                <p className="text-xs text-stone-500">{c.label}</p>
+                <p className="flex items-center justify-between gap-2 text-xs text-stone-500">
+                  {c.label}
+                  <span aria-hidden="true" className="text-stone-300 group-hover:text-stone-500">
+                    ›
+                  </span>
+                </p>
               </Link>
             ))}
           </div>
         </div>
         <Link
           href="/admin/reservas?tab=confirmadas"
-          className="rounded-xl border border-stone-200 bg-white p-4 hover:border-brand-light"
+          className="group rounded-xl border border-stone-200 bg-white p-4 transition hover:border-brand-light hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
         >
-          <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+          <h2 className="flex items-center justify-between gap-2 text-xs font-semibold tracking-wide text-stone-500 uppercase">
             Ingresos verificados (este mes)
+            <span aria-hidden="true" className="text-stone-300 group-hover:text-brand-light">
+              ›
+            </span>
           </h2>
           <p className="mt-2 text-2xl font-bold text-brand">{formatMoney(ingresosBs, 'BOB')}</p>
           <p className="mt-1 text-xs text-stone-400">Pagos aprobados del mes (hora de Bolivia)</p>
@@ -210,9 +242,13 @@ export default async function DashboardPage() {
         <h2 className="mb-3 text-xs font-semibold tracking-wide text-stone-500 uppercase">
           Embudo — últimos 30 días
         </h2>
-        <div className="space-y-2">
+        <div className="space-y-1">
           {funnel.map((f) => (
-            <div key={f.label} className="flex items-center gap-3">
+            <Link
+              key={f.label}
+              href={f.href}
+              className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
+            >
               <p className="w-36 shrink-0 text-xs text-stone-500">{f.label}</p>
               <div className="h-6 flex-1 overflow-hidden rounded-md bg-stone-100">
                 <div
@@ -222,9 +258,16 @@ export default async function DashboardPage() {
                   {f.value}
                 </div>
               </div>
-            </div>
+              <span aria-hidden="true" className="shrink-0 text-stone-300">
+                ›
+              </span>
+            </Link>
           ))}
         </div>
+        <p className="mt-3 text-[11px] text-stone-400">
+          Las cifras son de los últimos 30 días; al abrir cada paso verás la cola completa, sin
+          filtro de fecha.
+        </p>
       </section>
 
       {/* Expiring today */}
