@@ -53,14 +53,16 @@ export const revalidate = 300;
 // Todo el contenido del proyecto sale del plano CAD y de la maqueta. No
 // inventar amenidades ni cifras: si no está en el plano o en la base de datos,
 // no va en la página.
+// Labels are column HEADINGS, not tails: they sit above the figure in the
+// schedule, so "de áreas verdes" would read as "DE ÁREAS VERDES / 4,8 ha".
 function numeros(totalLotes: number | null): [string, string][] {
   return [
-    ['88', 'manzanas'],
-    [totalLotes ? totalLotes.toLocaleString('es-BO') : '2.104', 'lotes en el plano'],
-    ['300 m²', 'lote típico (10 × 30)'],
-    ['4,8 ha', 'de áreas verdes'],
-    ['5,6 ha', 'de equipamiento'],
-    ['3,2 km', 'de frente sobre la vía'],
+    ['88', 'Manzanas'],
+    [totalLotes ? totalLotes.toLocaleString('es-BO') : '2.078', 'Lotes en el plano'],
+    ['300 m²', 'Lote típico (10 × 30)'],
+    ['4,8 ha', 'Áreas verdes'],
+    ['5,6 ha', 'Equipamiento'],
+    ['3,2 km', 'Frente sobre la vía'],
   ];
 }
 
