@@ -12,7 +12,7 @@ import { Pasarella, type Slide } from '@/features/landing/Pasarella';
 // (club house, servicios, Derechos Reales), none of which I invented.
 const PASARELLA: Slide[] = [
   { src: '/pasarella/01-precio.jpg', alt: 'Terreno de 300 m² desde Bs 24.800 al contado, o en cuotas sin banco. Agua y luz, internet, club house y papeles al día.' },
-  { src: '/pasarella/02-comparativa.jpg', alt: 'Prados del Sur frente a otros proyectos: agua, luz, teléfono e internet, sobre la avenida internacional, papeles al día, club house incluido, a 35 minutos de Santa Cruz.' },
+  { src: '/pasarella/02-comparativa.jpg', alt: 'Prados del Sur frente a otros proyectos: servicios básicos, sobre la avenida internacional, papeles al día y club house incluido.' },
   { src: '/pasarella/03-alquiler.jpg', alt: 'Cada mes pagás alquiler por algo que nunca va a ser tuyo, o pagás cuotas por tu propio terreno. Servicios básicos, papeles al día, sin banco.' },
   { src: '/pasarella/04-plusvalia.jpg', alt: 'Invertir en un terreno propio con plusvalía real: sobre la avenida internacional, zona de alto crecimiento, cuotas accesibles y club house incluido.' },
   { src: '/pasarella/05-trayectoria.jpg', alt: '7 años entregando terrenos con todo en orden: papeles registrados en Derechos Reales, servicios básicos instalados y crédito directo sin banco.' },
