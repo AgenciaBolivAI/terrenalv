@@ -109,6 +109,7 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
   const [priceValue, setPriceValue] = useState('');
   const [sellLot, setSellLot] = useState<LotRow | null>(null);
   const [statusLot, setStatusLot] = useState<LotRow | null>(null);
+  const [reserveLot, setReserveLot] = useState<LotRow | null>(null);
 
   const fetchAll = useCallback(async () => {
     if (!projectId) {
@@ -1028,6 +1029,20 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
                   onClick={() => {
                     const lot = statusLot;
                     setStatusLot(null);
+                    setReserveLot(lot);
+                  }}
+                >
+                  <span className="font-semibold">Reservar en oficina</span>
+                  <span className="block text-xs text-stone-500">
+                    Crea la reserva con su plazo y su glosa de pago, igual que desde el mapa.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={`${btnSecondary} w-full justify-start text-left`}
+                  onClick={() => {
+                    const lot = statusLot;
+                    setStatusLot(null);
                     setSellLot(lot);
                   }}
                 >
@@ -1085,9 +1100,9 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
 
             {statusLot.status === 'disponible' ? (
               <p className="rounded-lg bg-stone-50 p-3 text-xs text-stone-500">
-                Para dejarlo <strong>reservado</strong> hace falta una reserva con nombre, carnet y
-                teléfono — es lo que arranca el plazo de 48 horas y lo que después permite
-                liberarlo. Se crea desde el mapa público o por el equipo de ventas.
+                El estado no se escribe a mano: un lote <strong>reservado</strong> sin reserva
+                detrás no tiene plazo, ni comprador, ni forma de liberarse. Por eso cada opción de
+                arriba crea el registro que corresponde.
               </p>
             ) : null}
           </div>
@@ -1097,12 +1112,27 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
       {sellLot ? (
         <SellOfflineDialog
           lot={sellLot}
-          mzCode={currentMz?.code ?? ''}
+          // Not currentMz: the status-filter view lists lots across every
+          // manzana, so there is no "current" one and the title said "Mz ".
+          mzCode={mzByCode.get(sellLot.manzana_id) ?? ''}
           defaultPrice={lotPrice(sellLot)}
           currency={currency}
           onClose={() => setSellLot(null)}
           onSold={() => {
             setSellLot(null);
+            void fetchAll();
+          }}
+        />
+      ) : null}
+
+      {reserveLot ? (
+        <ReserveDialog
+          lot={reserveLot}
+          mzCode={mzByCode.get(reserveLot.manzana_id) ?? ''}
+          currency={currency}
+          onClose={() => setReserveLot(null)}
+          onReserved={() => {
+            setReserveLot(null);
             void fetchAll();
           }}
         />
@@ -1276,6 +1306,7 @@ function SellOfflineDialog({
     onSold();
   }
 
+
   return (
     <Dialog open onClose={onClose} title={`Vender en oficina — Mz ${mzCode}, Lote ${lot.number}`}>
       <div className="space-y-3">
@@ -1300,6 +1331,157 @@ function SellOfflineDialog({
         </button>
         <button type="button" disabled={busy} className={btnPrimary} onClick={() => void sell()}>
           {busy ? 'Registrando…' : 'Registrar venta'}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+/**
+ * Reservar un lote desde el mostrador.
+ *
+ * Crea una reserva de verdad — comprador, plazo, código de seguimiento y su
+ * intención de pago — y recién entonces el lote queda 'reservado'. Es la razón
+ * por la que el estado no se edita a mano: una reserva es lo que después
+ * permite cobrar, extender el plazo, cancelar, o dejar que venza sola.
+ */
+function ReserveDialog({
+  lot,
+  mzCode,
+  currency,
+  onClose,
+  onReserved,
+}: {
+  lot: LotRow;
+  mzCode: string;
+  currency: 'USD' | 'BOB';
+  onClose: () => void;
+  onReserved: () => void;
+}) {
+  const supabase = useMemo(() => createClient(), []);
+  const { push } = useToast();
+  const [name, setName] = useState('');
+  const [ci, setCi] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [hours, setHours] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function reserve() {
+    setError(null);
+    if (name.trim().length < 5) {
+      setError('Escribe el nombre completo del comprador.');
+      return;
+    }
+    if (!ciSchema.safeParse(ci).success) {
+      setError('Carnet inválido (ej: 7896541 o 7896541-1E).');
+      return;
+    }
+    if (!phoneSchema.safeParse(phone).success) {
+      setError('Celular boliviano inválido (8 dígitos, empieza con 6 o 7).');
+      return;
+    }
+    const h = hours.trim() === '' ? null : Number(hours);
+    if (h !== null && (!Number.isInteger(h) || h < 1 || h > 720)) {
+      setError('El plazo debe ser un número entero de 1 a 720 horas.');
+      return;
+    }
+
+    setBusy(true);
+    const { data, error: err } = await supabase.rpc('admin_reserve_offline', {
+      p_lot_id: lot.id,
+      p_full_name: name.trim(),
+      p_ci: ci.trim(),
+      p_phone: phone.trim(),
+      p_email: email.trim() || null,
+      p_hours: h,
+      p_note: note.trim() || null,
+    });
+    setBusy(false);
+    if (err) {
+      setError(adminErrorCopy(err.message));
+      return;
+    }
+    const res = data as { tracking_code?: string; reference_code?: string } | null;
+    push(
+      `Lote reservado${res?.tracking_code ? ` — código ${res.tracking_code}` : ''}.` +
+        (res?.reference_code ? ` Glosa: ${res.reference_code}` : ''),
+      'success',
+    );
+    onReserved();
+  }
+
+  return (
+    <Dialog open onClose={onClose} title={`Reservar en oficina — Mz ${mzCode}, Lote ${lot.number}`}>
+      <div className="space-y-3">
+        <p className="rounded-lg bg-stone-50 p-3 text-xs text-stone-600">
+          Queda igual que una reserva hecha desde el mapa: con su plazo, su código y su glosa de
+          pago. Si no se paga, vence sola y el lote vuelve a estar disponible.
+        </p>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Nombre completo"
+          className={inputClass}
+        />
+        <div className="grid grid-cols-2 gap-3">
+          <input
+            value={ci}
+            onChange={(e) => setCi(e.target.value)}
+            placeholder="Carnet (CI)"
+            className={inputClass}
+          />
+          <input
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="Celular"
+            inputMode="tel"
+            className={inputClass}
+          />
+        </div>
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Correo (opcional)"
+          inputMode="email"
+          className={inputClass}
+        />
+        <div>
+          <label className="mb-1 block text-xs text-stone-500">
+            Plazo en horas — vacío usa el del proyecto (48 h)
+          </label>
+          <input
+            type="number"
+            min={1}
+            max={720}
+            step={1}
+            value={hours}
+            onChange={(e) => setHours(e.target.value)}
+            placeholder="48"
+            className={inputClass}
+          />
+        </div>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Nota (ej. seña entregada en oficina)"
+          rows={2}
+          className={inputClass}
+        />
+        <p className="text-xs text-stone-400">
+          La seña a cobrar sale de la configuración del proyecto, la misma que usa el mapa público,
+          en {currency === 'BOB' ? 'bolivianos' : 'dólares'}.
+        </p>
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <button type="button" className={btnSecondary} onClick={onClose}>
+          Volver
+        </button>
+        <button type="button" disabled={busy} className={btnPrimary} onClick={() => void reserve()}>
+          {busy ? 'Reservando…' : 'Crear reserva'}
         </button>
       </div>
     </Dialog>

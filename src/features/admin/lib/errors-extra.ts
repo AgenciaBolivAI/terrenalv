@@ -15,6 +15,14 @@ const ADMIN_ERROR_COPY: Record<string, string> = {
   INVALID_OP: 'Operación de precios inválida.',
   PROFILE_NOT_FOUND: 'No se encontró el perfil.',
   MANZANA_HAS_NO_GEOMETRY: 'La manzana no tiene geometría dibujada.',
+  // admin_reserve_offline
+  BUYER_NAME_REQUIRED: 'Falta el nombre completo del comprador.',
+  BUYER_CI_REQUIRED: 'Falta el carnet del comprador.',
+  BUYER_PHONE_REQUIRED: 'Falta el celular del comprador.',
+  INVALID_HOLD_HOURS: 'El plazo debe estar entre 1 y 720 horas.',
+  // Postgres cuando la función todavía no está creada en la base.
+  'Could not find the function': 'Falta aplicar la migración admin_reserve_offline en la base de datos.',
+  PGRST202: 'Falta aplicar la migración admin_reserve_offline en la base de datos.',
 };
 
 /** Spanish copy for any RPC error seen from the admin panel. */
