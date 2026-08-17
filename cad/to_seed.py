@@ -137,7 +137,17 @@ def main():
         'manzanas': out,
         # Streets, railway and highway extracted from the CAD in the same
         # coordinate frame as the lots — see build_plano.py.
-        'elements': [e for e in D.get('elements', []) if repair(e['ring'])],
+        #
+        # Keep the REPAIRED ring, don't just use repair() as a pass/fail filter.
+        # Two área verde rings cross themselves where the CAD polyline doubles
+        # back; passing the original through made save_map_elements reject the
+        # whole batch with INVALID_GEOMETRY, which left the map with stale
+        # elements and no error anywhere near the cause.
+        'elements': [
+            {**e, 'ring': r}
+            for e in D.get('elements', [])
+            if (r := repair(e['ring']))
+        ],
     }, open(OUT, 'w'), separators=(',', ':'))
 
     areas = [l['area_m2'] for m in out for l in m['lots']]

@@ -3,7 +3,13 @@
 // Exists because re-running seed-geometry.ts re-upserts all 2 035 lots to fix a
 // streets-only problem — pointless risk with a live reservation on M-59/26.
 // Run: NODE_OPTIONS=--experimental-websocket npx tsx scripts/push-elements.ts
-// (Delete stale rows first: save_map_elements upserts, it does not replace.)
+//
+// save_map_elements UPSERTS, it does not replace, and nothing in it matches an
+// incoming ring to an existing row — so a second push stacks a duplicate set on
+// top of the old one. This used to be a comment telling the operator to delete
+// the stale rows by hand; it got missed twice (once leaving the map with the
+// old invented streets, once leaving 18 elements where there should be 10), so
+// the delete now happens here.
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -33,6 +39,19 @@ async function main() {
     console.error('Proyecto no encontrado:', projErr?.message);
     process.exit(1);
   }
+
+  // Replace, don't accumulate. Elements are pure geometry from the CAD —
+  // nothing references them, so deleting is safe (unlike lots, which carry
+  // reservations and go through reseed-safe.ts).
+  const { error: delErr, count: deleted } = await supabase
+    .from('map_elements')
+    .delete({ count: 'exact' })
+    .eq('project_id', project.id);
+  if (delErr) {
+    console.error('borrado de elementos previos:', delErr.message);
+    process.exit(1);
+  }
+  console.log(`elementos previos borrados: ${deleted}`);
 
   const { error: elemErr } = await supabase.rpc('save_map_elements', {
     p_project_id: project.id,
