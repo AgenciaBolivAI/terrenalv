@@ -42,6 +42,20 @@ const FEATURED_TIKTOKS: { id: string; caption: string }[] = [
   { id: '7670249275229605141', caption: '¿Te imaginas pagar por algo que sí es tuyo?' },
 ];
 
+// Instagram posts from @terrenalv_srl, each shortcode read off the live profile
+// and then confirmed to render at /reel/<code>/embed/ (public, no login wall).
+//
+// Instagram has no profile-feed widget — Meta retired it, and a live feed needs
+// a Business account, a Meta app and a refreshed Graph API token. Fixed posts in
+// an iframe are the one path that works without any of that. The trade-off: if
+// Terrenalv deletes a post, its card goes blank, so these need re-checking when
+// the section is updated.
+const FEATURED_INSTAGRAM: { code: string; caption: string }[] = [
+  { code: 'DZdisGSAa7R', caption: '¿Ya tenés tu terreno propio?' },
+  { code: 'DZn145UgWL5', caption: 'Cuánto cuesta un terreno en Prados del Sur' },
+  { code: 'DZmm25wDKWt', caption: 'La zona, los servicios y lo que ya está hecho' },
+];
+
 // The pin the owner identified on Google Maps (plus code beside Zanja Honda).
 const MAPS_EMBED =
   'https://maps.google.com/maps?q=PRH3%2BWJ7%20Zanja%20Honda%2C%20Cabezas%2C%20Santa%20Cruz%2C%20Bolivia&z=13&output=embed';
@@ -346,14 +360,27 @@ export default async function Home() {
       <section className="bg-stone-100">
         <div className="mx-auto max-w-6xl px-4 py-14">
           <SectionHead
-            annot={`@${SOCIAL.tiktokUser}`}
+            annot="TikTok · Instagram · Facebook"
             title="Mira el proyecto en video"
             lede="Avances de obra, recorridos y entregas de terrenos, publicados por el propio equipo de Terrenalv."
           />
 
+          <div className="mt-10 flex items-center gap-3">
+            <p className="annot shrink-0 text-earth">TikTok · @{SOCIAL.tiktokUser}</p>
+            <span aria-hidden="true" className="h-px flex-1 bg-stone-300" />
+            <a
+              href={SOCIAL.tiktok}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 text-sm font-semibold text-brand hover:underline"
+            >
+              Ver perfil →
+            </a>
+          </div>
+
           {/* Featured videos — fixed, verified posts so the section has real
               content immediately, before the Facebook plugin hydrates. */}
-          <div className="mt-10 grid gap-6 sm:grid-cols-3">
+          <div className="mt-5 grid gap-6 sm:grid-cols-3">
             {FEATURED_TIKTOKS.map((v) => (
               <figure key={v.id} className="card card-lift rounded-3xl bg-white p-3">
                 <div className="overflow-hidden rounded-2xl bg-stone-900">
@@ -373,25 +400,61 @@ export default async function Home() {
             ))}
           </div>
 
-          {/* Only Facebook gets a second panel. A TikTok card used to sit beside
-              it, but the six embeds above are already TikTok and the follow
-              buttons below already link to the profile — it was the same link
-              said three times, in a mostly empty box. */}
-          <div className="mx-auto mt-8 max-w-2xl">
+          {/* Instagram */}
+          <div className="mt-14">
+            <div className="flex items-center gap-3">
+              <p className="annot shrink-0 text-earth">Instagram · @terrenalv_srl</p>
+              <span aria-hidden="true" className="h-px flex-1 bg-stone-300" />
+              <a
+                href={SOCIAL.instagram}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 text-sm font-semibold text-brand hover:underline"
+              >
+                Ver perfil →
+              </a>
+            </div>
+            <div className="mt-5 grid gap-6 sm:grid-cols-3">
+              {FEATURED_INSTAGRAM.map((p) => (
+                <figure key={p.code} className="card card-lift rounded-3xl bg-white p-3">
+                  <div className="overflow-hidden rounded-2xl bg-stone-100">
+                    <iframe
+                      title={p.caption}
+                      src={`https://www.instagram.com/reel/${p.code}/embed/`}
+                      className="w-full border-0"
+                      style={{ height: 640 }}
+                      loading="lazy"
+                      scrolling="no"
+                      allow="encrypted-media; picture-in-picture; fullscreen"
+                    />
+                  </div>
+                  <figcaption className="mt-2 px-1 text-sm font-semibold text-stone-700">
+                    {p.caption}
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          </div>
+
+          {/* Facebook. A TikTok card used to sit beside it, but the embeds above
+              are already TikTok and the follow buttons below already link to the
+              profile — it was the same link said three times, in an empty box. */}
+          <div className="mx-auto mt-14 max-w-2xl">
             {/* Facebook: page timeline plugin — latest posts and videos. */}
-            <div className="card rounded-3xl bg-white p-4">
-              <div className="flex items-center justify-between gap-2 px-1">
-                <h3 className="font-bold text-stone-900">Facebook — Terrenalv.srl</h3>
-                <a
-                  href={SOCIAL.facebook}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm font-semibold text-brand hover:underline"
-                >
-                  Ver página →
-                </a>
-              </div>
-              <div className="mt-3 overflow-hidden rounded-2xl">
+            <div className="flex items-center gap-3">
+              <p className="annot shrink-0 text-earth">Facebook · Terrenalv.srl</p>
+              <span aria-hidden="true" className="h-px flex-1 bg-stone-300" />
+              <a
+                href={SOCIAL.facebook}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 text-sm font-semibold text-brand hover:underline"
+              >
+                Ver página →
+              </a>
+            </div>
+            <div className="card mt-5 rounded-3xl bg-white p-4">
+              <div className="overflow-hidden rounded-2xl">
                 <iframe
                   title="Página de Facebook de Terrenalv"
                   src={`https://www.facebook.com/plugins/page.php?href=${encodeURIComponent(SOCIAL.facebook)}&tabs=timeline&width=500&height=560&small_header=true&adapt_container_width=true&hide_cover=false&show_facepile=false`}
