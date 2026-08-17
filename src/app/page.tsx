@@ -5,18 +5,39 @@ import { ActiveReservationBanner } from '@/features/reservations/components/Acti
 import { MiReservaLink } from '@/features/reservations/components/MiReservaLink';
 import { loadLandingData } from '@/features/landing/data';
 import { Pasarella, type Slide } from '@/features/landing/Pasarella';
+import { loadInstagramPosts } from '@/features/landing/instagram';
+import { InstagramFeed, type FallbackPost } from '@/features/landing/InstagramFeed';
 
 // The company's own marketing flyers, in pasarella/. Alt text describes what
 // each one actually says — these are the source for the claims on this page
 // (club house, servicios, Derechos Reales), none of which I invented.
+const FLYER = { width: 900, height: 1125 };
+// Architectural renders of the club house, supplied by Terrenalv. Every one is
+// badged "Render del proyecto" on the slide: they show what is being built, and
+// a buyer must not mistake them for a photo of something already finished.
+const RENDER = { width: 1280, height: 720, badge: 'Render del proyecto' };
+
 const PASARELLA: Slide[] = [
-  { src: '/pasarella/01-precio.jpg', alt: 'Terreno de 300 m² desde Bs 24.800 al contado, o en cuotas sin banco. Agua y luz, internet, club house y papeles al día.' },
-  { src: '/pasarella/02-comparativa.jpg', alt: 'Prados del Sur frente a otros proyectos: servicios básicos, sobre la avenida internacional, papeles al día y club house incluido.' },
-  { src: '/pasarella/03-alquiler.jpg', alt: 'Cada mes pagás alquiler por algo que nunca va a ser tuyo, o pagás cuotas por tu propio terreno. Servicios básicos, papeles al día, sin banco.' },
-  { src: '/pasarella/04-plusvalia.jpg', alt: 'Invertir en un terreno propio con plusvalía real: sobre la avenida internacional, zona de alto crecimiento, cuotas accesibles y club house incluido.' },
-  { src: '/pasarella/05-trayectoria.jpg', alt: '7 años entregando terrenos con todo en orden: papeles registrados en Derechos Reales, servicios básicos instalados y crédito directo sin banco.' },
-  { src: '/pasarella/06-avance.jpg', alt: 'Un asesor de Terrenalv frente a los lotes ya abiertos: 60% de los terrenos vendidos, papeles al día, cuotas accesibles, sin bancos.' },
-  { src: '/pasarella/07-testimonio.jpg', alt: 'Testimonio de un cliente: compró 15 terrenos buscando una inversión segura y rentable para su familia.' },
+  { ...FLYER, src: '/pasarella/01-precio.jpg', alt: 'Terreno de 300 m² desde Bs 24.800 al contado, o en cuotas sin banco. Agua y luz, internet, club house y papeles al día.' },
+  { ...FLYER, src: '/pasarella/02-comparativa.jpg', alt: 'Prados del Sur frente a otros proyectos: servicios básicos, sobre la avenida internacional, papeles al día y club house incluido.' },
+  { ...FLYER, src: '/pasarella/03-alquiler.jpg', alt: 'Cada mes pagás alquiler por algo que nunca va a ser tuyo, o pagás cuotas por tu propio terreno. Servicios básicos, papeles al día, sin banco.' },
+  { ...FLYER, src: '/pasarella/04-plusvalia.jpg', alt: 'Invertir en un terreno propio con plusvalía real: sobre la avenida internacional, zona de alto crecimiento, cuotas accesibles y club house incluido.' },
+  { ...FLYER, src: '/pasarella/05-trayectoria.jpg', alt: '7 años entregando terrenos con todo en orden: papeles registrados en Derechos Reales, servicios básicos instalados y crédito directo sin banco.' },
+  { ...FLYER, src: '/pasarella/06-avance.jpg', alt: 'Un asesor de Terrenalv frente a los lotes ya abiertos: 60% de los terrenos vendidos, papeles al día, cuotas accesibles, sin bancos.' },
+  { ...FLYER, src: '/pasarella/07-testimonio.jpg', alt: 'Testimonio de un cliente: compró 15 terrenos buscando una inversión segura y rentable para su familia.' },
+
+  // Club house, en el orden en que uno lo recorre: la piscina, los bares, y
+  // después el edificio con su churrasquería y el parque infantil.
+  { ...RENDER, src: '/clubhouse/ch-08.jpg', alt: 'Render de la piscina del club house de Prados del Sur, con el muro de piedra que lleva el nombre del proyecto, un bar bajo techo de teja, sombrillas, tumbonas y un tobogán para los chicos.' },
+  { ...RENDER, src: '/clubhouse/ch-07.jpg', alt: 'Render de la piscina vista desde el agua: el bar techado sobre la piscina, reposeras dentro del agua y el muro de piedra con el nombre Prados del Sur.' },
+  { ...RENDER, src: '/clubhouse/ch-10.jpg', alt: 'Render de la piscina completa vista desde el césped, con la terraza de mesas y sombrillas a un costado.' },
+  { ...RENDER, src: '/clubhouse/ch-02.jpg', alt: 'Render del bar dentro de la piscina, con banquetas sumergidas y barra de madera bajo un techo de teja.' },
+  { ...RENDER, src: '/clubhouse/ch-04.jpg', alt: 'Render del bar de la piscina y su muro de agua, con mesas a la sombra y la barra con banquetas altas.' },
+  { ...RENDER, src: '/clubhouse/ch-09.jpg', alt: 'Render de la terraza junto a la piscina: mesas con sombrillas, deck de madera, palmeras y el tobogán al fondo.' },
+  { ...RENDER, src: '/clubhouse/ch-05.jpg', alt: 'Render del club house visto de frente, con su techo de teja, el ingreso entre columnas verdes y el parque infantil al costado.' },
+  { ...RENDER, src: '/clubhouse/ch-06.jpg', alt: 'Render del ingreso al club house entre las columnas verdes, con el salón techado y la churrasquería al fondo.' },
+  { ...RENDER, src: '/clubhouse/ch-01.jpg', alt: 'Render del salón techado del club house con mesas, y el parque infantil sobre el césped al lado.' },
+  { ...RENDER, src: '/clubhouse/ch-03.jpg', alt: 'Render del interior del salón del club house: barra, mesas para las familias y vista abierta al parque.' },
 ];
 
 const WHATSAPP_VENTAS = '+59175511996'; // Ventas Terrenalv
@@ -42,15 +63,10 @@ const FEATURED_TIKTOKS: { id: string; caption: string }[] = [
   { id: '7670249275229605141', caption: '¿Te imaginas pagar por algo que sí es tuyo?' },
 ];
 
-// Instagram posts from @terrenalv_srl, each shortcode read off the live profile
-// and then confirmed to render at /reel/<code>/embed/ (public, no login wall).
-//
-// Instagram has no profile-feed widget — Meta retired it, and a live feed needs
-// a Business account, a Meta app and a refreshed Graph API token. Fixed posts in
-// an iframe are the one path that works without any of that. The trade-off: if
-// Terrenalv deletes a post, its card goes blank, so these need re-checking when
-// the section is updated.
-const FEATURED_INSTAGRAM: { code: string; caption: string }[] = [
+// Shown ONLY while the live Instagram feed is unavailable — before the token is
+// connected, or if Meta is down. Each shortcode was read off the live profile
+// and confirmed to render at /reel/<code>/embed/ without a login wall.
+const INSTAGRAM_FALLBACK: FallbackPost[] = [
   { code: 'DZdisGSAa7R', caption: '¿Ya tenés tu terreno propio?' },
   { code: 'DZn145UgWL5', caption: 'Cuánto cuesta un terreno en Prados del Sur' },
   { code: 'DZmm25wDKWt', caption: 'La zona, los servicios y lo que ya está hecho' },
@@ -168,7 +184,9 @@ function SectionHead({
 }
 
 export default async function Home() {
-  const live = await loadLandingData();
+  // Independent sources: a slow or missing Instagram feed must not hold up the
+  // live figures, and neither one failing can take the other down.
+  const [live, instagram] = await Promise.all([loadLandingData(), loadInstagramPosts(3)]);
   const cur = live.currency;
 
   return (
@@ -347,8 +365,8 @@ export default async function Home() {
         <div className="mx-auto max-w-6xl px-4 py-12">
           <SectionHead
             annot="Registro fotográfico"
-            title="El proyecto, en fotos"
-            lede="Terrenos, servicios, avances y clientes que ya tienen el suyo."
+            title="El proyecto, en imágenes"
+            lede="Terrenos, servicios y avances, más los renders del club house tal como se está construyendo."
           />
           <div className="mt-10">
             <Pasarella slides={PASARELLA} />
@@ -414,26 +432,7 @@ export default async function Home() {
                 Ver perfil →
               </a>
             </div>
-            <div className="mt-5 grid gap-6 sm:grid-cols-3">
-              {FEATURED_INSTAGRAM.map((p) => (
-                <figure key={p.code} className="card card-lift rounded-3xl bg-white p-3">
-                  <div className="overflow-hidden rounded-2xl bg-stone-100">
-                    <iframe
-                      title={p.caption}
-                      src={`https://www.instagram.com/reel/${p.code}/embed/`}
-                      className="w-full border-0"
-                      style={{ height: 640 }}
-                      loading="lazy"
-                      scrolling="no"
-                      allow="encrypted-media; picture-in-picture; fullscreen"
-                    />
-                  </div>
-                  <figcaption className="mt-2 px-1 text-sm font-semibold text-stone-700">
-                    {p.caption}
-                  </figcaption>
-                </figure>
-              ))}
-            </div>
+            <InstagramFeed posts={instagram} fallback={INSTAGRAM_FALLBACK} />
           </div>
 
           {/* Facebook. A TikTok card used to sit beside it, but the embeds above

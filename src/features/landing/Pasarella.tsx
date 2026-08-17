@@ -15,6 +15,19 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 export interface Slide {
   src: string;
   alt: string;
+  /**
+   * Intrinsic pixel size. Slides are laid out to a common HEIGHT and their width
+   * follows, so the 4:5 flyers and the 16:9 club house renders can share one
+   * carousel without either being cropped or letterboxed.
+   */
+  width: number;
+  height: number;
+  /**
+   * Small overlay label. Used to mark the club house images as renders: they
+   * show what is being built, and a buyer must not read them as a photo of
+   * something already standing.
+   */
+  badge?: string;
 }
 
 const AUTO_MS = 5000;
@@ -104,19 +117,24 @@ export function Pasarella({ slides }: { slides: Slide[] }) {
         {slides.map((s, i) => (
           <figure
             key={s.src}
-            className="w-[78%] shrink-0 snap-center sm:w-[46%] lg:w-[31%]"
+            className="relative h-[96vw] shrink-0 snap-center sm:h-[58vw] lg:h-105"
             aria-roledescription="diapositiva"
             aria-label={`${i + 1} de ${slides.length}`}
           >
             <Image
               src={s.src}
               alt={s.alt}
-              width={900}
-              height={1125}
-              sizes="(max-width: 640px) 78vw, (max-width: 1024px) 46vw, 31vw"
-              className="h-auto w-full rounded-2xl border border-stone-200 bg-white shadow-sm"
+              width={s.width}
+              height={s.height}
+              sizes="(max-width: 640px) 78vw, (max-width: 1024px) 60vw, 40vw"
+              className="h-full w-auto rounded-2xl border border-stone-200 bg-white shadow-sm"
               priority={i === 0}
             />
+            {s.badge ? (
+              <figcaption className="annot absolute left-3 top-3 rounded-full bg-stone-900/70 px-3 py-1.5 text-white backdrop-blur-xs">
+                {s.badge}
+              </figcaption>
+            ) : null}
           </figure>
         ))}
       </div>

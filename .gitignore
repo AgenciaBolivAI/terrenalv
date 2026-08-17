@@ -51,3 +51,6 @@ cad/preview.svg
 
 __pycache__/
 *.pyc
+
+# Originales de WhatsApp del club house: las copias servidas viven en public/clubhouse/
+/clubhouse/
