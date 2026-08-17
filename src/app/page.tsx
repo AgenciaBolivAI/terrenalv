@@ -118,10 +118,14 @@ export default async function Home() {
       {/* Hero */}
       <section className="bg-linear-to-b from-brand to-emerald-900 text-white">
         <div className="mx-auto max-w-6xl px-4 py-16 sm:py-24 text-center">
-          <p className="text-amber-300 font-semibold tracking-widest text-sm uppercase">
+          <p className="text-earth-tan font-semibold tracking-widest text-sm uppercase">
             Urbanización Ciudadela · Zanja Honda, Santa Cruz
           </p>
           <h1 className="mt-3 text-4xl sm:text-6xl font-black tracking-tight">Prados del Sur</h1>
+          {/* Slogan oficial de Terrenalv S.R.L. */}
+          <p className="mt-3 text-earth-tan text-lg sm:text-xl font-bold italic">
+            «Lo que se dice, se cumple»
+          </p>
           <p className="mt-4 max-w-2xl mx-auto text-emerald-50/90 text-lg">
             88 manzanas con lotes de 300 m² (10 × 30) sobre la carretera Santa Cruz — Camiri.
             El mapa muestra el plano oficial lote por lote: elige el tuyo y resérvalo en minutos
@@ -132,18 +136,18 @@ export default async function Home() {
           {(live.disponibles ?? 0) > 0 ? (
             <div className="mt-6 flex flex-wrap justify-center gap-2">
               <Chip>
-                <span className="text-amber-300">{live.disponibles!.toLocaleString('es-BO')}</span>{' '}
+                <span className="text-earth-tan">{live.disponibles!.toLocaleString('es-BO')}</span>{' '}
                 lotes disponibles hoy
               </Chip>
               {live.desde !== null ? (
                 <Chip>
-                  desde <span className="text-amber-300">{formatMoney(live.desde, cur)}</span>
+                  desde <span className="text-earth-tan">{formatMoney(live.desde, cur)}</span>
                 </Chip>
               ) : null}
               {live.financing ? (
                 <Chip>
                   cuotas desde{' '}
-                  <span className="text-amber-300">
+                  <span className="text-earth-tan">
                     {formatMoney(live.financing.monthly, cur)}/mes
                   </span>
                 </Chip>
@@ -154,7 +158,7 @@ export default async function Home() {
           <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
             <Link
               href="/prados-del-sur/mapa"
-              className="rounded-2xl bg-amber-400 text-emerald-950 font-bold px-8 py-4 text-lg shadow-lg hover:bg-amber-300 transition"
+              className="rounded-2xl bg-earth text-white font-bold px-8 py-4 text-lg shadow-lg hover:bg-earth-light transition"
             >
               Explorar el mapa de lotes
             </Link>
@@ -314,8 +318,8 @@ export default async function Home() {
           </h2>
 
           <div className="mt-8 grid gap-4 sm:grid-cols-3 max-w-4xl mx-auto">
-            <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-6 text-center">
-              <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">
+            <div className="rounded-2xl border-2 border-earth-tan bg-earth-pale p-6 text-center">
+              <p className="text-sm font-semibold uppercase tracking-wide text-earth">
                 Hoy, para asegurar tu lote
               </p>
               <p className="mt-2 text-3xl font-black text-stone-900">
@@ -351,6 +355,25 @@ export default async function Home() {
                   : 'Plazo y cuota según el lote que elijas.'}
               </p>
             </div>
+          </div>
+
+          {/* Slogan-backed differentiator: en Terrenalv el cliente propone su
+              forma de pago — the plan above is a reference, not a cage. */}
+          <div className="mt-8 max-w-3xl mx-auto rounded-2xl bg-earth text-white p-6 sm:p-8 text-center shadow-lg">
+            <p className="text-xl sm:text-2xl font-black">Tú propones tu forma de pago</p>
+            <p className="mt-2 text-white/85">
+              El plan de arriba es referencial. En Terrenalv <strong>el cliente propone su forma
+              de pago</strong>: cuéntanos cuánto puedes dar de inicial y cuánto por mes, y lo
+              armamos contigo.
+            </p>
+            <a
+              href={waLink(WHATSAPP_VENTAS, 'Hola Terrenalv, quiero proponer mi forma de pago para un lote de Prados del Sur.')}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-5 inline-block rounded-xl bg-white text-earth font-bold px-7 py-3.5 hover:bg-earth-pale transition"
+            >
+              Proponer mi forma de pago
+            </a>
           </div>
 
           <p className="mt-6 text-center text-xs text-stone-400 max-w-xl mx-auto">
@@ -479,7 +502,7 @@ export default async function Home() {
           </p>
           <Link
             href="/prados-del-sur/mapa"
-            className="mt-7 inline-block rounded-2xl bg-amber-400 text-emerald-950 font-bold px-10 py-4 text-lg shadow-lg hover:bg-amber-300 transition"
+            className="mt-7 inline-block rounded-2xl bg-earth text-white font-bold px-10 py-4 text-lg shadow-lg hover:bg-earth-light transition"
           >
             Elegir mi lote en el mapa
           </Link>
@@ -491,9 +514,10 @@ export default async function Home() {
         <div className="mx-auto max-w-6xl px-4 py-10 grid gap-6 sm:grid-cols-3 text-sm">
           <div>
             <Logo variant="inverse" className="h-8 w-auto" />
-            <p className="mt-3">
+            <p className="mt-3 font-bold text-earth-tan italic">«Lo que se dice, se cumple»</p>
+            <p className="mt-2">
               Empresa boliviana de desarrollo urbano. Proyecto Urbanización Ciudadela Prados del
-              Sur.
+              Sur. El cliente propone su forma de pago.
             </p>
             <div className="mt-3 flex gap-3">
               {[

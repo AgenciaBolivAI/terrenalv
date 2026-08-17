@@ -5,6 +5,11 @@
   --brand-green: #14532d;
   --brand-green-light: #16a34a;
   --brand-brown: #7c4f2c;
+  /* Shades of the logo brown for the landing accents: hover state, tan text
+     that stays readable on the dark green hero, pale card background. */
+  --brand-brown-light: #96613a;
+  --brand-brown-tan: #d6b48c;
+  --brand-brown-pale: #f6efe7;
   --brand-cream: #faf8f4;
   --ink: #1c1917;
 
@@ -29,6 +34,9 @@
   --color-brand: var(--brand-green);
   --color-brand-light: var(--brand-green-light);
   --color-earth: var(--brand-brown);
+  --color-earth-light: var(--brand-brown-light);
+  --color-earth-tan: var(--brand-brown-tan);
+  --color-earth-pale: var(--brand-brown-pale);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
