@@ -41,6 +41,62 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* ---------------------------------------------------------------------------
+   Landing: "cadastral" treatment.
+
+   The visual language is lifted from Terrenalv's own survey plano — hairline
+   rules, a faint plot grid, monospaced annotations and tabular figures. It is
+   specific to this company (nobody else has this drawing) and it carries the
+   sales argument: the page looks like it came out of the real documents.
+   --------------------------------------------------------------------------- */
+
+/* Faint cadastral grid, for laying over photography or flat brand colour. */
+.plot-grid {
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.07) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+/* Drawing-sheet annotation: mono, spaced, small. */
+.annot {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.6875rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* Figures line up in columns wherever they are compared. */
+.figures {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Cards sit on the page rather than being boxed in by a hard border. */
+.card {
+  border: 1px solid rgb(28 25 23 / 0.07);
+  box-shadow:
+    0 1px 2px rgb(28 25 23 / 0.04),
+    0 8px 24px -12px rgb(28 25 23 / 0.10);
+  transition:
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.card-lift:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 2px 4px rgb(28 25 23 / 0.05),
+    0 18px 40px -16px rgb(28 25 23 / 0.18);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .card-lift:hover {
+    transition: none;
+    transform: none;
+  }
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

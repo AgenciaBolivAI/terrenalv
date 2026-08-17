@@ -108,9 +108,46 @@ function WhatsappIcon({ className }: { className?: string }) {
 
 function Chip({ children }: { children: React.ReactNode }) {
   return (
-    <span className="rounded-full bg-white/10 border border-white/20 px-4 py-1.5 text-sm font-semibold">
+    <span className="rounded-full border border-white/25 bg-white/10 px-4 py-2 text-sm font-semibold backdrop-blur-xs">
       {children}
     </span>
+  );
+}
+
+/**
+ * Section opener in the language of the plano: a monospaced annotation over a
+ * hairline, then the heading. The annotation names which part of the project
+ * the section covers — the way a drawing's title block does — so it carries
+ * information instead of decorating the heading.
+ */
+function SectionHead({
+  annot,
+  title,
+  lede,
+  align = 'center',
+}: {
+  annot: string;
+  title: string;
+  lede?: string;
+  align?: 'center' | 'left';
+}) {
+  const centered = align === 'center';
+  return (
+    <div className={centered ? 'text-center' : undefined}>
+      <div className={`flex items-center gap-3 ${centered ? 'justify-center' : ''}`}>
+        <span aria-hidden="true" className="h-px w-8 bg-earth/45" />
+        <p className="annot text-earth">{annot}</p>
+        {centered ? <span aria-hidden="true" className="h-px w-8 bg-earth/45" /> : null}
+      </div>
+      <h2 className="mt-3 text-balance text-3xl font-black tracking-tight text-brand sm:text-4xl">
+        {title}
+      </h2>
+      {lede ? (
+        <p className={`mt-3 text-lg text-stone-600 ${centered ? 'mx-auto max-w-2xl' : 'max-w-xl'}`}>
+          {lede}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -121,19 +158,19 @@ export default async function Home() {
   return (
     <div className="min-h-screen flex flex-col pb-20 sm:pb-0">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-brand text-white">
-        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
+      <header className="sticky top-0 z-20 border-b border-white/10 bg-brand/95 text-white backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <Link href="/" aria-label="Inicio">
             <Logo variant="inverse" className="h-7 w-auto" />
           </Link>
           <nav className="flex items-center gap-2">
             <Link
               href="/prados-del-sur/mapa"
-              className="rounded-full bg-white/10 hover:bg-white/20 px-4 py-2 text-sm font-semibold"
+              className="rounded-full bg-white/10 px-4 py-2 text-sm font-semibold transition hover:bg-white/20"
             >
               Ver mapa
             </Link>
-            <MiReservaLink className="hidden sm:block rounded-full px-4 py-2 text-sm font-semibold hover:bg-white/10">
+            <MiReservaLink className="hidden rounded-full px-4 py-2 text-sm font-semibold transition hover:bg-white/10 sm:block">
               Mi reserva
             </MiReservaLink>
           </nav>
@@ -151,16 +188,20 @@ export default async function Home() {
         />
         {/* Keeps the white text readable over a bright, sunlit photo. */}
         <div aria-hidden="true" className="absolute inset-0 -z-10 bg-linear-to-b from-brand/85 via-brand/80 to-emerald-950/90" />
-        <div className="mx-auto max-w-6xl px-4 py-16 sm:py-24 text-center">
-          <p className="text-earth-tan font-semibold tracking-widest text-sm uppercase">
+        {/* The surveyor's grid, laid over the land it measures. */}
+        <div aria-hidden="true" className="plot-grid absolute inset-0 -z-10" />
+        <div className="mx-auto max-w-6xl px-4 py-20 text-center sm:py-28">
+          <p className="annot text-earth-tan">
             Urbanización Ciudadela · Zanja Honda, Santa Cruz
           </p>
-          <h1 className="mt-3 text-4xl sm:text-6xl font-black tracking-tight">Prados del Sur</h1>
+          <h1 className="mt-4 text-5xl font-black tracking-tighter sm:text-7xl lg:text-8xl">
+            Prados del Sur
+          </h1>
           {/* Slogan oficial de Terrenalv S.R.L. */}
-          <p className="mt-3 text-earth-tan text-lg sm:text-xl font-bold italic">
+          <p className="mt-4 text-lg font-bold italic text-earth-tan sm:text-xl">
             «Lo que se dice, se cumple»
           </p>
-          <p className="mt-4 max-w-2xl mx-auto text-emerald-50/90 text-lg">
+          <p className="mx-auto mt-5 max-w-2xl text-pretty text-lg text-emerald-50/90">
             88 manzanas con lotes de 300 m² (10 × 30) sobre la carretera Santa Cruz — Camiri.
             El mapa muestra el plano oficial lote por lote: elige el tuyo y resérvalo en minutos
             desde el celular.
@@ -168,20 +209,23 @@ export default async function Home() {
 
           {/* Live availability — hidden entirely if the DB is unreachable. */}
           {(live.disponibles ?? 0) > 0 ? (
-            <div className="mt-6 flex flex-wrap justify-center gap-2">
+            <div className="mt-7 flex flex-wrap justify-center gap-2">
               <Chip>
-                <span className="text-earth-tan">{live.disponibles!.toLocaleString('es-BO')}</span>{' '}
+                <span className="figures text-earth-tan">
+                  {live.disponibles!.toLocaleString('es-BO')}
+                </span>{' '}
                 lotes disponibles hoy
               </Chip>
               {live.desde !== null ? (
                 <Chip>
-                  desde <span className="text-earth-tan">{formatMoney(live.desde, cur)}</span>
+                  desde{' '}
+                  <span className="figures text-earth-tan">{formatMoney(live.desde, cur)}</span>
                 </Chip>
               ) : null}
               {live.financing ? (
                 <Chip>
                   cuotas desde{' '}
-                  <span className="text-earth-tan">
+                  <span className="figures text-earth-tan">
                     {formatMoney(
                       live.financing.monthly,
                       live.financing.minMonthly !== null
@@ -196,10 +240,10 @@ export default async function Home() {
           ) : null}
 
           {/* Choosing the lot is THE action; WhatsApp sits beside it, not above. */}
-          <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
+          <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
             <Link
               href="/prados-del-sur/mapa"
-              className="rounded-2xl bg-earth text-white font-black px-9 py-5 text-xl shadow-xl hover:bg-earth-light transition"
+              className="rounded-2xl bg-earth px-9 py-5 text-xl font-black text-white shadow-[0_12px_32px_-10px_rgba(0,0,0,.6)] ring-1 ring-white/15 transition hover:bg-earth-light"
             >
               Elegir mi lote en el mapa
             </Link>
@@ -207,13 +251,13 @@ export default async function Home() {
               href={waLink(WHATSAPP_VENTAS, 'Hola Terrenalv, quiero información sobre los lotes de Prados del Sur.')}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/10 border border-white/25 font-semibold px-8 py-5 text-lg hover:bg-white/20 transition"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/25 bg-white/10 px-8 py-5 text-lg font-semibold backdrop-blur-xs transition hover:bg-white/20"
             >
               <WhatsappIcon className="h-5 w-5" />
               Hablar por WhatsApp
             </a>
           </div>
-          <p className="mt-4 text-sm text-white/70">
+          <p className="mt-5 text-sm text-white/70">
             Ves cada lote del plano con su número, medidas y precio. Sin cuenta, sin costo.
           </p>
           <div className="mx-auto mt-6 max-w-md text-stone-900">
@@ -223,16 +267,18 @@ export default async function Home() {
       </section>
 
       {/* El proyecto en números — straight off the CAD plano */}
-      <section className="bg-white border-b border-stone-200">
-        <div className="mx-auto max-w-6xl px-4 py-10">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-6 text-center">
+      <section className="border-b border-stone-200 bg-white">
+        <div className="mx-auto max-w-6xl px-4 py-12">
+          {/* Read as a survey schedule: hairline-ruled cells, figures in a
+              tabular face so the columns line up down the grid. */}
+          <dl className="grid grid-cols-2 border-t border-l border-stone-200 sm:grid-cols-3 lg:grid-cols-6">
             {numeros(live.totalLotes).map(([n, label]) => (
-              <div key={label}>
-                <p className="text-3xl font-black text-brand">{n}</p>
-                <p className="mt-1 text-sm text-stone-500">{label}</p>
+              <div key={label} className="border-r border-b border-stone-200 px-4 py-5">
+                <dt className="annot text-stone-400">{label}</dt>
+                <dd className="figures mt-2 text-3xl font-black text-brand">{n}</dd>
               </div>
             ))}
-          </div>
+          </dl>
           <p className="mt-6 text-center text-xs text-stone-400">
             Cifras del plano oficial de la urbanización (levantamiento CAD, mayo 2025).
           </p>
@@ -242,25 +288,22 @@ export default async function Home() {
       {/* Qué incluye — cada punto sale de los materiales de Terrenalv
           (folletos de pasarella/ y sus videos), no de suposiciones mías. */}
       <section className="bg-earth-pale border-b border-stone-200">
-        <div className="mx-auto max-w-6xl px-4 py-14">
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-center text-brand">
-            Qué incluye tu terreno
-          </h2>
+        <div className="mx-auto max-w-6xl px-4 py-16">
+          <SectionHead annot="Lo que compras" title="Qué incluye tu terreno" />
 
-          <div className="mt-8 grid gap-6 lg:grid-cols-3 items-start">
+          <div className="mt-10 grid items-start gap-6 lg:grid-cols-3">
             {/* Club house: the headline amenity in their own material. */}
-            <div className="lg:col-span-1 rounded-2xl bg-earth text-white p-7 shadow-lg">
-              <p className="text-xs font-bold uppercase tracking-widest text-earth-tan">
-                Incluido
-              </p>
-              <h3 className="mt-2 text-2xl font-black">Club House</h3>
+            <div className="relative isolate overflow-hidden rounded-3xl bg-earth p-8 text-white shadow-[0_18px_44px_-20px_rgba(124,79,44,.85)] lg:col-span-1">
+              <div aria-hidden="true" className="plot-grid absolute inset-0 -z-10" />
+              <p className="annot text-earth-tan">Incluido</p>
+              <h3 className="mt-3 text-3xl font-black tracking-tight">Club House</h3>
               <p className="mt-3 text-white/90">
                 La ciudadela tiene su propio club house con áreas sociales para las familias de
                 Prados del Sur — ya hay lotes habilitados a pasos de él.
               </p>
             </div>
 
-            <ul className="lg:col-span-2 grid gap-4 sm:grid-cols-2">
+            <ul className="grid gap-4 sm:grid-cols-2 lg:col-span-2">
               {(
                 [
                   ['Servicios básicos incluidos', 'Instalados en la urbanización, no prometidos para después.'],
@@ -269,15 +312,15 @@ export default async function Home() {
                   ['A 35 min del km 13 de la doble vía La Guardia', 'Sobre la avenida internacional, cerca de colegio, centro médico y mercado.'],
                 ] as [string, string][]
               ).map(([t, b]) => (
-                <li key={t} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-                  <p className="font-bold text-brand">{t}</p>
-                  <p className="mt-1.5 text-sm text-stone-600">{b}</p>
+                <li key={t} className="card card-lift rounded-3xl bg-white p-6">
+                  <p className="text-balance font-bold text-brand">{t}</p>
+                  <p className="mt-2 text-sm text-stone-600">{b}</p>
                 </li>
               ))}
             </ul>
           </div>
 
-          <p className="mt-6 text-center text-sm text-stone-500">
+          <p className="mt-8 text-center text-sm text-stone-500">
             7 años entregando terrenos con todo en orden.
           </p>
         </div>
@@ -286,13 +329,12 @@ export default async function Home() {
       {/* Pasarella de fotos — antes de los videos */}
       <section className="bg-stone-50 border-b border-stone-200">
         <div className="mx-auto max-w-6xl px-4 py-12">
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-center text-brand">
-            El proyecto, en fotos
-          </h2>
-          <p className="mt-2 text-center text-stone-600 max-w-2xl mx-auto">
-            Terrenos, servicios, avances y clientes que ya tienen el suyo.
-          </p>
-          <div className="mt-8">
+          <SectionHead
+            annot="Registro fotográfico"
+            title="El proyecto, en fotos"
+            lede="Terrenos, servicios, avances y clientes que ya tienen el suyo."
+          />
+          <div className="mt-10">
             <Pasarella slides={PASARELLA} />
           </div>
         </div>
@@ -301,20 +343,18 @@ export default async function Home() {
       {/* Videos reales desde redes sociales */}
       <section className="bg-stone-100">
         <div className="mx-auto max-w-6xl px-4 py-14">
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-center text-brand">
-            Mira el proyecto en video
-          </h2>
-          <p className="mt-2 text-center text-stone-600 max-w-2xl mx-auto">
-            Avances de obra, recorridos y entregas de terrenos, directo de nuestras redes —
-            siempre lo último que publicamos.
-          </p>
+          <SectionHead
+            annot={`@${SOCIAL.tiktokUser}`}
+            title="Mira el proyecto en video"
+            lede="Avances de obra, recorridos y entregas de terrenos, publicados por el propio equipo de Terrenalv."
+          />
 
           {/* Featured videos — fixed, verified posts so the section has real
-              content immediately, before the profile widgets hydrate. */}
-          <div className="mt-8 grid gap-6 sm:grid-cols-3">
+              content immediately, before the Facebook plugin hydrates. */}
+          <div className="mt-10 grid gap-6 sm:grid-cols-3">
             {FEATURED_TIKTOKS.map((v) => (
-              <figure key={v.id} className="rounded-2xl border border-stone-200 bg-white p-3 shadow-sm">
-                <div className="overflow-hidden rounded-xl bg-stone-900">
+              <figure key={v.id} className="card card-lift rounded-3xl bg-white p-3">
+                <div className="overflow-hidden rounded-2xl bg-stone-900">
                   <iframe
                     title={v.caption}
                     src={`https://www.tiktok.com/embed/v2/${v.id}`}
@@ -331,30 +371,14 @@ export default async function Home() {
             ))}
           </div>
 
-          <div className="mt-8 grid gap-6 lg:grid-cols-2 items-start">
-            {/* TikTok's creator widget (data-embed-type="creator") rendered
-                "Internal Server Error" in a black box on the live page. The
-                per-video iframes above work, so the widget is gone and this
-                card just points at the profile. */}
-            <div className="flex h-full flex-col justify-center rounded-2xl border border-stone-200 bg-white p-8 text-center shadow-sm">
-              <h3 className="text-xl font-black text-stone-900">TikTok</h3>
-              <p className="mt-1 font-semibold text-stone-500">@{SOCIAL.tiktokUser}</p>
-              <p className="mt-3 text-stone-600">
-                Ahí publicamos avances de obra, lotes habilitados y entregas, casi todos los días.
-              </p>
-              <a
-                href={SOCIAL.tiktok}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-5 inline-block self-center rounded-xl bg-earth px-7 py-3.5 font-bold text-white hover:bg-earth-light"
-              >
-                Ver todos los videos
-              </a>
-            </div>
-
+          {/* Only Facebook gets a second panel. A TikTok card used to sit beside
+              it, but the six embeds above are already TikTok and the follow
+              buttons below already link to the profile — it was the same link
+              said three times, in a mostly empty box. */}
+          <div className="mx-auto mt-8 max-w-2xl">
             {/* Facebook: page timeline plugin — latest posts and videos. */}
-            <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-2">
+            <div className="card rounded-3xl bg-white p-4">
+              <div className="flex items-center justify-between gap-2 px-1">
                 <h3 className="font-bold text-stone-900">Facebook — Terrenalv.srl</h3>
                 <a
                   href={SOCIAL.facebook}
@@ -365,7 +389,7 @@ export default async function Home() {
                   Ver página →
                 </a>
               </div>
-              <div className="mt-3 overflow-hidden rounded-xl">
+              <div className="mt-3 overflow-hidden rounded-2xl">
                 <iframe
                   title="Página de Facebook de Terrenalv"
                   src={`https://www.facebook.com/plugins/page.php?href=${encodeURIComponent(SOCIAL.facebook)}&tabs=timeline&width=500&height=560&small_header=true&adapt_container_width=true&hide_cover=false&show_facepile=false`}
@@ -406,56 +430,57 @@ export default async function Home() {
       {/* Plan de pago — live desde la base de datos */}
       <section className="bg-white border-y border-stone-200">
         <div className="mx-auto max-w-6xl px-4 py-14">
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-center text-brand">
-            ¿Cuánto necesito para empezar?
-          </h2>
+          <SectionHead annot="Plan de pago" title="¿Cuánto necesito para empezar?" />
 
-          <div className="mt-8 grid gap-4 sm:grid-cols-3 max-w-4xl mx-auto">
-            <div className="rounded-2xl border-2 border-earth-tan bg-earth-pale p-6 text-center">
-              <p className="text-sm font-semibold uppercase tracking-wide text-earth">
-                Hoy, para asegurar tu lote
-              </p>
-              <p className="mt-2 text-3xl font-black text-stone-900">
+          {/* Three moments in order: hoy, al arrancar, cada mes. The sequence is
+              the point, so the cards read left to right as a timeline. */}
+          <div className="mx-auto mt-10 grid max-w-4xl gap-4 sm:grid-cols-3">
+            <div className="card rounded-3xl border-earth-tan! bg-earth-pale p-7 text-center">
+              <p className="annot text-earth">Hoy, para asegurar tu lote</p>
+              <p className="figures mt-3 text-3xl font-black text-stone-900">
                 {live.sena ? formatMoney(live.sena.amount, live.sena.currency) : 'Una seña'}
               </p>
-              <p className="mt-2 text-sm text-stone-600">
+              <p className="mt-3 text-sm text-stone-600">
                 Se paga por QR al reservar y se descuenta íntegra del precio del lote.
               </p>
             </div>
-            <div className="rounded-2xl border border-stone-200 bg-white p-6 text-center shadow-sm">
-              <p className="text-sm font-semibold uppercase tracking-wide text-stone-500">
-                Cuota inicial
-              </p>
+            <div className="card rounded-3xl bg-white p-7 text-center">
+              <p className="annot text-stone-400">Cuota inicial</p>
               {/* A fixed cuota inicial is quoted in bolivianos even though the
                   lot is priced in dólares — show it in its own currency. */}
-              <p className="mt-2 text-3xl font-black text-stone-900">
+              <p className="figures mt-3 text-3xl font-black text-stone-900">
                 {live.financing
                   ? formatMoney(live.financing.downPayment, live.financing.downPaymentCurrency)
                   : '—'}
               </p>
-              <p className="mt-2 text-sm text-stone-600">
+              <p className="mt-3 text-sm text-stone-600">
                 {live.financing && live.tipico
                   ? `Con eso arrancas, sea cual sea el lote. Un lote típico cuesta ${formatMoney(live.tipico, cur)}.`
                   : 'Se confirma con tu asesor al reservar.'}
               </p>
             </div>
-            <div className="rounded-2xl border border-stone-200 bg-white p-6 text-center shadow-sm">
-              <p className="text-sm font-semibold uppercase tracking-wide text-stone-500">
-                Cuota mensual
-              </p>
+            <div className="card rounded-3xl bg-white p-7 text-center">
+              <p className="annot text-stone-400">Cuota mensual</p>
               {/* Only the minimum is published. The term depends on conditions
                   Terrenalv agrees in person, so no "N cuotas" here. */}
-              <p className="mt-2 text-3xl font-black text-stone-900">
-                {live.financing
-                  ? `desde ${formatMoney(
-                      live.financing.monthly,
-                      live.financing.minMonthly !== null
-                        ? live.financing.downPaymentCurrency
-                        : cur,
-                    )}`
-                  : '—'}
+              <p className="mt-3 text-3xl font-black text-stone-900">
+                {live.financing ? (
+                  <>
+                    <span className="text-xl font-bold text-stone-500">desde </span>
+                    <span className="figures">
+                      {formatMoney(
+                        live.financing.monthly,
+                        live.financing.minMonthly !== null
+                          ? live.financing.downPaymentCurrency
+                          : cur,
+                      )}
+                    </span>
+                  </>
+                ) : (
+                  '—'
+                )}
               </p>
-              <p className="mt-2 text-sm text-stone-600">
+              <p className="mt-3 text-sm text-stone-600">
                 Crédito directo, sin banco y a sola firma. El plazo lo armas con tu asesor.
               </p>
             </div>
@@ -463,9 +488,12 @@ export default async function Home() {
 
           {/* Slogan-backed differentiator: en Terrenalv el cliente propone su
               forma de pago — the plan above is a reference, not a cage. */}
-          <div className="mt-8 max-w-3xl mx-auto rounded-2xl bg-earth text-white p-6 sm:p-8 text-center shadow-lg">
-            <p className="text-xl sm:text-2xl font-black">Tú propones tu forma de pago</p>
-            <p className="mt-2 text-white/85">
+          <div className="relative isolate mx-auto mt-8 max-w-3xl overflow-hidden rounded-3xl bg-earth p-8 text-center text-white shadow-[0_18px_44px_-20px_rgba(124,79,44,.85)] sm:p-10">
+            <div aria-hidden="true" className="plot-grid absolute inset-0 -z-10" />
+            <p className="text-2xl font-black tracking-tight sm:text-3xl">
+              Tú propones tu forma de pago
+            </p>
+            <p className="mt-3 text-white/85">
               El plan de arriba es referencial. En Terrenalv <strong>el cliente propone su forma
               de pago</strong>: cuéntanos cuánto puedes dar de inicial y cuánto por mes, y lo
               armamos contigo.
@@ -491,24 +519,29 @@ export default async function Home() {
       {/* How it works */}
       <section className="bg-stone-50">
         <div className="mx-auto max-w-6xl px-4 py-14">
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-center text-brand">
-            ¿Cómo reservo mi lote?
-          </h2>
-          <ol className="mt-8 grid gap-6 sm:grid-cols-4">
+          <SectionHead annot="Cuatro pasos" title="¿Cómo reservo mi lote?" />
+          {/* The numbers are real here — this is an ordered process with a
+              48-hour clock in it, so the sequence is information, not decor.
+              A hairline runs behind the markers to show it as one run. */}
+          <ol className="relative mt-10 grid gap-8 sm:grid-cols-4">
+            <span
+              aria-hidden="true"
+              className="absolute inset-x-[12.5%] top-6 hidden h-px bg-stone-300 sm:block"
+            />
             {PASOS.map(([n, title, body]) => (
-              <li key={n} className="text-center">
-                <div className="mx-auto w-12 h-12 rounded-full bg-brand text-white font-black text-xl flex items-center justify-center">
+              <li key={n} className="relative text-center">
+                <div className="figures mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand text-xl font-black text-white ring-4 ring-stone-50">
                   {n}
                 </div>
-                <p className="mt-3 font-bold">{title}</p>
-                <p className="mt-1 text-sm text-stone-600">{body}</p>
+                <p className="mt-4 font-bold text-brand">{title}</p>
+                <p className="mt-1.5 text-sm text-stone-600">{body}</p>
               </li>
             ))}
           </ol>
-          <p className="mt-8 text-center">
+          <p className="mt-10 text-center">
             <Link
               href="/prados-del-sur/mapa"
-              className="inline-block rounded-2xl bg-brand text-white font-bold px-8 py-4 hover:bg-emerald-800 transition"
+              className="inline-block rounded-2xl bg-brand px-8 py-4 font-bold text-white shadow-[0_10px_28px_-12px_rgba(20,83,45,.8)] transition hover:bg-emerald-800"
             >
               Ver lotes disponibles
             </Link>
@@ -520,34 +553,33 @@ export default async function Home() {
       <section className="bg-white border-y border-stone-200">
         <div className="mx-auto max-w-6xl px-4 py-14 grid gap-8 lg:grid-cols-2 items-center">
           <div>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-brand">¿Dónde queda?</h2>
-            <ul className="mt-5 space-y-3 text-stone-700">
-              <li className="flex gap-3">
-                <span className="text-brand font-black">•</span>
-                Zona <strong>Zanja Honda</strong>, municipio de Cabezas, provincia Cordillera —
-                Santa Cruz, Bolivia.
-              </li>
-              <li className="flex gap-3">
-                <span className="text-brand font-black">•</span>
-                Frente directo sobre la <strong>carretera Santa Cruz — Camiri</strong> (Ruta 9),
-                con acceso todo el año.
-              </li>
-              <li className="flex gap-3">
-                <span className="text-brand font-black">•</span>
-                3,2 km de urbanización con una avenida central de 30 m y calles de 13 m, tal
-                como figura en el plano aprobado.
-              </li>
-            </ul>
+            <SectionHead annot="Ubicación" title="¿Dónde queda?" align="left" />
+            {/* Each line is a fact off the plano, so they read as a schedule of
+                data rather than a bulleted list. */}
+            <dl className="mt-6 divide-y divide-stone-200 border-y border-stone-200">
+              {(
+                [
+                  ['Zona', <>Zanja Honda, municipio de Cabezas, provincia Cordillera — Santa Cruz, Bolivia.</>],
+                  ['Acceso', <>Frente directo sobre la carretera Santa Cruz — Camiri (Ruta 9), transitable todo el año.</>],
+                  ['Trazado', <>3,2 km de urbanización, avenida central de 30 m y calles de 13 m, tal como figura en el plano aprobado.</>],
+                ] as [string, React.ReactNode][]
+              ).map(([k, v]) => (
+                <div key={k} className="grid gap-1 py-4 sm:grid-cols-[7rem_1fr] sm:gap-4">
+                  <dt className="annot pt-1 text-stone-400">{k}</dt>
+                  <dd className="text-stone-700">{v}</dd>
+                </div>
+              ))}
+            </dl>
             <a
               href="https://maps.google.com/?q=PRH3%2BWJ7+Zanja+Honda,+Cabezas,+Santa+Cruz,+Bolivia"
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-6 inline-block rounded-xl border border-brand/30 px-5 py-3 font-bold text-brand hover:bg-brand/5"
+              className="mt-6 inline-block rounded-xl border border-brand/30 px-5 py-3 font-bold text-brand transition hover:bg-brand/5"
             >
               Abrir en Google Maps
             </a>
           </div>
-          <div className="overflow-hidden rounded-2xl border border-stone-200 shadow-sm">
+          <div className="card overflow-hidden rounded-3xl">
             <iframe
               title="Ubicación de Prados del Sur en Google Maps"
               src={MAPS_EMBED}
@@ -563,22 +595,20 @@ export default async function Home() {
       {/* FAQ */}
       <section className="bg-stone-50">
         <div className="mx-auto max-w-3xl px-4 py-14">
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-center text-brand">
-            Preguntas frecuentes
-          </h2>
-          <div className="mt-8 space-y-3">
+          <SectionHead annot="Antes de reservar" title="Preguntas frecuentes" />
+          <div className="mt-10 space-y-3">
             {FAQ.map(([q, a]) => (
-              <details
-                key={q}
-                className="group rounded-xl border border-stone-200 bg-white p-4 shadow-sm"
-              >
-                <summary className="cursor-pointer list-none font-bold text-stone-900 flex items-center justify-between gap-3 min-h-11">
+              <details key={q} className="card group rounded-2xl bg-white px-5 py-4">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 font-bold text-stone-900">
                   {q}
-                  <span className="text-brand transition-transform group-open:rotate-45 text-xl leading-none">
+                  <span
+                    aria-hidden="true"
+                    className="text-xl leading-none text-earth transition-transform duration-200 group-open:rotate-45"
+                  >
                     +
                   </span>
                 </summary>
-                <p className="mt-2 text-stone-600">{a}</p>
+                <p className="mt-3 border-t border-stone-200 pt-3 text-stone-600">{a}</p>
               </details>
             ))}
           </div>
@@ -597,17 +627,20 @@ export default async function Home() {
       </section>
 
       {/* Final CTA */}
-      <section className="bg-linear-to-b from-emerald-900 to-brand text-white">
-        <div className="mx-auto max-w-6xl px-4 py-16 text-center">
-          <h2 className="text-3xl sm:text-4xl font-black">Tu lote te está esperando</h2>
-          <p className="mt-3 text-emerald-50/90 max-w-xl mx-auto">
+      <section className="relative isolate bg-linear-to-b from-emerald-900 to-brand text-white">
+        <div aria-hidden="true" className="plot-grid absolute inset-0 -z-10" />
+        <div className="mx-auto max-w-6xl px-4 py-20 text-center">
+          <h2 className="text-balance text-4xl font-black tracking-tight sm:text-5xl">
+            Tu lote te está esperando
+          </h2>
+          <p className="mx-auto mt-4 max-w-xl text-pretty text-emerald-50/90">
             {(live.disponibles ?? 0) > 0
               ? `Hay ${live.disponibles!.toLocaleString('es-BO')} lotes disponibles ahora mismo. Cada reserva bloquea su lote al instante — el que te gusta hoy puede no estar mañana.`
               : 'Cada reserva bloquea su lote al instante — el que te gusta hoy puede no estar mañana.'}
           </p>
           <Link
             href="/prados-del-sur/mapa"
-            className="mt-7 inline-block rounded-2xl bg-earth text-white font-bold px-10 py-4 text-lg shadow-lg hover:bg-earth-light transition"
+            className="mt-8 inline-block rounded-2xl bg-earth px-10 py-5 text-lg font-black text-white shadow-[0_14px_36px_-12px_rgba(0,0,0,.7)] ring-1 ring-white/15 transition hover:bg-earth-light"
           >
             Elegir mi lote en el mapa
           </Link>
@@ -615,8 +648,8 @@ export default async function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="mt-auto bg-stone-900 text-stone-300">
-        <div className="mx-auto max-w-6xl px-4 py-10 grid gap-6 sm:grid-cols-3 text-sm">
+      <footer className="mt-auto border-t-4 border-earth bg-stone-900 text-stone-300">
+        <div className="mx-auto grid max-w-6xl gap-8 px-4 py-12 text-sm sm:grid-cols-3">
           <div>
             <Logo variant="inverse" className="h-8 w-auto" />
             <p className="mt-3 font-bold text-earth-tan italic">«Lo que se dice, se cumple»</p>
@@ -643,15 +676,15 @@ export default async function Home() {
             </div>
           </div>
           <div>
-            <p className="font-bold text-white">Ubicación</p>
-            <p className="mt-2">
+            <p className="annot text-stone-500">Ubicación</p>
+            <p className="mt-3">
               Zona Zanja Honda, Municipio de Cabezas,
               <br />
               Provincia Cordillera — Santa Cruz, Bolivia
             </p>
           </div>
           <div>
-            <p className="font-bold text-white">Contacto</p>
+            <p className="annot text-stone-500">Contacto</p>
             <p className="mt-2">
               <a className="underline hover:text-white" href={waLink(WHATSAPP_VENTAS, 'Hola Terrenalv')}>
                 WhatsApp Ventas
@@ -686,7 +719,7 @@ export default async function Home() {
       </footer>
 
       {/* Sticky mobile CTA — the reservation is one thumb away at any scroll. */}
-      <div className="fixed inset-x-0 bottom-0 z-30 sm:hidden border-t border-stone-200 bg-white/95 backdrop-blur p-3 flex gap-2">
+      <div className="fixed inset-x-0 bottom-0 z-30 flex gap-2 border-t border-stone-200 bg-white/95 p-3 shadow-[0_-8px_24px_-12px_rgba(28,25,23,.25)] backdrop-blur-md sm:hidden">
         <Link
           href="/prados-del-sur/mapa"
           className="flex-1 rounded-xl bg-brand py-3.5 text-center font-bold text-white active:bg-emerald-800"
