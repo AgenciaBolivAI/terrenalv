@@ -104,10 +104,13 @@ export default function CategoryPrices({
             {financing.down_payment_type === 'porcentaje'
               ? formatPct(financing.down_payment_value)
               : formatMoney(financing.down_payment_value, currency)}{' '}
-            · {financing.months} cuotas
-            {financing.annual_interest_pct > 0
-              ? ` al ${formatPct(financing.annual_interest_pct)} anual`
-              : ' sin interés'}
+            {financing.min_monthly
+              ? ` · cuota mensual desde ${formatMoney(financing.min_monthly, currency)}`
+              : ` · ${financing.months} cuotas${
+                  financing.annual_interest_pct > 0
+                    ? ` al ${formatPct(financing.annual_interest_pct)} anual`
+                    : ''
+                }`}
           </span>
         ) : (
           <span className="text-amber-700">No se muestra al comprador</span>
@@ -158,7 +161,7 @@ export default function CategoryPrices({
                             {(() => {
                               const cuota = computeFinancing(preview, financing, { currency });
                               return cuota
-                                ? ` · inicial ${formatMoney(cuota.downPayment, currency)} · ${formatMoney(cuota.monthly, currency)}/mes`
+                                ? ` · inicial ${formatMoney(cuota.downPayment, cuota.downPaymentCurrency)} · ${cuota.disclosesTerm ? '' : 'desde '}${formatMoney(cuota.monthly, cuota.minMonthly !== null ? cuota.downPaymentCurrency : currency)}/mes`
                                 : '';
                             })()}
                           </>

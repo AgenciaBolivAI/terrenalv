@@ -82,8 +82,11 @@ export function LotSummaryCard(props: LotSummaryProps) {
               value={formatMoney(plan.downPayment, currency)}
             />
             <HighlightRow
-              label={`Cuota mensual (${plan.months} meses)`}
-              value={formatMoney(plan.monthly, currency)}
+              label={plan.disclosesTerm ? `Cuota mensual (${plan.months} meses)` : 'Cuota mensual desde'}
+              value={formatMoney(
+                plan.monthly,
+                plan.minMonthly !== null ? plan.downPaymentCurrency : currency,
+              )}
             />
           </>
         ) : null}
@@ -97,12 +100,18 @@ export function LotSummaryCard(props: LotSummaryProps) {
       </dl>
 
       {plan ? (
+        // With a quoted minimum the term is NOT published: it depends on terms
+        // Terrenalv settles in person, so printing "N cuotas" here would be a
+        // figure the closer has to walk back.
         <p className="mt-2 text-xs leading-relaxed text-stone-500">
-          Saldo a financiar {formatMoney(plan.financed, currency)} en {plan.months} cuotas
-          {plan.annualInterestPct > 0
-            ? `, interés ${formatPct(plan.annualInterestPct)} anual`
-            : ', sin interés'}
-          .{plan.note ? ` ${plan.note}` : ''}
+          {plan.disclosesTerm
+            ? `Saldo a financiar ${formatMoney(plan.financed, currency)} en ${plan.months} cuotas${
+                plan.annualInterestPct > 0
+                  ? `, interés ${formatPct(plan.annualInterestPct)} anual`
+                  : ''
+              }.`
+            : 'El plazo se acuerda con tu asesor: tú propones tu forma de pago.'}
+          {plan.note ? ` ${plan.note}` : ''}
         </p>
       ) : null}
     </section>

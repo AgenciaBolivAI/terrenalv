@@ -23,8 +23,10 @@ export interface LandingData {
   /** Median lot price — the honest "typical" example for the plan de pago. */
   tipico: number | null;
   currency: 'USD' | 'BOB';
-  /** Plan de pago computed on the typical lot. */
+  /** Plan de pago on the typical (median-priced) lot. */
   financing: FinancingBreakdown | null;
+  /** Plan de pago on the CHEAPEST lot — this is what "desde" must quote. */
+  financingDesde: FinancingBreakdown | null;
   /** Seña to pay today (reserve_amount is not public → best effort via admin). */
   sena: { amount: number; currency: 'USD' | 'BOB' } | null;
 }
@@ -36,6 +38,7 @@ const EMPTY: LandingData = {
   tipico: null,
   currency: 'BOB',
   financing: null,
+  financingDesde: null,
   sena: null,
 };
 
@@ -105,6 +108,9 @@ export async function loadLandingData(): Promise<LandingData> {
       tipico,
       currency,
       financing: computeFinancing(tipico, plan, { currency, bobPerUsd }),
+      // "cuotas desde" was quoting the median lot's installment, which is not
+      // a "desde" at all — half the lots are cheaper than that.
+      financingDesde: computeFinancing(desde, plan, { currency, bobPerUsd }),
       sena,
     };
   } catch {

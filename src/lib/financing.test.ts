@@ -172,3 +172,35 @@ describe('formatTerm', () => {
     expect(formatTerm(12)).toBe('12 meses');
   });
 });
+
+describe('a quoted minimum monthly suppresses the term', () => {
+  // Terrenalv publishes "cuota inicial Bs 500, cuota mensual desde Bs 817" and
+  // settles the term in person, because it depends on interest they do not
+  // disclose online. Deriving "N cuotas" would contradict the closer.
+  const quoted = parseFinancingPlan({
+    enabled: true,
+    down_payment_type: 'fijo',
+    down_payment_value: 500,
+    down_payment_currency: 'BOB',
+    min_monthly: 817,
+    months: 120,
+    annual_interest_pct: 0,
+    note: null,
+  })!;
+
+  it('publishes the quoted minimum, not the computed installment', () => {
+    const r = computeFinancing(24800, quoted, { currency: 'BOB' })!;
+    // 24.300 / 120 would be Bs 202,50 — never shown.
+    expect(r.monthly).toBe(817);
+    expect(r.minMonthly).toBe(817);
+    expect(r.disclosesTerm).toBe(false);
+  });
+
+  it('still discloses the term when no minimum is set', () => {
+    const computed = parseFinancingPlan({ ...PLAN, months: 36 })!;
+    const r = computeFinancing(24800, computed, { currency: 'BOB' })!;
+    expect(r.minMonthly).toBeNull();
+    expect(r.disclosesTerm).toBe(true);
+    expect(r.monthly).toBeLessThan(817);
+  });
+});

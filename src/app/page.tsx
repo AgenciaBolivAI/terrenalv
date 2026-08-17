@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import Script from 'next/script';
 import { waLink, formatMoney } from '@/lib/format';
-import { formatPct, formatTerm } from '@/lib/financing';
 import { Logo } from '@/components/Logo';
 import { ActiveReservationBanner } from '@/features/reservations/components/ActiveReservationBanner';
 import { MiReservaLink } from '@/features/reservations/components/MiReservaLink';
@@ -181,7 +180,13 @@ export default async function Home() {
                 <Chip>
                   cuotas desde{' '}
                   <span className="text-earth-tan">
-                    {formatMoney(live.financing.monthly, cur)}/mes
+                    {formatMoney(
+                      live.financing.monthly,
+                      live.financing.minMonthly !== null
+                        ? live.financing.downPaymentCurrency
+                        : cur,
+                    )}
+                    /mes
                   </span>
                 </Chip>
               ) : null}
@@ -256,10 +261,10 @@ export default async function Home() {
             <ul className="lg:col-span-2 grid gap-4 sm:grid-cols-2">
               {(
                 [
-                  ['Agua, luz, teléfono e internet', 'Servicios básicos instalados, no prometidos para después.'],
+                  ['Servicios básicos incluidos', 'Instalados en la urbanización, no prometidos para después.'],
                   ['Papeles al día', 'Registrados en Derechos Reales, todo en orden desde el primer día.'],
                   ['Crédito directo, sin banco', 'Financiamiento propio a sola firma: sin trámites bancarios ni garantes.'],
-                  ['A 35 minutos de Santa Cruz', 'Sobre la avenida internacional, cerca de colegio, centro médico y mercado.'],
+                  ['A 35 min del km 13 de la doble vía La Guardia', 'Sobre la avenida internacional, cerca de colegio, centro médico y mercado.'],
                 ] as [string, string][]
               ).map(([t, b]) => (
                 <li key={t} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
@@ -445,15 +450,22 @@ export default async function Home() {
             </div>
             <div className="rounded-2xl border border-stone-200 bg-white p-6 text-center shadow-sm">
               <p className="text-sm font-semibold uppercase tracking-wide text-stone-500">
-                Saldo en cuotas
+                Cuota mensual
               </p>
+              {/* Only the minimum is published. The term depends on conditions
+                  Terrenalv agrees in person, so no "N cuotas" here. */}
               <p className="mt-2 text-3xl font-black text-stone-900">
-                {live.financing ? `hasta ${formatTerm(live.financing.months)}` : '—'}
+                {live.financing
+                  ? `desde ${formatMoney(
+                      live.financing.monthly,
+                      live.financing.minMonthly !== null
+                        ? live.financing.downPaymentCurrency
+                        : cur,
+                    )}`
+                  : '—'}
               </p>
               <p className="mt-2 text-sm text-stone-600">
-                {live.financing
-                  ? `Desde ${formatMoney(live.financing.monthly, cur)} al mes${live.financing.annualInterestPct > 0 ? ` (${formatPct(live.financing.annualInterestPct)} anual)` : ', sin interés y sin banco'}.`
-                  : 'Plazo y cuota según el lote que elijas.'}
+                Crédito directo, sin banco y a sola firma. El plazo lo armas con tu asesor.
               </p>
             </div>
           </div>
@@ -479,8 +491,8 @@ export default async function Home() {
           </div>
 
           <p className="mt-6 text-center text-xs text-stone-400 max-w-xl mx-auto">
-            Plan referencial calculado sobre el precio real de un lote típico del mapa. El plan
-            definitivo de cada lote se confirma al firmar en oficina.
+            Cifras de referencia. El plan definitivo de cada lote se acuerda con tu asesor y se
+            firma en oficina.
           </p>
         </div>
       </section>

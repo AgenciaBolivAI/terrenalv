@@ -188,13 +188,21 @@ export function LotBottomSheet({
                   </div>
                   <div className="mt-0.5 flex items-baseline justify-between gap-3">
                     <dt className="text-xs text-stone-600">
-                      {financing.months} cuotas
-                      {financing.annualInterestPct > 0
-                        ? ` al ${formatPct(financing.annualInterestPct)} anual`
-                        : ' sin interés'}
+                      {financing.disclosesTerm
+                        ? `${financing.months} cuotas${
+                            financing.annualInterestPct > 0
+                              ? ` al ${formatPct(financing.annualInterestPct)} anual`
+                              : ''
+                          }`
+                        : 'Cuota mensual desde'}
                     </dt>
                     <dd className="text-base font-extrabold text-brand">
-                      {formatMoney(financing.monthly, project.currency)}
+                      {formatMoney(
+                        financing.monthly,
+                        financing.minMonthly !== null
+                          ? financing.downPaymentCurrency
+                          : project.currency,
+                      )}
                       <span className="text-xs font-semibold text-stone-500">/mes</span>
                     </dd>
                   </div>

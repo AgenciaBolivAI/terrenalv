@@ -21,11 +21,16 @@ const PLAN = {
   enabled: true,
   down_payment_type: 'fijo',
   down_payment_value: 500,
-  // Lots are priced in $us; the entry payment is quoted in bolivianos.
   down_payment_currency: 'BOB',
-  months: 120, // hasta 10 años
+  // The ONLY monthly figure that gets published. The real term depends on
+  // interest Terrenalv agrees face to face and does not disclose online, so
+  // setting this stops the public pages deriving "N cuotas de X" — a number the
+  // closer would then have to walk back.
+  min_monthly: 817,
+  // Kept for the record; not shown while min_monthly is set.
+  months: 120,
   annual_interest_pct: 0,
-  note: 'Cuota inicial Bs 500 y saldo hasta 10 años, sin banco. El cliente propone su forma de pago.',
+  note: 'Crédito directo sin banco. El plan definitivo se acuerda con tu asesor en oficina.',
 };
 
 async function main() {

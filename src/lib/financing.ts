@@ -22,12 +22,32 @@ export interface FinancingPlan {
    * is a silent 7x error. Defaults to the project currency.
    */
   down_payment_currency?: Currency;
+  /**
+   * Minimum monthly payment accepted, in down_payment_currency.
+   *
+   * When this is set the plan is QUOTED, not computed: the real term depends on
+   * interest that Terrenalv negotiates face to face and deliberately does not
+   * publish, so deriving "N cuotas de X" from the balance would put a number on
+   * the page that the closer then contradicts. With a minimum set, the public
+   * pages show only "cuota inicial … / cuota mensual desde …" and say the rest
+   * is arranged in the office.
+   */
+  min_monthly?: number;
   months: number;
   annual_interest_pct: number;
   note: string | null;
 }
 
 export interface FinancingBreakdown {
+  /**
+   * Minimum monthly payment, when the plan is quoted rather than computed.
+   * When this is non-null, `months`, `financed`, `totalPaid` and
+   * `annualInterestPct` are NOT for public display — the term depends on
+   * interest that is settled in person.
+   */
+  minMonthly: number | null;
+  /** False when the term must stay off the page. */
+  disclosesTerm: boolean;
   /** As the seller quotes it — may be in a different currency to the price. */
   downPayment: number;
   downPaymentCurrency: Currency;
@@ -105,6 +125,10 @@ export function parseFinancingPlan(raw: unknown): FinancingPlan | null {
 
   const note = typeof p.note === 'string' && p.note.trim() ? p.note.trim() : null;
 
+  const mm = p.min_monthly;
+  const min_monthly =
+    typeof mm === 'number' && Number.isFinite(mm) && mm > 0 ? mm : undefined;
+
   const dpc = p.down_payment_currency;
   const down_payment_currency: Currency | undefined =
     dpc === 'BOB' || dpc === 'USD' ? dpc : undefined;
@@ -114,6 +138,7 @@ export function parseFinancingPlan(raw: unknown): FinancingPlan | null {
     down_payment_type: type,
     down_payment_value: value,
     down_payment_currency,
+    min_monthly,
     months: Math.floor(months),
     annual_interest_pct: interest,
     note,
@@ -164,14 +189,20 @@ export function computeFinancing(
   // Paid in full up front: there is no monthly payment to advertise.
   if (financed <= 0) return null;
 
+  // A quoted minimum wins over any computed installment: the published figure
+  // must be the one the seller actually honours.
   const monthlyRate = plan.annual_interest_pct / 100 / 12;
-  const monthly = ceil2(
+  const computed = ceil2(
     monthlyRate > 0
       ? (financed * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -plan.months))
       : financed / plan.months,
   );
+  const minMonthly = plan.min_monthly ?? null;
+  const monthly = minMonthly ?? computed;
 
   return {
+    minMonthly,
+    disclosesTerm: minMonthly === null,
     downPayment,
     downPaymentCurrency: downCurrency,
     downPaymentInPrice,
@@ -180,7 +211,7 @@ export function computeFinancing(
     months: plan.months,
     monthly,
     annualInterestPct: plan.annual_interest_pct,
-    totalPaid: round2(downPaymentInPrice + monthly * plan.months),
+    totalPaid: round2(downPaymentInPrice + computed * plan.months),
     note: plan.note,
   };
 }

@@ -466,7 +466,32 @@ export default function SettingsClient() {
               className={inputClass}
             />
           </Field>
-          <Field label="Interés anual (%)" hint="0 = sin interés">
+          <Field
+            label="Cuota mensual mínima"
+            hint="Lo único que se publica. Al ponerla, la web deja de mostrar plazo e interés — eso se acuerda en oficina."
+          >
+            <div className="flex flex-wrap gap-2">
+              <input
+                type="number"
+                min={0}
+                step="1"
+                value={financing.min_monthly ?? ''}
+                onChange={(e) =>
+                  setFinancing((f) => ({
+                    ...f,
+                    min_monthly: e.target.value === '' ? undefined : Number(e.target.value),
+                  }))
+                }
+                placeholder="sin mínimo"
+                className={`${inputBase} w-32`}
+              />
+              <span className="self-center text-sm text-stone-500">
+                {financing.down_payment_currency ?? currency}
+              </span>
+            </div>
+          </Field>
+
+          <Field label="Interés anual (%)" hint="Uso interno: no se publica si hay cuota mínima">
             <input
               type="number"
               min={0}
