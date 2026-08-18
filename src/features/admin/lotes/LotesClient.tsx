@@ -32,6 +32,28 @@ interface Manzana {
   needs_review: boolean;
 }
 
+/**
+ * Per-manzana counts, straight from v_manzana_summary.
+ *
+ * The grid used to be built by fetching all 2.078 lots and counting them in the
+ * browser on every load. It needs 88 rows; the lots themselves are only needed
+ * once a manzana is actually opened.
+ */
+interface MzSummary {
+  manzana_id: string;
+  code: string;
+  kind: string;
+  sector: string | null;
+  needs_review: boolean;
+  total: number;
+  disponible: number;
+  reservado: number;
+  vendido: number;
+  no_disponible: number;
+  sin_precio: number;
+  algun_lote_a_revisar: boolean;
+}
+
 interface LotRow {
   id: string;
   manzana_id: string;
@@ -71,6 +93,7 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
   const isAdmin = role === 'admin';
 
   const [manzanas, setManzanas] = useState<Manzana[]>([]);
+  const [summaries, setSummaries] = useState<MzSummary[]>([]);
   const [lots, setLots] = useState<LotRow[]>([]);
   // Read inside callbacks that must not re-create on every lot change.
   const lotsRef = useRef<LotRow[]>([]);
@@ -111,26 +134,43 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
   const [statusLot, setStatusLot] = useState<LotRow | null>(null);
   const [reserveLot, setReserveLot] = useState<LotRow | null>(null);
 
+  const LOT_COLUMNS =
+    'id, manzana_id, number, status, category_id, frontage_m, depth_m, area_m2, price_override, active_reservation_id, needs_review, state';
+
+  /** Tracking codes for whatever lots are currently loaded. */
+  const loadResCodes = useCallback(
+    async (rows: LotRow[]) => {
+      const ids = rows.map((l) => l.active_reservation_id).filter(Boolean) as string[];
+      if (ids.length === 0) {
+        setResCodes(new Map());
+        return;
+      }
+      const { data } = await supabase
+        .from('reservations')
+        .select('id, tracking_code')
+        .in('id', ids.slice(0, 1000));
+      setResCodes(new Map((data ?? []).map((r) => [r.id as string, r.tracking_code as string])));
+    },
+    [supabase],
+  );
+
+  /**
+   * The grid: 88 summary rows plus the reference data. No lots at all — the
+   * counts come from the database, which is what turned this page from a
+   * 2.078-row download into an 88-row one.
+   */
   const fetchAll = useCallback(async () => {
     if (!projectId) {
       setLoading(false);
       return;
     }
     setLoading(true);
-    const [mzRes, lotRes, catRes, planRes] = await Promise.all([
+    const [sumRes, catRes, planRes] = await Promise.all([
       supabase
-        .from('manzanas')
-        .select('id, code, kind, sector, needs_review')
+        .from('v_manzana_summary')
+        .select('*')
         .eq('project_id', projectId)
         .order('code'),
-      supabase
-        .from('lots')
-        .select(
-          'id, manzana_id, number, status, category_id, frontage_m, depth_m, area_m2, price_override, active_reservation_id, needs_review, state',
-        )
-        .eq('project_id', projectId)
-        .is('deleted_at', null)
-        .limit(5000),
       supabase
         .from('pricing_categories')
         .select('id, project_id, code, name, color_hex, price_per_m2, sort_order')
@@ -143,28 +183,57 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
         .is('project_id', null)
         .maybeSingle(),
     ]);
-    const lotsData = (lotRes.data ?? []) as LotRow[];
-    setManzanas((mzRes.data ?? []) as Manzana[]);
-    setLots(lotsData);
+
+    const sums = ((sumRes.data ?? []) as unknown as MzSummary[]).slice().sort((a, b) => {
+      const na = Number(String(a.code).replace(/\D/g, '')) || 0;
+      const nb = Number(String(b.code).replace(/\D/g, '')) || 0;
+      return na - nb;
+    });
+    setSummaries(sums);
+    setManzanas(
+      sums.map((m) => ({
+        id: m.manzana_id,
+        code: m.code,
+        kind: m.kind,
+        sector: m.sector,
+        needs_review: m.needs_review,
+      })),
+    );
     setCats((catRes.data ?? []) as PricingCategory[]);
     setFinancing(parseFinancingPlan(planRes.data?.value));
-
-    const activeIds = lotsData.map((l) => l.active_reservation_id).filter(Boolean) as string[];
-    if (activeIds.length > 0) {
-      const { data: resRows } = await supabase
-        .from('reservations')
-        .select('id, tracking_code')
-        .in('id', activeIds.slice(0, 1000));
-      setResCodes(new Map((resRows ?? []).map((r) => [r.id as string, r.tracking_code as string])));
-    } else {
-      setResCodes(new Map());
-    }
     setLoading(false);
   }, [supabase, projectId]);
+
+  /** Lots for one manzana, or for one status across the whole project. */
+  const fetchLots = useCallback(async () => {
+    if (!projectId || (!selectedMz && !statusFilter)) {
+      setLots([]);
+      setResCodes(new Map());
+      return;
+    }
+    setLoading(true);
+    let q = supabase.from('lots').select(LOT_COLUMNS).eq('project_id', projectId).is('deleted_at', null);
+    if (selectedMz) q = q.eq('manzana_id', selectedMz);
+    else if (statusFilter) q = q.eq('status', statusFilter);
+    const { data } = await q.limit(5000);
+    const rows = (data ?? []) as LotRow[];
+    setLots(rows);
+    await loadResCodes(rows);
+    setLoading(false);
+  }, [supabase, projectId, selectedMz, statusFilter, loadResCodes]);
 
   useEffect(() => {
     void fetchAll();
   }, [fetchAll]);
+
+  useEffect(() => {
+    void fetchLots();
+  }, [fetchLots]);
+
+  /** After a write: refresh both the counts and whatever rows are on screen. */
+  const refreshAll = useCallback(async () => {
+    await Promise.all([fetchAll(), fetchLots()]);
+  }, [fetchAll, fetchLots]);
 
   const catById = useMemo(() => new Map(cats.map((c) => [c.id, c])), [cats]);
 
@@ -206,24 +275,23 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
     return [];
   }, [lots, selectedMz, statusFilter, mzByCode]);
 
+  // Counted by Postgres now, not by walking every lot in the browser.
   const statsByMz = useMemo(() => {
     const map = new Map<string, { total: number; byStatus: Record<LotStatus, number>; review: boolean }>();
-    for (const l of lots) {
-      let s = map.get(l.manzana_id);
-      if (!s) {
-        s = {
-          total: 0,
-          byStatus: { disponible: 0, reservado: 0, vendido: 0, no_disponible: 0 },
-          review: false,
-        };
-        map.set(l.manzana_id, s);
-      }
-      s.total += 1;
-      s.byStatus[l.status] += 1;
-      if (l.needs_review) s.review = true;
+    for (const m of summaries) {
+      map.set(m.manzana_id, {
+        total: Number(m.total),
+        byStatus: {
+          disponible: Number(m.disponible),
+          reservado: Number(m.reservado),
+          vendido: Number(m.vendido),
+          no_disponible: Number(m.no_disponible),
+        },
+        review: Boolean(m.algun_lote_a_revisar),
+      });
     }
     return map;
-  }, [lots]);
+  }, [summaries]);
 
   /**
    * Stage an edit instead of writing it. Fields that end up back at their
@@ -549,7 +617,7 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
     push(`Categoría asignada a ${selectedIds.length} lotes.`, 'success');
     setBulkCatOpen(false);
     setRowSelection({});
-    void fetchAll();
+    void refreshAll();
   }
 
   /** Block/unblock a single lot from the status dialog. */
@@ -567,7 +635,7 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
     }
     push(blocked ? `Lote ${lot.number} bloqueado.` : `Lote ${lot.number} desbloqueado.`, 'success');
     setStatusLot(null);
-    void fetchAll();
+    void refreshAll();
   }
 
   async function bulkBlock(blocked: boolean) {
@@ -587,7 +655,7 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
     setBlockDialog(null);
     setBlockNote('');
     setRowSelection({});
-    void fetchAll();
+    void refreshAll();
   }
 
   function pricesPreview(): string {
@@ -646,7 +714,7 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
     const n = (data as { afectados?: number } | null)?.afectados ?? 0;
     push(`Precios actualizados en ${n} lotes.`, 'success');
     setPricesOpen(false);
-    void fetchAll();
+    void refreshAll();
   }
 
   if (!projectId) {
@@ -672,7 +740,7 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
           currency={currency}
           isAdmin={isAdmin}
           financing={financing}
-          onSaved={() => void fetchAll()}
+          onSaved={() => void refreshAll()}
         />
         {manzanas.length === 0 ? (
           <EmptyState
@@ -1124,7 +1192,7 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
           onClose={() => setSellLot(null)}
           onSold={() => {
             setSellLot(null);
-            void fetchAll();
+            void refreshAll();
           }}
         />
       ) : null}
@@ -1137,7 +1205,7 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
           onClose={() => setReserveLot(null)}
           onReserved={() => {
             setReserveLot(null);
-            void fetchAll();
+            void refreshAll();
           }}
         />
       ) : null}
