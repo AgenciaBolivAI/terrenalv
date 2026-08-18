@@ -236,7 +236,7 @@ export default async function Home() {
             «Lo que se dice, se cumple»
           </p>
           <p className="mx-auto mt-5 max-w-2xl text-pretty text-lg text-emerald-50/90">
-            88 manzanas con lotes de 300 m² (10 × 30) sobre la carretera Santa Cruz — Camiri.
+            88 manzanas con lotes desde 300 m² (10 × 30) sobre la carretera Santa Cruz — Camiri.
             El mapa muestra el plano oficial lote por lote: elige el tuyo y resérvalo en minutos
             desde el celular.
           </p>
@@ -625,7 +625,7 @@ export default async function Home() {
                 [
                   ['Zona', <>Zanja Honda, municipio de Cabezas, provincia Cordillera — Santa Cruz, Bolivia.</>],
                   ['Acceso', <>Frente directo sobre la carretera Santa Cruz — Camiri (Ruta 9), transitable todo el año.</>],
-                  ['Trazado', <>3,2 km de urbanización, avenida central de 30 m y calles de 13 m, tal como figura en el plano aprobado.</>],
+                  ['Trazado', <>3,2 km de urbanización, avenida central de 30 m y calles de 13 m.</>],
                 ] as [string, React.ReactNode][]
               ).map(([k, v]) => (
                 <div key={k} className="grid gap-1 py-4 sm:grid-cols-[7rem_1fr] sm:gap-4">
