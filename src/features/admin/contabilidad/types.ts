@@ -189,3 +189,9 @@ export interface PaymentRow {
   verified_at: string | null;
   status: string;
 }
+
+/** Last day of the month a yyyy-mm-dd date falls in, as yyyy-mm-dd. */
+export function mesFin(iso: string): string {
+  const d = new Date(`${iso.slice(0, 10)}T12:00:00`);
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10);
+}

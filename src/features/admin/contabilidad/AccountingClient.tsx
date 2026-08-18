@@ -27,6 +27,7 @@ import {
   EXPENSE_LABEL,
   dateLabel,
   downloadCsv,
+  mesFin,
   monthLabel,
   monthStartIso,
   toCsv,
@@ -52,25 +53,42 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'libro', label: 'Libro' },
 ];
 
+/**
+ * A figure with no way to reach what it counts is a dead end: you read
+ * "Vencido Bs 4.050" and then have to go hunting for the right screen and
+ * re-apply the filter by hand. Every tile opens its own records, already
+ * filtered.
+ */
 function Kpi({
   label,
   value,
   hint,
   tone = 'normal',
+  onClick,
 }: {
   label: string;
   value: string;
   hint?: string;
   tone?: 'normal' | 'good' | 'bad';
+  onClick: () => void;
 }) {
   const color =
     tone === 'good' ? 'text-brand' : tone === 'bad' ? 'text-red-600' : 'text-stone-900';
   return (
-    <div className="rounded-xl border border-stone-200 bg-white p-4">
-      <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">{label}</p>
+    <button
+      type="button"
+      onClick={onClick}
+      className="group cursor-pointer rounded-xl border border-stone-200 bg-white p-4 text-left
+                 transition-colors hover:border-brand-light hover:bg-stone-50
+                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
+    >
+      <p className="flex items-center justify-between gap-2 text-xs font-semibold tracking-wide text-stone-500 uppercase">
+        {label}
+        <span aria-hidden="true" className="text-stone-300 group-hover:text-brand-light">&rsaquo;</span>
+      </p>
       <p className={`mt-2 text-2xl font-bold tabular-nums ${color}`}>{value}</p>
       {hint ? <p className="mt-1 text-xs text-stone-400">{hint}</p> : null}
-    </div>
+    </button>
   );
 }
 
@@ -110,6 +128,8 @@ export default function AccountingClient({
   const [mayor, setMayor] = useState<LedgerAccount[] | null>(null);
   const [diario, setDiario] = useState<LedgerLine[] | null>(null);
   const [libroBusy, setLibroBusy] = useState(false);
+  /** Set by clicking a row of the libro mayor: shows only that account. */
+  const [cuentaFiltro, setCuentaFiltro] = useState<string | null>(null);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -258,13 +278,25 @@ export default function AccountingClient({
     if (tab === 'libro') void loadLibro();
   }, [tab, loadLibro]);
 
+  /** Open the libro on a given period, optionally narrowed to one account. */
+  function abrirLibro(desdeIso?: string, hastaIso?: string, cuenta?: string | null) {
+    if (desdeIso) setDesde(desdeIso);
+    if (hastaIso) setHasta(hastaIso);
+    setCuentaFiltro(cuenta ?? null);
+    setTab('libro');
+  }
+
+  // The libro mayor row you clicked narrows the diario below it, so the two
+  // halves of the screen always agree.
+  const diarioFiltrado = (diario ?? []).filter((l) => !cuentaFiltro || l.cuenta === cuentaFiltro);
+
   function exportDiario() {
     if (!diario) return;
     downloadCsv(
       `libro-diario-${desde}-a-${hasta}.csv`,
       toCsv(
         ['Fecha', 'Comprobante', 'Glosa', 'Cuenta', 'Debe (Bs)', 'Haber (Bs)'],
-        diario.map((l) => [
+        diarioFiltrado.map((l) => [
           dateLabel(l.fecha), l.comprobante, l.glosa, l.cuenta, Number(l.debe), Number(l.haber),
         ]),
       ),
@@ -338,25 +370,37 @@ export default function AccountingClient({
             <Kpi
               label="Por cobrar"
               value={formatMoney(totals.porCobrar, currency)}
-              hint={`${totals.planes} plan(es) activo(s)`}
+              hint={`${totals.planes} plan(es) activo(s) — ver`}
+              onClick={() => {
+                setOnlyLate(false);
+                setTab('cobrar');
+              }}
             />
             <Kpi
               label="Vencido"
               value={formatMoney(totals.vencido, currency)}
-              hint={`${totals.morosos} cliente(s) atrasado(s)`}
+              hint={`${totals.morosos} cliente(s) atrasado(s) — ver`}
               tone={totals.vencido > 0 ? 'bad' : 'normal'}
+              onClick={() => {
+                // Opens the list ALREADY filtered to who is late: the tile's
+                // number and the list have to agree.
+                setOnlyLate(true);
+                setTab('cobrar');
+              }}
             />
             <Kpi
               label="Ingresos del mes"
               value={formatMoney(Number(thisMonth?.ingresos_bob ?? 0), 'BOB')}
-              hint={thisMonth ? monthLabel(thisMonth.mes) : 'sin movimientos'}
+              hint={`${thisMonth ? monthLabel(thisMonth.mes) : 'sin movimientos'} — ver detalle`}
               tone="good"
+              onClick={() => abrirLibro(monthStartIso(), todayIso(), '1111')}
             />
             <Kpi
               label="Resultado del mes"
               value={formatMoney(Number(thisMonth?.resultado_bob ?? 0), 'BOB')}
-              hint="ingresos menos egresos"
+              hint="ingresos menos egresos — ver detalle"
               tone={Number(thisMonth?.resultado_bob ?? 0) < 0 ? 'bad' : 'good'}
+              onClick={() => abrirLibro(monthStartIso(), todayIso(), null)}
             />
           </div>
 
@@ -386,8 +430,20 @@ export default function AccountingClient({
                   </thead>
                   <tbody>
                     {cashflow.map((m) => (
-                      <tr key={m.mes} className="border-b border-stone-100 last:border-0">
-                        <td className="px-4 py-2 font-medium text-stone-800">{monthLabel(m.mes)}</td>
+                      <tr
+                        key={m.mes}
+                        onClick={() => abrirLibro(m.mes, mesFin(m.mes), null)}
+                        className="cursor-pointer border-b border-stone-100 last:border-0 hover:bg-stone-50"
+                      >
+                        <td className="px-4 py-2 font-medium text-stone-800">
+                          <button
+                            type="button"
+                            className="cursor-pointer text-left hover:text-brand hover:underline
+                                       focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
+                          >
+                            {monthLabel(m.mes)}
+                          </button>
+                        </td>
                         <td className="px-4 py-2 text-right tabular-nums text-brand">
                           {formatMoney(Number(m.ingresos_bob), 'BOB')}
                         </td>
@@ -630,7 +686,13 @@ export default function AccountingClient({
                   </thead>
                   <tbody>
                     {mayor.map((a) => (
-                      <tr key={a.cuenta} className="border-b border-stone-100 last:border-0 hover:bg-stone-50">
+                      <tr
+                        key={a.cuenta}
+                        onClick={() => setCuentaFiltro(a.cuenta)}
+                        className={`cursor-pointer border-b border-stone-100 last:border-0 hover:bg-stone-50 ${
+                          cuentaFiltro === a.cuenta ? 'bg-green-50' : ''
+                        }`}
+                      >
                         <td className="px-4 py-2 font-mono text-xs text-stone-600">{a.cuenta}</td>
                         <td className="px-3 py-2 text-stone-800">{a.cuenta_nombre}</td>
                         <td className="px-3 py-2">
@@ -660,6 +722,17 @@ export default function AccountingClient({
               <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
                 Libro diario
               </h2>
+              {cuentaFiltro ? (
+                <button
+                  type="button"
+                  onClick={() => setCuentaFiltro(null)}
+                  className="cursor-pointer rounded-full bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand
+                             transition-colors hover:bg-brand/20
+                             focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                >
+                  cuenta {cuentaFiltro} ✕
+                </button>
+              ) : null}
               <label className="flex items-center gap-2 text-xs text-stone-500">
                 Desde
                 <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
@@ -676,9 +749,11 @@ export default function AccountingClient({
             </div>
             {libroBusy && !diario ? (
               <div className="flex justify-center py-8"><Spinner /></div>
-            ) : !diario?.length ? (
+            ) : !diarioFiltrado.length ? (
               <p className="py-8 text-center text-sm text-stone-400">
-                Sin movimientos en el periodo elegido.
+                {cuentaFiltro
+                  ? `Sin movimientos de la cuenta ${cuentaFiltro} en el periodo elegido.`
+                  : 'Sin movimientos en el periodo elegido.'}
               </p>
             ) : (
               <>
@@ -695,7 +770,7 @@ export default function AccountingClient({
                       </tr>
                     </thead>
                     <tbody>
-                      {diario.map((l, i) => (
+                      {diarioFiltrado.map((l, i) => (
                         <tr key={`${l.origen_id}-${l.cuenta}-${i}`} className="border-b border-stone-100 last:border-0 hover:bg-stone-50">
                           <td className="px-4 py-1.5 whitespace-nowrap text-stone-600">{dateLabel(l.fecha)}</td>
                           <td className="px-3 py-1.5 font-mono text-xs text-stone-500">{l.comprobante}</td>
@@ -716,16 +791,16 @@ export default function AccountingClient({
                           Totales del periodo — deben coincidir
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums">
-                          {formatMoney(diario.reduce((acc, l) => acc + Number(l.debe), 0), 'BOB')}
+                          {formatMoney(diarioFiltrado.reduce((acc, l) => acc + Number(l.debe), 0), 'BOB')}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums">
-                          {formatMoney(diario.reduce((acc, l) => acc + Number(l.haber), 0), 'BOB')}
+                          {formatMoney(diarioFiltrado.reduce((acc, l) => acc + Number(l.haber), 0), 'BOB')}
                         </td>
                       </tr>
                     </tfoot>
                   </table>
                 </div>
-                {diario.length >= 5000 ? (
+                {diarioFiltrado.length >= 5000 ? (
                   <p className="border-t border-stone-100 px-4 py-2 text-xs text-amber-700">
                     Se muestran las primeras 5.000 lineas del periodo. Acorta el rango para verlo completo.
                   </p>
