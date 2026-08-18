@@ -10,6 +10,7 @@
 // deploying this and connecting the token.
 
 import { captionHeadline, type InstagramPost } from './instagram';
+import { EmbedFacade } from './EmbedFacade';
 
 export interface FallbackPost {
   code: string;
@@ -85,15 +86,13 @@ export function InstagramFeed({
     <div className="mt-5 grid gap-6 sm:grid-cols-3">
       {fallback.map((p) => (
         <figure key={p.code} className="card card-lift rounded-3xl bg-white p-3">
-          <div className="overflow-hidden rounded-2xl bg-stone-100">
-            <iframe
-              title={p.caption}
+          <div className="overflow-hidden rounded-2xl">
+            <EmbedFacade
+              network="instagram"
               src={`https://www.instagram.com/reel/${p.code}/embed/`}
-              className="w-full border-0"
-              style={{ height: 640 }}
-              loading="lazy"
-              scrolling="no"
-              allow="encrypted-media; picture-in-picture; fullscreen"
+              title={p.caption}
+              caption={p.caption}
+              height={640}
             />
           </div>
           <figcaption className="mt-2 px-1 text-sm font-semibold text-stone-700">

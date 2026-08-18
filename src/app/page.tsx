@@ -7,6 +7,7 @@ import { loadLandingData } from '@/features/landing/data';
 import { Pasarella, type Slide } from '@/features/landing/Pasarella';
 import { loadInstagramPosts } from '@/features/landing/instagram';
 import { InstagramFeed, type FallbackPost } from '@/features/landing/InstagramFeed';
+import { EmbedFacade } from '@/features/landing/EmbedFacade';
 
 // The company's own marketing flyers, in pasarella/. Alt text describes what
 // each one actually says — these are the source for the claims on this page
@@ -401,14 +402,13 @@ export default async function Home() {
           <div className="mt-5 grid gap-6 sm:grid-cols-3">
             {FEATURED_TIKTOKS.map((v) => (
               <figure key={v.id} className="card card-lift rounded-3xl bg-white p-3">
-                <div className="overflow-hidden rounded-2xl bg-stone-900">
-                  <iframe
-                    title={v.caption}
+                <div className="overflow-hidden rounded-2xl">
+                  <EmbedFacade
+                    network="tiktok"
                     src={`https://www.tiktok.com/embed/v2/${v.id}`}
-                    className="w-full border-0"
-                    style={{ height: 580 }}
-                    loading="lazy"
-                    allow="encrypted-media; picture-in-picture; fullscreen"
+                    title={v.caption}
+                    caption={v.caption}
+                    height={580}
                   />
                 </div>
                 <figcaption className="mt-2 px-1 text-sm font-semibold text-stone-700">
@@ -454,18 +454,12 @@ export default async function Home() {
             </div>
             <div className="card mt-5 rounded-3xl bg-white p-4">
               <div className="overflow-hidden rounded-2xl">
-                <iframe
-                  title="Página de Facebook de Terrenalv"
+                <EmbedFacade
+                  network="facebook"
                   src={`https://www.facebook.com/plugins/page.php?href=${encodeURIComponent(SOCIAL.facebook)}&tabs=timeline&width=500&height=560&small_header=true&adapt_container_width=true&hide_cover=false&show_facepile=false`}
-                  width="500"
-                  height="560"
-                  className="w-full max-w-125 mx-auto block border-0"
-                  style={{ border: 'none', overflow: 'hidden' }}
-                  scrolling="no"
-                  frameBorder="0"
-                  allowFullScreen
-                  loading="lazy"
-                  allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                  title="Página de Facebook de Terrenalv"
+                  caption="Lo último que publicamos en Facebook"
+                  height={560}
                 />
               </div>
             </div>
@@ -644,13 +638,12 @@ export default async function Home() {
             </a>
           </div>
           <div className="card overflow-hidden rounded-3xl">
-            <iframe
-              title="Ubicación de Prados del Sur en Google Maps"
+            <EmbedFacade
+              network="maps"
               src={MAPS_EMBED}
-              className="w-full h-80 sm:h-95 border-0"
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-              allowFullScreen
+              title="Ubicación de Prados del Sur en Google Maps"
+              caption="Zanja Honda, Cabezas — Santa Cruz"
+              height={340}
             />
           </div>
         </div>
