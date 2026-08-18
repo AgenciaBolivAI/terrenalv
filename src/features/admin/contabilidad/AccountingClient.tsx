@@ -1,0 +1,999 @@
+'use client';
+
+// Contabilidad del proyecto.
+//
+// Three tabs, in the order the office actually works:
+//   Resumen   what came in, what went out, what is owed.
+//   Por cobrar who owes money, how much, and how late — plus the sales that
+//              still have no payment plan, because that gap is invisible
+//              everywhere else and silently means "nobody is billing them".
+//   Egresos   the other side of the ledger.
+//
+// Every figure comes from the database views, never from arithmetic done here,
+// so a number on screen can always be traced back to rows.
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
+import { formatMoney, waLink } from '@/lib/format';
+import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
+import { Badge, Spinner, btnPrimary, btnSecondary, inputClass } from '@/features/admin/ui/bits';
+import { Dialog } from '@/features/admin/ui/dialog';
+import { IconWhatsapp } from '@/features/admin/ui/icons';
+import { useToast } from '@/features/admin/ui/toast';
+import {
+  EXPENSE_CATEGORIES,
+  EXPENSE_LABEL,
+  dateLabel,
+  downloadCsv,
+  monthLabel,
+  toCsv,
+  type AccountStatus,
+  type Currency,
+  type Expense,
+  type ExpenseCategory,
+  type Installment,
+  type MonthlyCashflow,
+  type SaleWithoutPlan,
+} from './types';
+
+type Tab = 'resumen' | 'cobrar' | 'egresos';
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'resumen', label: 'Resumen' },
+  { id: 'cobrar', label: 'Por cobrar' },
+  { id: 'egresos', label: 'Egresos' },
+];
+
+function Kpi({
+  label,
+  value,
+  hint,
+  tone = 'normal',
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: 'normal' | 'good' | 'bad';
+}) {
+  const color =
+    tone === 'good' ? 'text-brand' : tone === 'bad' ? 'text-red-600' : 'text-stone-900';
+  return (
+    <div className="rounded-xl border border-stone-200 bg-white p-4">
+      <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">{label}</p>
+      <p className={`mt-2 text-2xl font-bold tabular-nums ${color}`}>{value}</p>
+      {hint ? <p className="mt-1 text-xs text-stone-400">{hint}</p> : null}
+    </div>
+  );
+}
+
+export default function AccountingClient({
+  projectId,
+  currency,
+  initialTab,
+}: {
+  projectId: string;
+  currency: Currency;
+  initialTab: Tab;
+}) {
+  const supabase = useMemo(() => createClient(), []);
+  const { push } = useToast();
+
+  const [tab, setTab] = useState<Tab>(initialTab);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  const [accounts, setAccounts] = useState<AccountStatus[]>([]);
+  const [cashflow, setCashflow] = useState<MonthlyCashflow[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [noPlan, setNoPlan] = useState<SaleWithoutPlan[]>([]);
+
+  const [onlyLate, setOnlyLate] = useState(false);
+  const [detail, setDetail] = useState<AccountStatus | null>(null);
+  const [cuotas, setCuotas] = useState<Installment[] | null>(null);
+  const [planFor, setPlanFor] = useState<SaleWithoutPlan | null>(null);
+  const [payFor, setPayFor] = useState<AccountStatus | null>(null);
+  const [expenseOpen, setExpenseOpen] = useState(false);
+
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    const [accRes, cfRes, expRes, resRes] = await Promise.all([
+      supabase.from('v_account_status').select('*').eq('project_id', projectId),
+      supabase
+        .from('v_monthly_cashflow')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('mes', { ascending: false })
+        .limit(24),
+      supabase
+        .from('expenses')
+        .select('id, incurred_on, category, description, supplier, amount, currency, amount_bob, note, created_at')
+        .eq('project_id', projectId)
+        .is('deleted_at', null)
+        .order('incurred_on', { ascending: false })
+        .limit(1000),
+      supabase
+        .from('reservations')
+        .select('id, tracking_code, buyer_full_name, price_agreed, currency, confirmed_at, lots!reservations_lot_id_fkey(number, manzanas(code))')
+        .eq('project_id', projectId)
+        .eq('status', 'confirmada'),
+    ]);
+
+    const acc = (accRes.data ?? []) as unknown as AccountStatus[];
+    setAccounts(acc);
+    setCashflow((cfRes.data ?? []) as unknown as MonthlyCashflow[]);
+    setExpenses((expRes.data ?? []) as unknown as Expense[]);
+
+    // A confirmed sale with no plan row is a buyer nobody is billing.
+    const planned = new Set(acc.map((a) => a.reservation_id));
+    const sales = (resRes.data ?? []).map((r) => {
+      const lot = r.lots as unknown as { number: string; manzanas: { code: string } | null } | null;
+      return {
+        id: r.id as string,
+        tracking_code: r.tracking_code as string,
+        buyer_full_name: r.buyer_full_name as string,
+        price_agreed: Number(r.price_agreed),
+        currency: r.currency as Currency,
+        confirmed_at: (r.confirmed_at as string) ?? null,
+        manzana: lot?.manzanas?.code ?? '—',
+        lote: lot?.number ?? '—',
+      } satisfies SaleWithoutPlan;
+    });
+    setNoPlan(sales.filter((s) => !planned.has(s.id)));
+    setLoading(false);
+  }, [supabase, projectId]);
+
+  useEffect(() => {
+    void fetchAll();
+  }, [fetchAll]);
+
+  // ---- Derived totals. Sums of view rows, not re-derived business logic. ----
+  const active = accounts.filter((a) => a.plan_status === 'activo');
+  const totals = {
+    porCobrar: active.reduce((s, a) => s + Number(a.saldo), 0),
+    vencido: active.reduce((s, a) => s + Number(a.monto_vencido), 0),
+    morosos: active.filter((a) => Number(a.cuotas_vencidas) > 0).length,
+    planes: active.length,
+  };
+  const thisMonth = cashflow[0];
+
+  const cobrarRows = (onlyLate ? active.filter((a) => Number(a.cuotas_vencidas) > 0) : active).sort(
+    (a, b) => Number(b.monto_vencido) - Number(a.monto_vencido) || Number(b.saldo) - Number(a.saldo),
+  );
+
+  async function openDetail(a: AccountStatus) {
+    setDetail(a);
+    setCuotas(null);
+    const { data } = await supabase
+      .from('installments')
+      .select('id, number, due_date, amount, amount_paid, status, paid_at')
+      .eq('plan_id', a.plan_id)
+      .order('number');
+    setCuotas((data ?? []) as unknown as Installment[]);
+  }
+
+  function exportCobrar() {
+    downloadCsv(
+      `por-cobrar-${new Date().toISOString().slice(0, 10)}.csv`,
+      toCsv(
+        ['Código', 'Cliente', 'CI', 'Teléfono', 'Manzana', 'Lote', 'Precio', 'Pagado', 'Saldo', 'Cuotas vencidas', 'Monto vencido', 'Días atraso', 'Próxima cuota'],
+        cobrarRows.map((a) => [
+          a.tracking_code, a.buyer_full_name, a.buyer_ci, a.buyer_phone, a.manzana, a.lote,
+          Number(a.total_price), Number(a.pagado), Number(a.saldo),
+          Number(a.cuotas_vencidas), Number(a.monto_vencido), a.dias_atraso ?? 0,
+          a.proxima_cuota ? dateLabel(a.proxima_cuota) : '',
+        ]),
+      ),
+    );
+  }
+
+  function exportCashflow() {
+    downloadCsv(
+      `ingresos-egresos-${new Date().toISOString().slice(0, 10)}.csv`,
+      toCsv(
+        ['Mes', 'Ingresos (Bs)', 'Egresos (Bs)', 'Resultado (Bs)'],
+        cashflow.map((m) => [monthLabel(m.mes), Number(m.ingresos_bob), Number(m.egresos_bob), Number(m.resultado_bob)]),
+      ),
+    );
+  }
+
+  function exportExpenses() {
+    downloadCsv(
+      `egresos-${new Date().toISOString().slice(0, 10)}.csv`,
+      toCsv(
+        ['Fecha', 'Categoría', 'Detalle', 'Proveedor', 'Monto', 'Moneda', 'Monto (Bs)'],
+        expenses.map((e) => [
+          dateLabel(e.incurred_on), EXPENSE_LABEL[e.category], e.description, e.supplier ?? '',
+          Number(e.amount), e.currency, Number(e.amount_bob),
+        ]),
+      ),
+    );
+  }
+
+  async function deleteExpense(e: Expense) {
+    const note = window.prompt(`Motivo para eliminar "${e.description}":`);
+    if (!note?.trim()) return;
+    setBusy(true);
+    const { error } = await supabase.rpc('admin_delete_expense', {
+      p_expense_id: e.id,
+      p_note: note.trim(),
+    });
+    setBusy(false);
+    if (error) {
+      push(adminErrorCopy(error.message), 'error');
+      return;
+    }
+    push('Egreso eliminado.', 'success');
+    void fetchAll();
+  }
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-16">
+        <Spinner />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-6xl space-y-5">
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="text-lg font-bold text-stone-900">Contabilidad</h1>
+        <div className="ml-auto flex gap-1 rounded-xl border border-stone-200 bg-white p-1">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              aria-current={tab === t.id}
+              className={`cursor-pointer rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                tab === t.id ? 'bg-brand text-white' : 'text-stone-600 hover:bg-stone-100'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ------------------------------- RESUMEN ------------------------------ */}
+      {tab === 'resumen' ? (
+        <div className="space-y-5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Kpi
+              label="Por cobrar"
+              value={formatMoney(totals.porCobrar, currency)}
+              hint={`${totals.planes} plan(es) activo(s)`}
+            />
+            <Kpi
+              label="Vencido"
+              value={formatMoney(totals.vencido, currency)}
+              hint={`${totals.morosos} cliente(s) atrasado(s)`}
+              tone={totals.vencido > 0 ? 'bad' : 'normal'}
+            />
+            <Kpi
+              label="Ingresos del mes"
+              value={formatMoney(Number(thisMonth?.ingresos_bob ?? 0), 'BOB')}
+              hint={thisMonth ? monthLabel(thisMonth.mes) : 'sin movimientos'}
+              tone="good"
+            />
+            <Kpi
+              label="Resultado del mes"
+              value={formatMoney(Number(thisMonth?.resultado_bob ?? 0), 'BOB')}
+              hint="ingresos menos egresos"
+              tone={Number(thisMonth?.resultado_bob ?? 0) < 0 ? 'bad' : 'good'}
+            />
+          </div>
+
+          <section className="rounded-xl border border-stone-200 bg-white">
+            <div className="flex items-center justify-between gap-2 border-b border-stone-200 px-4 py-3">
+              <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+                Ingresos y egresos por mes
+              </h2>
+              <button type="button" className={btnSecondary} onClick={exportCashflow} disabled={!cashflow.length}>
+                Exportar CSV
+              </button>
+            </div>
+            {cashflow.length === 0 ? (
+              <p className="py-8 text-center text-sm text-stone-400">
+                Todavía no hay movimientos registrados.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-150 text-sm">
+                  <thead>
+                    <tr className="border-b border-stone-200 bg-stone-50 text-left">
+                      <th className="px-4 py-2 text-xs font-semibold text-stone-500">Mes</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-stone-500">Ingresos</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-stone-500">Egresos</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-stone-500">Resultado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cashflow.map((m) => (
+                      <tr key={m.mes} className="border-b border-stone-100 last:border-0">
+                        <td className="px-4 py-2 font-medium text-stone-800">{monthLabel(m.mes)}</td>
+                        <td className="px-4 py-2 text-right tabular-nums text-brand">
+                          {formatMoney(Number(m.ingresos_bob), 'BOB')}
+                        </td>
+                        <td className="px-4 py-2 text-right tabular-nums text-stone-600">
+                          {formatMoney(Number(m.egresos_bob), 'BOB')}
+                        </td>
+                        <td
+                          className={`px-4 py-2 text-right font-semibold tabular-nums ${
+                            Number(m.resultado_bob) < 0 ? 'text-red-600' : 'text-stone-900'
+                          }`}
+                        >
+                          {formatMoney(Number(m.resultado_bob), 'BOB')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className="border-t border-stone-100 px-4 py-2 text-xs text-stone-400">
+              Los ingresos cuentan solo pagos aprobados, en la fecha en que se verificaron (hora de
+              Bolivia). Un comprobante sin revisar todavía no es ingreso.
+            </p>
+          </section>
+        </div>
+      ) : null}
+
+      {/* ------------------------------ POR COBRAR ---------------------------- */}
+      {tab === 'cobrar' ? (
+        <div className="space-y-5">
+          {noPlan.length > 0 ? (
+            <section className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+              <h2 className="text-sm font-bold text-amber-900">
+                {noPlan.length} venta(s) sin plan de pago
+              </h2>
+              <p className="mt-1 text-xs text-amber-800">
+                Están confirmadas pero no tienen cuotas cargadas, así que no aparecen en lo que hay
+                por cobrar ni en la mora. Nadie les está facturando.
+              </p>
+              <ul className="mt-3 space-y-2">
+                {noPlan.map((s) => (
+                  <li
+                    key={s.id}
+                    className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-white px-3 py-2"
+                  >
+                    <span className="font-mono text-xs font-semibold text-stone-700">{s.tracking_code}</span>
+                    <span className="text-sm text-stone-800">{s.buyer_full_name}</span>
+                    <span className="text-xs text-stone-500">
+                      Mz {s.manzana}, Lote {s.lote} · {formatMoney(s.price_agreed, s.currency)}
+                    </span>
+                    <button type="button" className={`${btnPrimary} ml-auto`} onClick={() => setPlanFor(s)}>
+                      Crear plan de pago
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
+          <section className="rounded-xl border border-stone-200 bg-white">
+            <div className="flex flex-wrap items-center gap-3 border-b border-stone-200 px-4 py-3">
+              <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+                Cuentas por cobrar
+              </h2>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-stone-600">
+                <input
+                  type="checkbox"
+                  checked={onlyLate}
+                  onChange={(e) => setOnlyLate(e.target.checked)}
+                  className="accent-brand"
+                />
+                Solo atrasados
+              </label>
+              <button type="button" className={`${btnSecondary} ml-auto`} onClick={exportCobrar} disabled={!cobrarRows.length}>
+                Exportar CSV
+              </button>
+            </div>
+
+            {cobrarRows.length === 0 ? (
+              <p className="py-8 text-center text-sm text-stone-400">
+                {onlyLate ? 'Nadie está atrasado. Todo al día.' : 'Todavía no hay planes de pago activos.'}
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-200 text-sm">
+                  <thead>
+                    <tr className="border-b border-stone-200 bg-stone-50 text-left">
+                      <th className="px-4 py-2 text-xs font-semibold text-stone-500">Cliente</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-stone-500">Lote</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Saldo</th>
+                      <th className="px-3 py-2 text-center text-xs font-semibold text-stone-500">Cuotas</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-stone-500">Próxima</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-stone-500">Atraso</th>
+                      <th className="px-3 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cobrarRows.map((a) => (
+                      <tr key={a.plan_id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50">
+                        <td className="px-4 py-2">
+                          <p className="font-medium text-stone-900">{a.buyer_full_name}</p>
+                          <p className="font-mono text-xs text-stone-400">{a.tracking_code}</p>
+                        </td>
+                        <td className="px-3 py-2 text-stone-600">
+                          Mz {a.manzana}, {a.lote}
+                        </td>
+                        <td className="px-3 py-2 text-right font-semibold tabular-nums text-stone-900">
+                          {formatMoney(Number(a.saldo), a.currency)}
+                        </td>
+                        <td className="px-3 py-2 text-center tabular-nums text-stone-600">
+                          {a.cuotas_pagadas}/{a.cuotas_totales}
+                        </td>
+                        <td className="px-3 py-2 text-stone-600">{dateLabel(a.proxima_cuota)}</td>
+                        <td className="px-3 py-2">
+                          {Number(a.cuotas_vencidas) > 0 ? (
+                            <Badge className="bg-red-100 text-red-700">
+                              {a.cuotas_vencidas} · {formatMoney(Number(a.monto_vencido), a.currency)} ·{' '}
+                              {a.dias_atraso}d
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-green-100 text-green-700">Al día</Badge>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex justify-end gap-1.5">
+                            <button type="button" className={btnSecondary} onClick={() => void openDetail(a)}>
+                              Estado de cuenta
+                            </button>
+                            <button type="button" className={btnPrimary} onClick={() => setPayFor(a)}>
+                              Registrar pago
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </div>
+      ) : null}
+
+      {/* -------------------------------- EGRESOS ----------------------------- */}
+      {tab === 'egresos' ? (
+        <section className="rounded-xl border border-stone-200 bg-white">
+          <div className="flex flex-wrap items-center gap-3 border-b border-stone-200 px-4 py-3">
+            <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">Egresos</h2>
+            <button type="button" className={`${btnSecondary} ml-auto`} onClick={exportExpenses} disabled={!expenses.length}>
+              Exportar CSV
+            </button>
+            <button type="button" className={btnPrimary} onClick={() => setExpenseOpen(true)}>
+              Nuevo egreso
+            </button>
+          </div>
+          {expenses.length === 0 ? (
+            <p className="py-8 text-center text-sm text-stone-400">Todavía no hay egresos cargados.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-175 text-sm">
+                <thead>
+                  <tr className="border-b border-stone-200 bg-stone-50 text-left">
+                    <th className="px-4 py-2 text-xs font-semibold text-stone-500">Fecha</th>
+                    <th className="px-3 py-2 text-xs font-semibold text-stone-500">Categoría</th>
+                    <th className="px-3 py-2 text-xs font-semibold text-stone-500">Detalle</th>
+                    <th className="px-3 py-2 text-xs font-semibold text-stone-500">Proveedor</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Monto</th>
+                    <th className="px-3 py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {expenses.map((e) => (
+                    <tr key={e.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50">
+                      <td className="px-4 py-2 text-stone-600">{dateLabel(e.incurred_on)}</td>
+                      <td className="px-3 py-2">
+                        <Badge className="bg-stone-100 text-stone-700">{EXPENSE_LABEL[e.category]}</Badge>
+                      </td>
+                      <td className="px-3 py-2 text-stone-800">{e.description}</td>
+                      <td className="px-3 py-2 text-stone-500">{e.supplier ?? '—'}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums text-stone-900">
+                        {formatMoney(Number(e.amount), e.currency)}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          type="button"
+                          className={btnSecondary}
+                          disabled={busy}
+                          onClick={() => void deleteExpense(e)}
+                        >
+                          Eliminar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      {/* ------------------------------- Dialogs ------------------------------ */}
+      <StatementDialog
+        account={detail}
+        cuotas={cuotas}
+        onClose={() => setDetail(null)}
+        currency={currency}
+      />
+
+      {planFor ? (
+        <CreatePlanDialog
+          sale={planFor}
+          onClose={() => setPlanFor(null)}
+          onCreated={() => {
+            setPlanFor(null);
+            void fetchAll();
+          }}
+        />
+      ) : null}
+
+      {payFor ? (
+        <RegisterPaymentDialog
+          account={payFor}
+          onClose={() => setPayFor(null)}
+          onPaid={() => {
+            setPayFor(null);
+            void fetchAll();
+          }}
+        />
+      ) : null}
+
+      {expenseOpen ? (
+        <ExpenseDialog
+          projectId={projectId}
+          currency={currency}
+          onClose={() => setExpenseOpen(false)}
+          onSaved={() => {
+            setExpenseOpen(false);
+            void fetchAll();
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/* ========================================================================== */
+
+function StatementDialog({
+  account,
+  cuotas,
+  onClose,
+  currency,
+}: {
+  account: AccountStatus | null;
+  cuotas: Installment[] | null;
+  onClose: () => void;
+  currency: Currency;
+}) {
+  if (!account) return null;
+  const today = new Date().toISOString().slice(0, 10);
+
+  function exportStatement() {
+    if (!account || !cuotas) return;
+    downloadCsv(
+      `estado-cuenta-${account.tracking_code}.csv`,
+      toCsv(
+        ['Cuota', 'Vence', 'Monto', 'Pagado', 'Estado'],
+        cuotas.map((c) => [c.number, dateLabel(c.due_date), Number(c.amount), Number(c.amount_paid), c.status]),
+      ),
+    );
+  }
+
+  return (
+    <Dialog open onClose={onClose} title={`Estado de cuenta — ${account.buyer_full_name}`}>
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3 rounded-lg bg-stone-50 p-3 text-sm sm:grid-cols-4">
+          <div>
+            <p className="text-xs text-stone-500">Precio</p>
+            <p className="font-semibold tabular-nums">{formatMoney(Number(account.total_price), currency)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-stone-500">Cuota inicial</p>
+            <p className="font-semibold tabular-nums">{formatMoney(Number(account.down_payment), currency)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-stone-500">Pagado</p>
+            <p className="font-semibold tabular-nums text-brand">{formatMoney(Number(account.pagado), currency)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-stone-500">Saldo</p>
+            <p className="font-semibold tabular-nums">{formatMoney(Number(account.saldo), currency)}</p>
+          </div>
+        </div>
+
+        <p className="text-xs text-stone-500">
+          Mz {account.manzana}, Lote {account.lote} · {account.months} cuotas de{' '}
+          {formatMoney(Number(account.monthly_amount), currency)} · código{' '}
+          <span className="font-mono">{account.tracking_code}</span>
+        </p>
+
+        {cuotas === null ? (
+          <div className="flex justify-center py-6">
+            <Spinner />
+          </div>
+        ) : (
+          <div className="max-h-96 overflow-y-auto rounded-lg border border-stone-200">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-stone-50">
+                <tr className="border-b border-stone-200 text-left">
+                  <th className="px-3 py-2 text-xs font-semibold text-stone-500">#</th>
+                  <th className="px-3 py-2 text-xs font-semibold text-stone-500">Vence</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Monto</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Pagado</th>
+                  <th className="px-3 py-2 text-xs font-semibold text-stone-500">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cuotas.map((c) => {
+                  const late = c.status !== 'pagada' && c.status !== 'anulada' && c.due_date < today;
+                  return (
+                    <tr key={c.id} className="border-b border-stone-100 last:border-0">
+                      <td className="px-3 py-1.5 tabular-nums text-stone-500">{c.number}</td>
+                      <td className={`px-3 py-1.5 ${late ? 'font-semibold text-red-600' : 'text-stone-600'}`}>
+                        {dateLabel(c.due_date)}
+                      </td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{formatMoney(Number(c.amount), currency)}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-stone-500">
+                        {Number(c.amount_paid) > 0 ? formatMoney(Number(c.amount_paid), currency) : '—'}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <Badge
+                          className={
+                            c.status === 'pagada'
+                              ? 'bg-green-100 text-green-700'
+                              : c.status === 'parcial'
+                                ? 'bg-amber-100 text-amber-800'
+                                : c.status === 'anulada'
+                                  ? 'bg-stone-100 text-stone-500'
+                                  : late
+                                    ? 'bg-red-100 text-red-700'
+                                    : 'bg-stone-100 text-stone-600'
+                          }
+                        >
+                          {c.status === 'pendiente' && late ? 'vencida' : c.status}
+                        </Badge>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <a
+          href={waLink(
+            account.buyer_phone,
+            `Hola ${account.buyer_full_name.split(' ')[0] ?? ''}, te escribimos de Terrenalv por tu lote ${account.manzana}-${account.lote}. Tu saldo es de ${formatMoney(Number(account.saldo), currency)}.`,
+          )}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={btnSecondary}
+        >
+          <IconWhatsapp className="h-4 w-4" /> WhatsApp
+        </a>
+        <Link href={`/admin/reservas?open=${account.reservation_id}`} className={btnSecondary}>
+          Ver reserva
+        </Link>
+        <button type="button" className={btnSecondary} onClick={exportStatement} disabled={!cuotas?.length}>
+          Exportar CSV
+        </button>
+        <button type="button" className={btnPrimary} onClick={onClose}>
+          Cerrar
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+/* ========================================================================== */
+
+function CreatePlanDialog({
+  sale,
+  onClose,
+  onCreated,
+}: {
+  sale: SaleWithoutPlan;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const supabase = useMemo(() => createClient(), []);
+  const { push } = useToast();
+  const [down, setDown] = useState('');
+  const [months, setMonths] = useState('36');
+  const [monthly, setMonthly] = useState('');
+  const [first, setFirst] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1);
+    return d.toISOString().slice(0, 10);
+  });
+  const [interest, setInterest] = useState('0');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const financed = Math.max(0, sale.price_agreed - (Number(down) || 0));
+  const suggested = Number(months) > 0 ? Math.ceil((financed / Number(months)) * 100) / 100 : 0;
+
+  async function create() {
+    setError(null);
+    const m = Number(months);
+    const q = Number(monthly) || suggested;
+    if (!Number.isInteger(m) || m < 1 || m > 480) {
+      setError('Cantidad de cuotas inválida (1 a 480).');
+      return;
+    }
+    if (!(q > 0)) {
+      setError('El monto de la cuota debe ser mayor a cero.');
+      return;
+    }
+    setBusy(true);
+    const { error: err } = await supabase.rpc('admin_create_installment_plan', {
+      p_reservation_id: sale.id,
+      p_months: m,
+      p_monthly_amount: q,
+      p_down_payment: Number(down) || 0,
+      p_first_due_date: first,
+      p_annual_interest_pct: Number(interest) || 0,
+      p_note: note.trim() || null,
+    });
+    setBusy(false);
+    if (err) {
+      setError(adminErrorCopy(err.message));
+      return;
+    }
+    push(`Plan creado: ${m} cuotas.`, 'success');
+    onCreated();
+  }
+
+  return (
+    <Dialog open onClose={onClose} title={`Plan de pago — ${sale.buyer_full_name}`}>
+      <div className="space-y-3">
+        <p className="rounded-lg bg-stone-50 p-3 text-sm text-stone-600">
+          Lote {sale.manzana}-{sale.lote} · precio {formatMoney(sale.price_agreed, sale.currency)}.
+          Se financian <strong>{formatMoney(financed, sale.currency)}</strong>.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Cuota inicial</label>
+            <input type="number" min={0} step="0.01" value={down} onChange={(e) => setDown(e.target.value)} placeholder="0" className={inputClass} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Cantidad de cuotas</label>
+            <input type="number" min={1} max={480} step={1} value={months} onChange={(e) => setMonths(e.target.value)} className={inputClass} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">
+              Cuota mensual {suggested > 0 ? `(sug. ${suggested})` : ''}
+            </label>
+            <input type="number" min={0} step="0.01" value={monthly} onChange={(e) => setMonthly(e.target.value)} placeholder={String(suggested)} className={inputClass} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Primer vencimiento</label>
+            <input type="date" value={first} onChange={(e) => setFirst(e.target.value)} className={inputClass} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Interés anual %</label>
+            <input type="number" min={0} step="0.01" value={interest} onChange={(e) => setInterest(e.target.value)} className={inputClass} />
+          </div>
+        </div>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Nota (opcional)" className={inputClass} />
+        <p className="text-xs text-stone-400">
+          Sin interés, las cuotas suman exactamente lo financiado y la última absorbe el redondeo.
+          Con interés, se generan {months || 0} cuotas del monto indicado.
+        </p>
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <button type="button" className={btnSecondary} onClick={onClose}>
+          Volver
+        </button>
+        <button type="button" className={btnPrimary} disabled={busy} onClick={() => void create()}>
+          {busy ? 'Creando…' : 'Crear plan'}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+/* ========================================================================== */
+
+function RegisterPaymentDialog({
+  account,
+  onClose,
+  onPaid,
+}: {
+  account: AccountStatus;
+  onClose: () => void;
+  onPaid: () => void;
+}) {
+  const supabase = useMemo(() => createClient(), []);
+  const { push } = useToast();
+  const [amount, setAmount] = useState(String(account.monthly_amount));
+  const [paidOn, setPaidOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [provider, setProvider] = useState<'efectivo' | 'manual_qr' | 'banco_ganadero' | 'bnb'>('efectivo');
+  const [reference, setReference] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function register() {
+    setError(null);
+    const a = Number(amount);
+    if (!(a > 0)) {
+      setError('El monto debe ser mayor a cero.');
+      return;
+    }
+    setBusy(true);
+    const { data, error: err } = await supabase.rpc('admin_register_cuota_payment', {
+      p_reservation_id: account.reservation_id,
+      p_amount: a,
+      p_paid_on: paidOn,
+      p_provider: provider,
+      p_reference: reference.trim() || null,
+      p_note: note.trim() || null,
+    });
+    setBusy(false);
+    if (err) {
+      setError(adminErrorCopy(err.message));
+      return;
+    }
+    const r = data as { aplicado?: number; sobrante?: number; cuotas_afectadas?: number } | null;
+    const extra =
+      Number(r?.sobrante ?? 0) > 0
+        ? ` Sobran ${formatMoney(Number(r?.sobrante), account.currency)} sin aplicar: el plan ya no tiene cuotas pendientes.`
+        : '';
+    push(`Pago registrado en ${r?.cuotas_afectadas ?? 0} cuota(s).${extra}`, 'success');
+    onPaid();
+  }
+
+  return (
+    <Dialog open onClose={onClose} title={`Registrar pago — ${account.buyer_full_name}`}>
+      <div className="space-y-3">
+        <p className="rounded-lg bg-stone-50 p-3 text-sm text-stone-600">
+          Saldo actual <strong>{formatMoney(Number(account.saldo), account.currency)}</strong>. El
+          pago se aplica desde la cuota más vieja hacia adelante.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Monto</label>
+            <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className={inputClass} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Fecha</label>
+            <input type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} className={inputClass} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Forma de pago</label>
+            <select value={provider} onChange={(e) => setProvider(e.target.value as typeof provider)} className={inputClass}>
+              <option value="efectivo">Efectivo</option>
+              <option value="manual_qr">QR / transferencia</option>
+              <option value="banco_ganadero">Banco Ganadero</option>
+              <option value="bnb">BNB</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Referencia (opcional)</label>
+            <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="N° de comprobante" className={inputClass} />
+          </div>
+        </div>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Nota (opcional)" className={inputClass} />
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <button type="button" className={btnSecondary} onClick={onClose}>
+          Volver
+        </button>
+        <button type="button" className={btnPrimary} disabled={busy} onClick={() => void register()}>
+          {busy ? 'Registrando…' : 'Registrar pago'}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+/* ========================================================================== */
+
+function ExpenseDialog({
+  projectId,
+  currency,
+  onClose,
+  onSaved,
+}: {
+  projectId: string;
+  currency: Currency;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const supabase = useMemo(() => createClient(), []);
+  const { push } = useToast();
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [category, setCategory] = useState<ExpenseCategory>('obra');
+  const [description, setDescription] = useState('');
+  const [supplier, setSupplier] = useState('');
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setError(null);
+    if (!description.trim()) {
+      setError('Escribe un detalle del egreso.');
+      return;
+    }
+    const a = Number(amount);
+    if (!(a > 0)) {
+      setError('El monto debe ser mayor a cero.');
+      return;
+    }
+    setBusy(true);
+    const { error: err } = await supabase.rpc('admin_record_expense', {
+      p_project_id: projectId,
+      p_incurred_on: date,
+      p_category: category,
+      p_description: description.trim(),
+      p_amount: a,
+      p_currency: currency,
+      p_supplier: supplier.trim() || null,
+      p_receipt_storage_path: null,
+      p_note: note.trim() || null,
+    });
+    setBusy(false);
+    if (err) {
+      setError(adminErrorCopy(err.message));
+      return;
+    }
+    push('Egreso registrado.', 'success');
+    onSaved();
+  }
+
+  return (
+    <Dialog open onClose={onClose} title="Nuevo egreso">
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Fecha</label>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Categoría</label>
+            <select value={category} onChange={(e) => setCategory(e.target.value as ExpenseCategory)} className={inputClass}>
+              {EXPENSE_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {EXPENSE_LABEL[c]}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Detalle (ej. cemento para calles)" className={inputClass} />
+        <div className="grid grid-cols-2 gap-3">
+          <input value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Proveedor (opcional)" className={inputClass} />
+          <div>
+            <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={`Monto en ${currency === 'BOB' ? 'Bs' : '$us'}`} className={inputClass} />
+          </div>
+        </div>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Nota (opcional)" className={inputClass} />
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <button type="button" className={btnSecondary} onClick={onClose}>
+          Volver
+        </button>
+        <button type="button" className={btnPrimary} disabled={busy} onClick={() => void save()}>
+          {busy ? 'Guardando…' : 'Guardar egreso'}
+        </button>
+      </div>
+    </Dialog>
+  );
+}

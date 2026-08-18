@@ -1,0 +1,138 @@
+// Shapes of the accounting reads. These mirror the two database views and the
+// expenses table exactly; nothing here is computed differently to how the
+// database computes it, so a figure on screen can always be traced to a row.
+
+export type Currency = 'USD' | 'BOB';
+
+export interface AccountStatus {
+  plan_id: string;
+  project_id: string;
+  reservation_id: string;
+  plan_status: 'activo' | 'completado' | 'cancelado';
+  total_price: number;
+  down_payment: number;
+  financed_amount: number;
+  months: number;
+  monthly_amount: number;
+  currency: Currency;
+  first_due_date: string;
+  tracking_code: string;
+  buyer_full_name: string;
+  buyer_phone: string;
+  buyer_ci: string;
+  manzana: string;
+  lote: string;
+  total_cuotas: number;
+  pagado: number;
+  saldo: number;
+  cuotas_vencidas: number;
+  monto_vencido: number;
+  cuotas_pagadas: number;
+  cuotas_totales: number;
+  proxima_cuota: string | null;
+  /** Days since the OLDEST unpaid cuota fell due; null when nothing is late. */
+  dias_atraso: number | null;
+}
+
+export interface MonthlyCashflow {
+  project_id: string;
+  mes: string;
+  ingresos_bob: number;
+  egresos_bob: number;
+  resultado_bob: number;
+}
+
+export const EXPENSE_CATEGORIES = [
+  'obra',
+  'comisiones',
+  'sueldos',
+  'publicidad',
+  'administracion',
+  'impuestos',
+  'financiero',
+  'otros',
+] as const;
+export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+
+export const EXPENSE_LABEL: Record<ExpenseCategory, string> = {
+  obra: 'Obra',
+  comisiones: 'Comisiones',
+  sueldos: 'Sueldos',
+  publicidad: 'Publicidad',
+  administracion: 'Administración',
+  impuestos: 'Impuestos',
+  financiero: 'Financiero',
+  otros: 'Otros',
+};
+
+export interface Expense {
+  id: string;
+  incurred_on: string;
+  category: ExpenseCategory;
+  description: string;
+  supplier: string | null;
+  amount: number;
+  currency: Currency;
+  amount_bob: number;
+  note: string | null;
+  created_at: string;
+}
+
+export interface Installment {
+  id: string;
+  number: number;
+  due_date: string;
+  amount: number;
+  amount_paid: number;
+  status: 'pendiente' | 'parcial' | 'pagada' | 'anulada';
+  paid_at: string | null;
+}
+
+/** A confirmed sale that has no payment plan yet — the gap the panel must close. */
+export interface SaleWithoutPlan {
+  id: string;
+  tracking_code: string;
+  buyer_full_name: string;
+  price_agreed: number;
+  currency: Currency;
+  confirmed_at: string | null;
+  manzana: string;
+  lote: string;
+}
+
+/** es-BO short month label: "ago 2026". */
+export function monthLabel(iso: string): string {
+  const d = new Date(`${iso.slice(0, 10)}T12:00:00`);
+  return new Intl.DateTimeFormat('es-BO', { month: 'short', year: 'numeric' }).format(d);
+}
+
+export function dateLabel(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(`${iso.slice(0, 10)}T12:00:00`);
+  return new Intl.DateTimeFormat('es-BO', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(d);
+}
+
+/**
+ * Build a CSV the accountant can open in Excel.
+ *
+ * Separator is ';' and decimals use a comma: Excel in a Bolivian locale reads a
+ * comma-separated file as one column per row, which makes the export useless
+ * exactly where it is meant to be used. The BOM keeps accents intact.
+ */
+export function toCsv(headers: string[], rows: (string | number | null)[][]): string {
+  const cell = (v: string | number | null): string => {
+    if (v === null || v === undefined) return '';
+    if (typeof v === 'number') return String(v).replace('.', ',');
+    return /[";\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  };
+  return `﻿${[headers, ...rows].map((r) => r.map(cell).join(';')).join('\r\n')}`;
+}
+
+export function downloadCsv(filename: string, csv: string): void {
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}

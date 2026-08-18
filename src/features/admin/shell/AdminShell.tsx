@@ -16,6 +16,7 @@ import {
   IconMap,
   IconMenu,
   IconScroll,
+  IconLedger,
   IconSettings,
   IconUsers,
 } from '@/features/admin/ui/icons';
@@ -34,6 +35,7 @@ const NAV: NavItem[] = [
   { href: '/admin/reservas', label: 'Reservas', icon: IconInbox },
   { href: '/admin/lotes', label: 'Lotes', icon: IconGrid },
   { href: '/admin/notificaciones', label: 'Notificaciones', icon: IconBell },
+  { href: '/admin/contabilidad', label: 'Contabilidad', icon: IconLedger, adminOnly: true },
   { href: '/admin/mapa', label: 'Mapa', icon: IconMap, adminOnly: true },
   { href: '/admin/equipo', label: 'Equipo', icon: IconUsers, adminOnly: true },
   { href: '/admin/configuracion', label: 'Configuración', icon: IconSettings, adminOnly: true },
