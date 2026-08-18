@@ -177,3 +177,15 @@ export function monthStartIso(): string {
 export function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
+
+/** An approved payment, as listed on an account statement. */
+export interface PaymentRow {
+  id: string;
+  reference_code: string;
+  amount: number;
+  currency: Currency;
+  purpose: string;
+  provider: string;
+  verified_at: string | null;
+  status: string;
+}

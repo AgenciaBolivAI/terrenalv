@@ -39,6 +39,7 @@ import {
   type LedgerAccount,
   type LedgerLine,
   type MonthlyCashflow,
+  type PaymentRow,
   type SaleWithoutPlan,
 } from './types';
 
@@ -97,6 +98,7 @@ export default function AccountingClient({
   const [onlyLate, setOnlyLate] = useState(false);
   const [detail, setDetail] = useState<AccountStatus | null>(null);
   const [cuotas, setCuotas] = useState<Installment[] | null>(null);
+  const [pagos, setPagos] = useState<PaymentRow[] | null>(null);
   const [planFor, setPlanFor] = useState<SaleWithoutPlan | null>(null);
   const [payFor, setPayFor] = useState<AccountStatus | null>(null);
   const [expenseOpen, setExpenseOpen] = useState(false);
@@ -178,12 +180,22 @@ export default function AccountingClient({
   async function openDetail(a: AccountStatus) {
     setDetail(a);
     setCuotas(null);
-    const { data } = await supabase
-      .from('installments')
-      .select('id, number, due_date, amount, amount_paid, status, paid_at')
-      .eq('plan_id', a.plan_id)
-      .order('number');
-    setCuotas((data ?? []) as unknown as Installment[]);
+    setPagos(null);
+    const [cRes, pRes] = await Promise.all([
+      supabase
+        .from('installments')
+        .select('id, number, due_date, amount, amount_paid, status, paid_at')
+        .eq('plan_id', a.plan_id)
+        .order('number'),
+      supabase
+        .from('payments')
+        .select('id, reference_code, amount, currency, purpose, provider, verified_at, status')
+        .eq('reservation_id', a.reservation_id)
+        .eq('status', 'aprobado')
+        .order('verified_at', { ascending: false }),
+    ]);
+    setCuotas((cRes.data ?? []) as unknown as Installment[]);
+    setPagos((pRes.data ?? []) as unknown as PaymentRow[]);
   }
 
   function exportCobrar() {
@@ -728,6 +740,7 @@ export default function AccountingClient({
       <StatementDialog
         account={detail}
         cuotas={cuotas}
+        pagos={pagos}
         onClose={() => setDetail(null)}
         currency={currency}
       />
@@ -774,11 +787,13 @@ export default function AccountingClient({
 function StatementDialog({
   account,
   cuotas,
+  pagos,
   onClose,
   currency,
 }: {
   account: AccountStatus | null;
   cuotas: Installment[] | null;
+  pagos: PaymentRow[] | null;
   onClose: () => void;
   currency: Currency;
 }) {
@@ -878,6 +893,33 @@ function StatementDialog({
           </div>
         )}
       </div>
+
+      {pagos?.length ? (
+        <section className="mt-4">
+          <p className="annot mb-2 text-stone-400">Pagos recibidos</p>
+          <ul className="divide-y divide-stone-100 rounded-lg border border-stone-200">
+            {pagos.map((pg) => (
+              <li key={pg.id} className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
+                <span className="font-mono text-xs text-stone-500">{pg.reference_code}</span>
+                <span className="text-stone-600">{dateLabel(pg.verified_at)}</span>
+                <span className="text-xs text-stone-400">
+                  {pg.purpose === 'cuota' ? 'cuota' : 'sena'}
+                </span>
+                <span className="ml-auto font-semibold tabular-nums">
+                  {formatMoney(Number(pg.amount), pg.currency)}
+                </span>
+                <Link
+                  href={`/admin/recibo/${pg.id}`}
+                  target="_blank"
+                  className="text-xs font-semibold text-brand hover:underline"
+                >
+                  Recibo
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <div className="mt-4 flex flex-wrap justify-end gap-2">
         <a
