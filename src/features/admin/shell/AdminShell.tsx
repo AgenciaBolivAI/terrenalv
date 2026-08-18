@@ -76,7 +76,16 @@ export default function AdminShell({
           {/* Desktop sidebar */}
           <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-stone-200 bg-white md:flex">
             <div className="px-5 py-5">
-              <Logo className="h-7 w-auto" />
+              {/* El logo es lo primero que se toca para volver al sitio. */}
+              <Link
+                href="/"
+                aria-label="Ir al sitio de Terrenalv"
+                title="Ir al sitio"
+                className="admin-logo inline-flex rounded-lg transition-opacity hover:opacity-80
+                           focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
+              >
+                <Logo className="h-7 w-auto" />
+              </Link>
               <p className="mt-1 text-xs text-stone-500">{projectName}</p>
             </div>
             <nav className="flex-1 space-y-1 px-3">
@@ -118,7 +127,15 @@ export default function AdminShell({
           <div className="flex min-h-dvh flex-col md:pl-60">
             <header className="admin-topbar sticky top-0 z-30 flex h-14 items-center justify-between border-b border-stone-200 px-4 backdrop-blur">
               <div className="min-w-0 md:hidden">
-                <Logo className="h-5 w-auto" srl={false} />
+                <Link
+                  href="/"
+                  aria-label="Ir al sitio de Terrenalv"
+                  title="Ir al sitio"
+                  className="admin-logo inline-flex rounded-lg transition-opacity hover:opacity-80
+                             focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
+                >
+                  <Logo className="h-5 w-auto" srl={false} />
+                </Link>
                 <p className="truncate text-[11px] text-stone-500">{projectName}</p>
               </div>
               <p className="hidden text-sm font-semibold text-stone-700 md:block">{projectName}</p>

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
+import Link from 'next/link';
 import { Logo } from '@/components/Logo';
 import LoginClient from '@/features/admin/auth/LoginClient';
 import { hasSupabaseConfig } from '@/lib/supabase/config';
@@ -16,7 +17,15 @@ export default function AdminLoginPage() {
     <main className="flex min-h-dvh items-center justify-center bg-stone-100 px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <Logo className="h-9 w-auto" />
+          <Link
+            href="/"
+            aria-label="Ir al sitio de Terrenalv"
+            title="Ir al sitio"
+            className="inline-flex rounded-lg transition-opacity hover:opacity-80
+                       focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
+          >
+            <Logo className="h-9 w-auto" />
+          </Link>
           <p className="mt-2 text-sm text-stone-500">Panel del equipo — Prados del Sur</p>
         </div>
         <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">

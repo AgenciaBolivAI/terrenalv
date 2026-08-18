@@ -245,10 +245,15 @@ html[data-theme='dark'] .admin-scope .ui-btn-primary:hover:not(:disabled) {
   background-color: #166534;
 }
 
-/* La imagen del logo es verde sobre transparente y desaparece contra el panel
-   oscuro; el aclarado la despega sin repintar el archivo. */
-html[data-theme='dark'] .admin-scope img[alt*='Terrenalv' i] {
-  filter: brightness(1.35) saturate(1.1);
+/* El verde del wordmark es casi el verde de marca, así que sobre el panel
+   oscuro desaparece. Aclararlo con un filtro repinta la marca, que es
+   justamente lo que el componente Logo dice que no hay que hacer: la forma
+   correcta de reproducirla sobre fondo oscuro es ponerla sobre una placa clara,
+   igual que variant="inverse". Eso es esta regla — misma solución, aplicada
+   desde el tema en vez de desde React. */
+html[data-theme='dark'] .admin-scope .admin-logo {
+  background-color: #faf8f4;
+  padding: 0.25rem 0.5rem;
 }
 
 /* La barra superior era bg-white/95. Tailwind compila las variantes con opacidad
