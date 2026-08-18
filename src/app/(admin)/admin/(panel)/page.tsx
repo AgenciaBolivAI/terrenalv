@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { formatDateTime, formatMoney, waLink } from '@/lib/format';
 import type { LotStatus, ReservationStatus } from '@/lib/db-types';
 import { getAdminContext } from '@/features/admin/lib/get-admin-context';
+import { checkSetupHealth } from '@/features/admin/lib/setup-health';
 import {
   laPazDayEndIso,
   laPazDayStartIso,
@@ -57,6 +58,8 @@ export default async function DashboardPage() {
   }
   const projectId = ctx.project.id;
   const supabase = await createClient();
+  // Config problems that silently cost sales — payment details above all.
+  const health = ctx.profile.role === 'admin' ? await checkSetupHealth(projectId) : [];
 
   const monthStart = laPazMonthStartIso();
   const monthEnd = laPazMonthEndIso();
@@ -173,6 +176,51 @@ export default async function DashboardPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <h1 className="text-lg font-bold text-stone-900">Dashboard</h1>
+
+      {health.length > 0 ? (
+        <section className="space-y-2">
+          {health.map((h) => (
+            <div
+              key={h.title}
+              className={`flex flex-wrap items-start gap-3 rounded-xl border p-4 ${
+                h.level === 'critical'
+                  ? 'border-red-300 bg-red-50'
+                  : 'border-amber-300 bg-amber-50'
+              }`}
+            >
+              <div className="min-w-0 flex-1">
+                <p
+                  className={`text-sm font-bold ${
+                    h.level === 'critical' ? 'text-red-800' : 'text-amber-900'
+                  }`}
+                >
+                  {h.level === 'critical' ? '⚠ ' : ''}
+                  {h.title}
+                </p>
+                <p
+                  className={`mt-1 text-xs ${
+                    h.level === 'critical' ? 'text-red-700' : 'text-amber-800'
+                  }`}
+                >
+                  {h.detail}
+                </p>
+              </div>
+              {h.href ? (
+                <Link
+                  href={h.href}
+                  className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition-colors ${
+                    h.level === 'critical'
+                      ? 'bg-red-600 hover:bg-red-700'
+                      : 'bg-amber-600 hover:bg-amber-700'
+                  }`}
+                >
+                  {h.cta ?? 'Revisar'}
+                </Link>
+              ) : null}
+            </div>
+          ))}
+        </section>
+      ) : null}
 
       {/* Reservations KPI cards */}
       <section>
