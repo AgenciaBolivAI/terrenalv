@@ -161,3 +161,100 @@ button:disabled {
   stroke-width: 1.4;
   animation: pulse-selected 1.6s ease-in-out infinite;
 }
+
+/* ---------------------------------------------------------------------------
+   Modo oscuro del panel.
+
+   El panel está construido con utilidades literales — bg-white, text-stone-900,
+   border-stone-200 — repartidas por cientos de lugares. En Tailwind v4 esas
+   utilidades resuelven variables (bg-white es var(--color-white)), así que
+   redefinir las variables dentro de un scope oscurece TODO el panel sin tocar
+   un solo componente.
+
+   El scope es `.admin-scope`, no :root: el atributo vive en <html> para poder
+   aplicarlo antes del primer pintado, pero las variables se definen solo dentro
+   del panel. Así la landing y el mapa público siguen claros aunque el equipo
+   deje el panel en oscuro.
+
+   Los colores de estado de los lotes (--lot-*) NO se tocan: verde disponible y
+   naranja reservado significan lo mismo en cualquier tema, y son lo único que
+   hace legible el plano.
+   --------------------------------------------------------------------------- */
+html[data-theme='dark'] .admin-scope {
+  /* Superficies, de la más honda a la más alta: fondo < tarjeta < hover. */
+  --color-stone-100: #0c0a09;
+  --color-white:     #1c1917;
+  --color-stone-50:  #292524;
+
+  /* Bordes y separadores. */
+  --color-stone-200: #3f3b38;
+  --color-stone-300: #57534e;
+
+  /* Texto, invertido de forma coherente: 400 es el más apagado y 900 el más
+     fuerte, igual que en claro, pero subiendo en luminosidad. */
+  --color-stone-400: #8c837c;
+  --color-stone-500: #a8a29e;
+  --color-stone-600: #c9c3bf;
+  --color-stone-700: #e7e5e4;
+  --color-stone-800: #f5f5f4;
+  --color-stone-900: #fafaf9;
+
+  /* Verde de marca: sobre fondo oscuro el #14532d de la marca es ilegible como
+     texto, así que sube. Los botones sólidos se corrigen aparte, porque ahí el
+     mismo tono tiene que aguantar texto blanco encima. */
+  --color-brand: #22c55e;
+  --color-brand-light: #4ade80;
+
+  /* Tintes de estado: en claro son fondos pálidos; en oscuro tienen que ser
+     fondos hondos con el texto claro, o el banner queda blanco radiante. */
+  --color-green-50: #052e16;
+  --color-green-100: #14532d;
+  --color-green-500: #22c55e;
+  --color-green-600: #16a34a;
+  --color-green-700: #86efac;
+
+  --color-red-50: #3f1212;
+  --color-red-100: #7f1d1d;
+  --color-red-300: #991b1b;
+  --color-red-600: #f87171;
+  --color-red-700: #fca5a5;
+  --color-red-800: #fecaca;
+
+  --color-amber-50: #3b230a;
+  --color-amber-100: #78350f;
+  --color-amber-200: #92400e;
+  --color-amber-300: #a16207;
+  --color-amber-400: #f59e0b;
+  --color-amber-600: #fbbf24;
+  --color-amber-700: #fcd34d;
+  --color-amber-800: #fde68a;
+  --color-amber-900: #fef3c7;
+
+  --color-orange-400: #fb923c;
+  --color-orange-600: #fdba74;
+
+  color-scheme: dark;
+}
+
+/* Botones sólidos: el token de marca subió para poder leerse como texto, pero
+   como fondo con texto blanco encima necesita bajar otra vez. */
+html[data-theme='dark'] .admin-scope .ui-btn-primary {
+  background-color: #15803d;
+}
+html[data-theme='dark'] .admin-scope .ui-btn-primary:hover:not(:disabled) {
+  background-color: #166534;
+}
+
+/* La imagen del logo es verde sobre transparente y desaparece contra el panel
+   oscuro; el aclarado la despega sin repintar el archivo. */
+html[data-theme='dark'] .admin-scope img[alt*='Terrenalv' i] {
+  filter: brightness(1.35) saturate(1.1);
+}
+
+/* La barra superior era bg-white/95. Tailwind compila las variantes con opacidad
+   a un color literal (#ffffffF2), así que NO sigue el token y en oscuro habría
+   quedado una franja blanca cruzando el panel. Con color-mix sigue al token en
+   ambos temas y conserva la translucidez sobre la que actúa el backdrop-blur. */
+.admin-scope .admin-topbar {
+  background-color: color-mix(in oklab, var(--color-white) 95%, transparent);
+}

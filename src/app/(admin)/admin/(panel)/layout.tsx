@@ -22,6 +22,15 @@ function CenteredCard({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Se ejecuta antes del primer pintado: si el tema se aplicara desde React, el
+// panel aparecería blanco y recién después se pondría oscuro, que es un
+// fogonazo en la cara de quien trabaja de noche.
+const THEME_SCRIPT = `(function(){try{
+var p=localStorage.getItem('terrenalv-admin-theme')||'auto';
+var d=p==='dark'||(p==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches);
+document.documentElement.dataset.theme=d?'dark':'light';
+}catch(e){}})();`;
+
 export default async function AdminPanelLayout({ children }: { children: React.ReactNode }) {
   const ctx = await getAdminContext();
 
@@ -63,13 +72,16 @@ export default async function AdminPanelLayout({ children }: { children: React.R
   }
 
   return (
-    <AdminShell
-      profile={ctx.profile}
-      projectId={ctx.project?.id ?? null}
-      projectName={ctx.project?.name ?? PROJECT_NAME}
-      currency={ctx.project?.currency ?? 'BOB'}
-    >
-      {children}
-    </AdminShell>
+    <>
+      <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      <AdminShell
+        profile={ctx.profile}
+        projectId={ctx.project?.id ?? null}
+        projectName={ctx.project?.name ?? PROJECT_NAME}
+        currency={ctx.project?.currency ?? 'BOB'}
+      >
+        {children}
+      </AdminShell>
+    </>
   );
 }

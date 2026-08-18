@@ -22,6 +22,7 @@ import {
 } from '@/features/admin/ui/icons';
 import { AdminProvider } from './AdminContext';
 import NotificationBell from './NotificationBell';
+import ThemeToggle from './ThemeToggle';
 
 interface NavItem {
   href: string;
@@ -71,7 +72,7 @@ export default function AdminShell({
   return (
     <AdminProvider value={{ profile, projectId, projectName, currency }}>
       <ToastProvider>
-        <div className="min-h-dvh bg-stone-100">
+        <div className="admin-scope min-h-dvh bg-stone-100">
           {/* Desktop sidebar */}
           <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-stone-200 bg-white md:flex">
             <div className="px-5 py-5">
@@ -115,13 +116,14 @@ export default function AdminShell({
 
           {/* Content column */}
           <div className="flex min-h-dvh flex-col md:pl-60">
-            <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-stone-200 bg-white/95 px-4 backdrop-blur">
+            <header className="admin-topbar sticky top-0 z-30 flex h-14 items-center justify-between border-b border-stone-200 px-4 backdrop-blur">
               <div className="min-w-0 md:hidden">
                 <Logo className="h-5 w-auto" srl={false} />
                 <p className="truncate text-[11px] text-stone-500">{projectName}</p>
               </div>
               <p className="hidden text-sm font-semibold text-stone-700 md:block">{projectName}</p>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-2">
+                <ThemeToggle className="hidden sm:flex" />
                 <NotificationBell />
                 <div className="relative">
                   <button
@@ -140,6 +142,10 @@ export default function AdminShell({
                           {profile.full_name}
                         </p>
                         <p className="text-xs text-stone-400">{roleLabel}</p>
+                        <div className="mt-3 sm:hidden">
+                          <p className="mb-1.5 text-xs text-stone-500">Tema</p>
+                          <ThemeToggle />
+                        </div>
                         <div className="mt-3">
                           <SignOutButton className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-600 hover:bg-stone-50">
                             <IconLogout className="h-4 w-4" /> Cerrar sesión
