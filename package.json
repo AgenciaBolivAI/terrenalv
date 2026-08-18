@@ -2,6 +2,9 @@
   "name": "terrenalv",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "next dev --turbopack",
     "//build": "NOT --turbopack. The Turbopack build does not trace sharp's native platform package into the serverless function, so every payment-proof upload failed with 'Could not load the sharp module using the linux-x64 runtime'. The webpack build traces it automatically — verified in route.js.nft.json, which lists 74 sharp files and the platform's @img binary. Dev keeps Turbopack; nothing is traced there.",
