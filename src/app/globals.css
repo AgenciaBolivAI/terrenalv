@@ -263,3 +263,35 @@ html[data-theme='dark'] .admin-scope .admin-logo {
 .admin-scope .admin-topbar {
   background-color: color-mix(in oklab, var(--color-white) 95%, transparent);
 }
+
+/* ---------------------------------------------------------------------------
+   Paleta de la analítica.
+
+   Seis series en orden fijo, nunca cicladas: la serie 7 se agrupa en "Otros"
+   antes que inventarle un color. Validada con el verificador de la skill de
+   dataviz — banda de luminosidad, piso de croma, separación para daltonismo
+   (peor par ΔE 11.3 deuteranopía) y contraste contra la superficie.
+
+   El modo oscuro NO es un volteo: son pasos elegidos y validados aparte contra
+   #1c1917, porque los tonos claros sobre fondo oscuro se van de la banda.
+   --------------------------------------------------------------------------- */
+:root {
+  --an-1: #16a34a; /* verde de marca */
+  --an-2: #7c3aed;
+  --an-3: #d97706;
+  --an-4: #0284c7;
+  --an-5: #be123c;
+  --an-6: #0d9488;
+  --an-grid: #e7e5e4;
+  --an-axis: #a8a29e;
+}
+html[data-theme='dark'] .admin-scope {
+  --an-1: #16a34a;
+  --an-2: #8b5cf6;
+  --an-3: #d97706;
+  --an-4: #0284c7;
+  --an-5: #f43f5e;
+  --an-6: #0d9488;
+  --an-grid: #3f3b38;
+  --an-axis: #78716c;
+}

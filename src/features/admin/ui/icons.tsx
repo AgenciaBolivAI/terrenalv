@@ -77,3 +77,8 @@ export const IconCheck = (p: IconProps) => base(p, <path d="m4.5 12.5 5 5 10-11"
 // Contabilidad: a ledger column with a coin — money recorded, not just money.
 export const IconLedger = (p: IconProps) =>
   base(p, <><path d="M4 3h11l5 5v13H4z" /><path d="M15 3v5h5" /><path d="M8 12h8" /><path d="M8 16h5" /></>);
+
+// Analítica: barras de distinta altura — magnitud comparada, que es de lo que
+// trata la sección.
+export const IconChart = (p: IconProps) =>
+  base(p, <><path d="M4 20V10" /><path d="M10 20V4" /><path d="M16 20v-7" /><path d="M3 20h18" /></>);
