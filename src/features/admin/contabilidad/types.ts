@@ -136,3 +136,44 @@ export function downloadCsv(filename: string, csv: string): void {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+/** One side of one journal entry, as projected by v_libro_diario. */
+export interface LedgerLine {
+  fecha: string;
+  comprobante: string;
+  glosa: string;
+  cuenta: string;
+  debe: number;
+  haber: number;
+  origen: 'pago' | 'egreso';
+  origen_id: string;
+}
+
+/** One account's totals, as projected by v_libro_mayor. */
+export interface LedgerAccount {
+  cuenta: string;
+  cuenta_nombre: string;
+  tipo: 'activo' | 'pasivo' | 'patrimonio' | 'ingreso' | 'gasto';
+  sort_order: number;
+  debe: number;
+  haber: number;
+  saldo: number;
+}
+
+export const ACCOUNT_KIND_LABEL: Record<LedgerAccount['tipo'], string> = {
+  activo: 'Activo',
+  pasivo: 'Pasivo',
+  patrimonio: 'Patrimonio',
+  ingreso: 'Ingreso',
+  gasto: 'Gasto',
+};
+
+/** First day of the current month, yyyy-mm-dd — the default report period. */
+export function monthStartIso(): string {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+}
+
+export function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}

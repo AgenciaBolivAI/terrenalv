@@ -22,27 +22,33 @@ import { Dialog } from '@/features/admin/ui/dialog';
 import { IconWhatsapp } from '@/features/admin/ui/icons';
 import { useToast } from '@/features/admin/ui/toast';
 import {
+  ACCOUNT_KIND_LABEL,
   EXPENSE_CATEGORIES,
   EXPENSE_LABEL,
   dateLabel,
   downloadCsv,
   monthLabel,
+  monthStartIso,
   toCsv,
+  todayIso,
   type AccountStatus,
   type Currency,
   type Expense,
   type ExpenseCategory,
   type Installment,
+  type LedgerAccount,
+  type LedgerLine,
   type MonthlyCashflow,
   type SaleWithoutPlan,
 } from './types';
 
-type Tab = 'resumen' | 'cobrar' | 'egresos';
+type Tab = 'resumen' | 'cobrar' | 'egresos' | 'libro';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'resumen', label: 'Resumen' },
   { id: 'cobrar', label: 'Por cobrar' },
   { id: 'egresos', label: 'Egresos' },
+  { id: 'libro', label: 'Libro' },
 ];
 
 function Kpi({
@@ -94,6 +100,14 @@ export default function AccountingClient({
   const [planFor, setPlanFor] = useState<SaleWithoutPlan | null>(null);
   const [payFor, setPayFor] = useState<AccountStatus | null>(null);
   const [expenseOpen, setExpenseOpen] = useState(false);
+
+  // Libro: the contador works in periods, so this has its own date range and
+  // loads on demand rather than dragging every journal line into the page.
+  const [desde, setDesde] = useState(monthStartIso);
+  const [hasta, setHasta] = useState(todayIso);
+  const [mayor, setMayor] = useState<LedgerAccount[] | null>(null);
+  const [diario, setDiario] = useState<LedgerLine[] | null>(null);
+  const [libroBusy, setLibroBusy] = useState(false);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -205,6 +219,55 @@ export default function AccountingClient({
         expenses.map((e) => [
           dateLabel(e.incurred_on), EXPENSE_LABEL[e.category], e.description, e.supplier ?? '',
           Number(e.amount), e.currency, Number(e.amount_bob),
+        ]),
+      ),
+    );
+  }
+
+  const loadLibro = useCallback(async () => {
+    setLibroBusy(true);
+    const [mRes, dRes] = await Promise.all([
+      supabase.from('v_libro_mayor').select('*').eq('project_id', projectId).order('sort_order'),
+      supabase
+        .from('v_libro_diario')
+        .select('fecha, comprobante, glosa, cuenta, debe, haber, origen, origen_id')
+        .eq('project_id', projectId)
+        .gte('fecha', desde)
+        .lte('fecha', hasta)
+        .order('fecha')
+        .limit(5000),
+    ]);
+    setMayor((mRes.data ?? []) as unknown as LedgerAccount[]);
+    setDiario((dRes.data ?? []) as unknown as LedgerLine[]);
+    setLibroBusy(false);
+  }, [supabase, projectId, desde, hasta]);
+
+  useEffect(() => {
+    if (tab === 'libro') void loadLibro();
+  }, [tab, loadLibro]);
+
+  function exportDiario() {
+    if (!diario) return;
+    downloadCsv(
+      `libro-diario-${desde}-a-${hasta}.csv`,
+      toCsv(
+        ['Fecha', 'Comprobante', 'Glosa', 'Cuenta', 'Debe (Bs)', 'Haber (Bs)'],
+        diario.map((l) => [
+          dateLabel(l.fecha), l.comprobante, l.glosa, l.cuenta, Number(l.debe), Number(l.haber),
+        ]),
+      ),
+    );
+  }
+
+  function exportMayor() {
+    if (!mayor) return;
+    downloadCsv(
+      `libro-mayor-${todayIso()}.csv`,
+      toCsv(
+        ['Cuenta', 'Nombre', 'Tipo', 'Debe (Bs)', 'Haber (Bs)', 'Saldo (Bs)'],
+        mayor.map((a) => [
+          a.cuenta, a.cuenta_nombre, ACCOUNT_KIND_LABEL[a.tipo],
+          Number(a.debe), Number(a.haber), Number(a.saldo),
         ]),
       ),
     );
@@ -512,6 +575,153 @@ export default function AccountingClient({
             </div>
           )}
         </section>
+      ) : null}
+
+      {/* --------------------------------- LIBRO ------------------------------ */}
+      {tab === 'libro' ? (
+        <div className="space-y-5">
+          <p className="rounded-xl border border-stone-200 bg-white p-4 text-xs text-stone-500">
+            Libro diario y mayor <strong>derivados</strong> de los movimientos ya registrados: cada
+            pago aprobado y cada egreso se proyecta en dos lineas que suman cero. No hay asientos
+            manuales, ajustes ni cierres — eso lo hace tu contador en su sistema, y para eso estan
+            los CSV. Las cuentas siguen la forma boliviana habitual y son un punto de partida para
+            mapear, no un plan de cuentas certificado.
+          </p>
+
+          <section className="rounded-xl border border-stone-200 bg-white">
+            <div className="flex flex-wrap items-center gap-3 border-b border-stone-200 px-4 py-3">
+              <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+                Libro mayor — saldos por cuenta
+              </h2>
+              <button type="button" className={`${btnSecondary} ml-auto`} onClick={exportMayor} disabled={!mayor?.length}>
+                Exportar CSV
+              </button>
+            </div>
+            {libroBusy && !mayor ? (
+              <div className="flex justify-center py-8"><Spinner /></div>
+            ) : !mayor?.length ? (
+              <p className="py-8 text-center text-sm text-stone-400">
+                Todavia no hay movimientos que registrar en el libro.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-175 text-sm">
+                  <thead>
+                    <tr className="border-b border-stone-200 bg-stone-50 text-left">
+                      <th className="px-4 py-2 text-xs font-semibold text-stone-500">Cuenta</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-stone-500">Nombre</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-stone-500">Tipo</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Debe</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Haber</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Saldo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mayor.map((a) => (
+                      <tr key={a.cuenta} className="border-b border-stone-100 last:border-0 hover:bg-stone-50">
+                        <td className="px-4 py-2 font-mono text-xs text-stone-600">{a.cuenta}</td>
+                        <td className="px-3 py-2 text-stone-800">{a.cuenta_nombre}</td>
+                        <td className="px-3 py-2">
+                          <Badge className="bg-stone-100 text-stone-600">{ACCOUNT_KIND_LABEL[a.tipo]}</Badge>
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-stone-600">
+                          {formatMoney(Number(a.debe), 'BOB')}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-stone-600">
+                          {formatMoney(Number(a.haber), 'BOB')}
+                        </td>
+                        <td className={`px-3 py-2 text-right font-semibold tabular-nums ${
+                          Number(a.saldo) < 0 ? 'text-red-600' : 'text-stone-900'
+                        }`}>
+                          {formatMoney(Number(a.saldo), 'BOB')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-xl border border-stone-200 bg-white">
+            <div className="flex flex-wrap items-center gap-3 border-b border-stone-200 px-4 py-3">
+              <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+                Libro diario
+              </h2>
+              <label className="flex items-center gap-2 text-xs text-stone-500">
+                Desde
+                <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
+                  className="rounded-lg border border-stone-200 px-2 py-1 text-sm" />
+              </label>
+              <label className="flex items-center gap-2 text-xs text-stone-500">
+                Hasta
+                <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
+                  className="rounded-lg border border-stone-200 px-2 py-1 text-sm" />
+              </label>
+              <button type="button" className={`${btnSecondary} ml-auto`} onClick={exportDiario} disabled={!diario?.length}>
+                Exportar CSV
+              </button>
+            </div>
+            {libroBusy && !diario ? (
+              <div className="flex justify-center py-8"><Spinner /></div>
+            ) : !diario?.length ? (
+              <p className="py-8 text-center text-sm text-stone-400">
+                Sin movimientos en el periodo elegido.
+              </p>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-200 text-sm">
+                    <thead>
+                      <tr className="border-b border-stone-200 bg-stone-50 text-left">
+                        <th className="px-4 py-2 text-xs font-semibold text-stone-500">Fecha</th>
+                        <th className="px-3 py-2 text-xs font-semibold text-stone-500">Comprobante</th>
+                        <th className="px-3 py-2 text-xs font-semibold text-stone-500">Glosa</th>
+                        <th className="px-3 py-2 text-xs font-semibold text-stone-500">Cuenta</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Debe</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Haber</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {diario.map((l, i) => (
+                        <tr key={`${l.origen_id}-${l.cuenta}-${i}`} className="border-b border-stone-100 last:border-0 hover:bg-stone-50">
+                          <td className="px-4 py-1.5 whitespace-nowrap text-stone-600">{dateLabel(l.fecha)}</td>
+                          <td className="px-3 py-1.5 font-mono text-xs text-stone-500">{l.comprobante}</td>
+                          <td className="px-3 py-1.5 text-stone-800">{l.glosa}</td>
+                          <td className="px-3 py-1.5 font-mono text-xs text-stone-600">{l.cuenta}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">
+                            {Number(l.debe) > 0 ? formatMoney(Number(l.debe), 'BOB') : ''}
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">
+                            {Number(l.haber) > 0 ? formatMoney(Number(l.haber), 'BOB') : ''}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-stone-300 bg-stone-50 font-semibold">
+                        <td className="px-4 py-2 text-xs text-stone-500" colSpan={4}>
+                          Totales del periodo — deben coincidir
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {formatMoney(diario.reduce((acc, l) => acc + Number(l.debe), 0), 'BOB')}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {formatMoney(diario.reduce((acc, l) => acc + Number(l.haber), 0), 'BOB')}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                {diario.length >= 5000 ? (
+                  <p className="border-t border-stone-100 px-4 py-2 text-xs text-amber-700">
+                    Se muestran las primeras 5.000 lineas del periodo. Acorta el rango para verlo completo.
+                  </p>
+                ) : null}
+              </>
+            )}
+          </section>
+        </div>
       ) : null}
 
       {/* ------------------------------- Dialogs ------------------------------ */}
