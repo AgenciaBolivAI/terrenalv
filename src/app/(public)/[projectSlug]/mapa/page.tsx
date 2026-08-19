@@ -9,7 +9,8 @@ import { ActiveReservationBanner } from '@/features/reservations/components/Acti
 import { MapLoader } from '@/features/map/2d/MapLoader';
 import { loadMapManifest } from '@/features/map/data/loadGeometry';
 import { loadFinancingPlan } from '@/lib/server/financing';
-import { createClient } from '@/lib/supabase/server';
+import { createClient as createAnonClient } from '@supabase/supabase-js';
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/lib/supabase/config';
 
 // El HTML ya no lleva nada que caduque: la geometría y los estados los pide el
 // navegador. Lo único que queda del servidor es el manifiesto (qué versión de
@@ -57,10 +58,19 @@ export default async function MapaPage({
   const geo = await loadMapManifest(projectSlug);
   if (!geo) return <MapaEnPreparacion />;
 
-  // financing_plan is is_public, so the anon client reads it under RLS.
-  const financingPlan = await createClient().then((c) =>
-    loadFinancingPlan(c, geo.project.projectId),
-  );
+  // Cliente anónimo a propósito, NO el de servidor: aquel lee cookies, y leer
+  // cookies saca la ruta del caché de la CDN entera. financing_plan es
+  // is_public, así que no hace falta sesión para leerlo — lo dice el propio
+  // loadFinancingPlan.
+  const financingPlan =
+    SUPABASE_URL && SUPABASE_ANON_KEY
+      ? await loadFinancingPlan(
+          createAnonClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            auth: { persistSession: false, autoRefreshToken: false },
+          }),
+          geo.project.projectId,
+        )
+      : null;
 
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden bg-[#eceae3]">
