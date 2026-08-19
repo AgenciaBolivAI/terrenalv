@@ -296,3 +296,59 @@ export async function loadGeometry(slug: string): Promise<GeometryLoadResult | n
   if (slug !== SEED_SLUG) return null;
   return loadFromSeed(slug);
 }
+
+// ---------------------------------------------------------------------------
+// Manifest-only path (what the page actually uses now)
+// ---------------------------------------------------------------------------
+
+export interface MapManifest {
+  project: MapProjectInfo;
+  /** Public, content-addressed by version → cacheable forever by the CDN. */
+  snapshotUrl: string | null;
+}
+
+/**
+ * Resolve WHERE the geometry lives without downloading it.
+ *
+ * The page used to call loadGeometry(), which fetched the whole snapshot
+ * server-side and then React serialised all of it back into the HTML — every
+ * visit shipped ~900 KB of polygons that the browser could not cache, and the
+ * server paid the fetch each time (TTFB 2.7 s).
+ *
+ * The snapshot is already a public object addressed by version and served with
+ * max-age=31536000. Handing the browser the URL instead of the bytes means it
+ * is downloaded once and then comes from cache — including across page loads,
+ * which the inlined copy could never do.
+ */
+export async function loadMapManifest(slug: string): Promise<MapManifest | null> {
+  const supabase = anonClient();
+  if (!supabase) return reportFailure(slug, 'sin_configuracion');
+  try {
+    const { data, error } = await supabase
+      .rpc('get_map_manifest', { p_slug: slug })
+      .abortSignal(AbortSignal.timeout(6000));
+    if (error) return reportFailure(slug, 'sin_conexion', error.message);
+    if (!data) return reportFailure(slug, 'proyecto_no_encontrado');
+
+    const manifest = data as ManifestPayload;
+    if (!manifest.project_id || !Number.isFinite(manifest.geometry_version)) {
+      return reportFailure(slug, 'proyecto_no_encontrado');
+    }
+    if (manifest.geometry_version < 1) return reportFailure(slug, 'sin_publicar');
+
+    return {
+      project: {
+        projectId: manifest.project_id,
+        slug: manifest.slug,
+        name: manifest.name,
+        currency: manifest.currency === 'BOB' ? 'BOB' : 'USD',
+        geometryVersion: manifest.geometry_version,
+        statusRev: manifest.status_rev ?? 0,
+        source: 'db',
+      },
+      snapshotUrl: `${SUPABASE_URL}/storage/v1/object/public/maps/${manifest.slug}/geometry-v${manifest.geometry_version}.json`,
+    };
+  } catch (err) {
+    return reportFailure(slug, 'sin_conexion', err instanceof Error ? err.message : String(err));
+  }
+}

@@ -6,9 +6,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Logo } from '@/components/Logo';
 import { ActiveReservationBanner } from '@/features/reservations/components/ActiveReservationBanner';
-import { MapShell } from '@/features/map/2d/MapShell';
-import { loadGeometry } from '@/features/map/data/loadGeometry';
-import { loadStatuses } from '@/features/map/data/loadStatuses';
+import { MapLoader } from '@/features/map/2d/MapLoader';
+import { loadMapManifest } from '@/features/map/data/loadGeometry';
 import { loadFinancingPlan } from '@/lib/server/financing';
 import { createClient } from '@/lib/supabase/server';
 
@@ -44,19 +43,15 @@ export default async function MapaPage({
 }) {
   const { projectSlug } = await params;
 
-  const geo = await loadGeometry(projectSlug);
-  if (!geo || geo.snapshot.manzanas.length === 0) {
-    return <MapaEnPreparacion />;
-  }
+  // Solo el manifiesto: dónde vive la geometría, no la geometría. El navegador
+  // la baja de la CDN y la cachea; el servidor ya no la incrusta en cada HTML.
+  const geo = await loadMapManifest(projectSlug);
+  if (!geo) return <MapaEnPreparacion />;
 
-  const [statuses, financingPlan] = await Promise.all([
-    loadStatuses(
-      geo.project.projectId,
-      geo.snapshot.lots.map((l) => l.id),
-    ),
-    // financing_plan is is_public, so the anon client reads it under RLS.
-    createClient().then((c) => loadFinancingPlan(c, geo.project.projectId)),
-  ]);
+  // financing_plan is is_public, so the anon client reads it under RLS.
+  const financingPlan = await createClient().then((c) =>
+    loadFinancingPlan(c, geo.project.projectId),
+  );
 
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden bg-[#eceae3]">
@@ -75,10 +70,9 @@ export default async function MapaPage({
         </div>
       </header>
 
-      <MapShell
-        snapshot={geo.snapshot}
-        statuses={statuses}
+      <MapLoader
         project={geo.project}
+        snapshotUrl={geo.snapshotUrl}
         financingPlan={financingPlan}
       />
 
