@@ -8,7 +8,7 @@ import { Logo } from '@/components/Logo';
 import { ActiveReservationBanner } from '@/features/reservations/components/ActiveReservationBanner';
 import { MapLoader } from '@/features/map/2d/MapLoader';
 import { loadMapManifest } from '@/features/map/data/loadGeometry';
-import { loadFinancingPlan } from '@/lib/server/financing';
+import { parseFinancingPlan } from '@/lib/financing';
 import { createClient as createAnonClient } from '@supabase/supabase-js';
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/lib/supabase/config';
 
@@ -22,6 +22,14 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/lib/supabase/config';
 // entregue el manifiesto anterior — y como la URL lleva la versión, ese plano
 // viejo sigue existiendo y abriendo bien.
 export const revalidate = 300;
+
+// Sin esto Next trata la ruta como totalmente dinámica por tener un segmento
+// variable, y no la prerenderiza aunque tenga revalidate — se veía en el build
+// como "ƒ" y sin columna de revalidación. Prados del Sur es el único proyecto
+// publicado; cualquier otro slug se sigue sirviendo bajo demanda.
+export function generateStaticParams() {
+  return [{ projectSlug: 'prados-del-sur' }];
+}
 
 export const metadata: Metadata = {
   title: 'Mapa de lotes',
@@ -55,22 +63,32 @@ export default async function MapaPage({
 
   // Solo el manifiesto: dónde vive la geometría, no la geometría. El navegador
   // la baja de la CDN y la cachea; el servidor ya no la incrusta en cada HTML.
-  const geo = await loadMapManifest(projectSlug);
+  //
+  // El plan de pago va EN PARALELO y no después: no depende del manifiesto si
+  // se piden todas las filas de esa clave (son un puñado), y encadenarlos era
+  // pagar dos viajes de ida y vuelta a la base en serie.
+  const anon =
+    SUPABASE_URL && SUPABASE_ANON_KEY
+      ? createAnonClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        })
+      : null;
+
+  const [geo, planRes] = await Promise.all([
+    loadMapManifest(projectSlug),
+    anon
+      ? anon.from('settings').select('project_id, value').eq('key', 'financing_plan')
+      : Promise.resolve({ data: null }),
+  ]);
   if (!geo) return <MapaEnPreparacion />;
 
-  // Cliente anónimo a propósito, NO el de servidor: aquel lee cookies, y leer
-  // cookies saca la ruta del caché de la CDN entera. financing_plan es
-  // is_public, así que no hace falta sesión para leerlo — lo dice el propio
-  // loadFinancingPlan.
-  const financingPlan =
-    SUPABASE_URL && SUPABASE_ANON_KEY
-      ? await loadFinancingPlan(
-          createAnonClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-            auth: { persistSession: false, autoRefreshToken: false },
-          }),
-          geo.project.projectId,
-        )
-      : null;
+  const planRows = (planRes.data ?? []) as { project_id: string | null; value: unknown }[];
+
+  // Se resuelve el plan de pago con las filas ya traídas arriba: pedirlo después
+  // del manifiesto encadenaba dos viajes a sa-east-1, uno detrás del otro.
+  const specific = planRows.find((r) => r.project_id === geo.project.projectId);
+  const global = planRows.find((r) => r.project_id === null);
+  const financingPlan = parseFinancingPlan((specific ?? global)?.value);
 
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden bg-[#eceae3]">
