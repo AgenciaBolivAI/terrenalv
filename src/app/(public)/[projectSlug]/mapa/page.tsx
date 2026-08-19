@@ -11,7 +11,16 @@ import { loadMapManifest } from '@/features/map/data/loadGeometry';
 import { loadFinancingPlan } from '@/lib/server/financing';
 import { createClient } from '@/lib/supabase/server';
 
-export const dynamic = 'force-dynamic';
+// El HTML ya no lleva nada que caduque: la geometría y los estados los pide el
+// navegador. Lo único que queda del servidor es el manifiesto (qué versión de
+// plano está publicada) y el plan de pago, que cambian muy de vez en cuando.
+// Con eso la página puede quedar cacheada en la CDN y dejar de pagar dos viajes
+// a la base en cada visita.
+//
+// Si se republica el plano, lo peor que pasa durante cinco minutos es que se
+// entregue el manifiesto anterior — y como la URL lleva la versión, ese plano
+// viejo sigue existiendo y abriendo bien.
+export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: 'Mapa de lotes',
