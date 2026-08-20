@@ -41,7 +41,7 @@ declare
   v_running numeric(12,2) := 0;
   v_target numeric(12,2);
 begin
-  v_actor := private.assert_admin();
+  v_actor := private.assert_accounting();
 
   select * into v_res from public.reservations where id = p_reservation_id;
   if not found then raise exception 'RESERVATION_NOT_FOUND'; end if;
@@ -137,7 +137,7 @@ declare
   v_row record;
   v_try int := 0;
 begin
-  v_actor := private.assert_admin();
+  v_actor := private.assert_accounting();
 
   if p_amount is null or p_amount <= 0 then raise exception 'INVALID_AMOUNT'; end if;
 
@@ -225,7 +225,7 @@ declare
   v_actor uuid;
   v_plan public.installment_plans%rowtype;
 begin
-  v_actor := private.assert_admin();
+  v_actor := private.assert_accounting();
   if btrim(coalesce(p_note, '')) = '' then raise exception 'NOTE_REQUIRED'; end if;
 
   update public.installment_plans
@@ -275,7 +275,7 @@ declare
   v_bob numeric(12,2);
   v_id uuid;
 begin
-  v_actor := private.assert_admin();
+  v_actor := private.assert_accounting();
 
   if p_amount is null or p_amount <= 0 then raise exception 'INVALID_AMOUNT'; end if;
   if btrim(coalesce(p_description, '')) = '' then raise exception 'DESCRIPTION_REQUIRED'; end if;
@@ -318,7 +318,7 @@ declare
   v_actor uuid;
   v_exp public.expenses%rowtype;
 begin
-  v_actor := private.assert_admin();
+  v_actor := private.assert_accounting();
   if btrim(coalesce(p_note, '')) = '' then raise exception 'NOTE_REQUIRED'; end if;
 
   update public.expenses set deleted_at = now(), updated_at = now()

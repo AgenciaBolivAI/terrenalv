@@ -13,7 +13,7 @@ const inviteSchema = z.object({
     .toLowerCase()
     .regex(/^[^@\s]+@[^@\s]+\.[^@\s]+$/, 'Correo inválido'),
   full_name: z.string().trim().min(3, 'Nombre requerido'),
-  role: z.enum(['admin', 'ventas']),
+  role: z.enum(['admin', 'ventas', 'contabilidad']),
 });
 
 /**

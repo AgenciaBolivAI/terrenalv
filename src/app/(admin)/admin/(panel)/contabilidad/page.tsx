@@ -3,11 +3,12 @@ import { redirect } from 'next/navigation';
 import AccountingClient from '@/features/admin/contabilidad/AccountingClient';
 import { getAdminContext } from '@/features/admin/lib/get-admin-context';
 import { EmptyState } from '@/features/admin/ui/bits';
+import { isAccounting } from '@/features/admin/lib/roles';
 
 export const metadata: Metadata = { title: 'Contabilidad' };
 export const dynamic = 'force-dynamic';
 
-const TABS = ['resumen', 'cobrar', 'egresos'] as const;
+const TABS = ['resumen', 'cobrar', 'egresos', 'libro'] as const;
 type Tab = (typeof TABS)[number];
 
 export default async function ContabilidadPage({
@@ -20,11 +21,12 @@ export default async function ContabilidadPage({
     if (ctx.reason === 'auth') redirect('/admin/login');
     return null;
   }
-  // Money out (expenses) is admin-only at the RLS level; the page follows.
-  if (ctx.profile.role !== 'admin') {
+  // Los egresos (sueldos, comisiones) están restringidos en la RLS a admin y
+  // contabilidad; la página sigue la misma regla.
+  if (!isAccounting(ctx.profile.role)) {
     return (
       <EmptyState
-        title="Solo para administradores"
+        title="Sección restringida"
         hint="La contabilidad del proyecto no está disponible para el rol de ventas."
       />
     );

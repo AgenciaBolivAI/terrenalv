@@ -20,7 +20,9 @@ export type PaymentStatus =
   | 'cancelado';
 
 export type PaymentProviderKind = 'manual_qr' | 'banco_ganadero' | 'bnb';
-export type TeamRole = 'admin' | 'ventas';
+// 'contabilidad' cobra cuotas, carga egresos y emite recibos, pero no invita
+// gente ni cambia precios ni la configuracion del proyecto.
+export type TeamRole = 'admin' | 'ventas' | 'contabilidad';
 export type ManzanaKind = 'residencial' | 'area_verde' | 'equipamiento' | 'amenidad';
 export type ElementKind =
   | 'calle'

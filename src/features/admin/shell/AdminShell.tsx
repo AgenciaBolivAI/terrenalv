@@ -22,6 +22,8 @@ import {
   IconUsers,
 } from '@/features/admin/ui/icons';
 import { AdminProvider } from './AdminContext';
+import type { TeamRole } from '@/lib/db-types';
+import { ROLE_LABEL } from '@/features/admin/lib/roles';
 import NotificationBell from './NotificationBell';
 import ThemeToggle from './ThemeToggle';
 
@@ -29,7 +31,8 @@ interface NavItem {
   href: string;
   label: string;
   icon: (p: { className?: string }) => React.ReactNode;
-  adminOnly?: boolean;
+  /** Roles que ven esta sección. Ausente = la ve todo el equipo. */
+  roles?: TeamRole[];
 }
 
 const NAV: NavItem[] = [
@@ -37,12 +40,12 @@ const NAV: NavItem[] = [
   { href: '/admin/reservas', label: 'Reservas', icon: IconInbox },
   { href: '/admin/lotes', label: 'Lotes', icon: IconGrid },
   { href: '/admin/notificaciones', label: 'Notificaciones', icon: IconBell },
-  { href: '/admin/contabilidad', label: 'Contabilidad', icon: IconLedger, adminOnly: true },
-  { href: '/admin/analitica', label: 'Analítica', icon: IconChart, adminOnly: true },
-  { href: '/admin/mapa', label: 'Mapa', icon: IconMap, adminOnly: true },
-  { href: '/admin/equipo', label: 'Equipo', icon: IconUsers, adminOnly: true },
-  { href: '/admin/configuracion', label: 'Configuración', icon: IconSettings, adminOnly: true },
-  { href: '/admin/auditoria', label: 'Auditoría', icon: IconScroll, adminOnly: true },
+  { href: '/admin/contabilidad', label: 'Contabilidad', icon: IconLedger, roles: ['admin', 'contabilidad'] },
+  { href: '/admin/analitica', label: 'Analítica', icon: IconChart, roles: ['admin', 'contabilidad'] },
+  { href: '/admin/mapa', label: 'Mapa', icon: IconMap, roles: ['admin'] },
+  { href: '/admin/equipo', label: 'Equipo', icon: IconUsers, roles: ['admin'] },
+  { href: '/admin/configuracion', label: 'Configuración', icon: IconSettings, roles: ['admin'] },
+  { href: '/admin/auditoria', label: 'Auditoría', icon: IconScroll, roles: ['admin'] },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -66,10 +69,10 @@ export default function AdminShell({
   const [userMenu, setUserMenu] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const nav = NAV.filter((item) => !item.adminOnly || profile.role === 'admin');
+  const nav = NAV.filter((item) => !item.roles || item.roles.includes(profile.role));
   const mobileMain = nav.slice(0, 3);
   const mobileMore = nav.slice(3);
-  const roleLabel = profile.role === 'admin' ? 'Administrador' : 'Ventas';
+  const roleLabel = ROLE_LABEL[profile.role] ?? profile.role;
 
   return (
     <AdminProvider value={{ profile, projectId, projectName, currency }}>

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import AnalyticsClient from '@/features/admin/analitica/AnalyticsClient';
 import { getAdminContext } from '@/features/admin/lib/get-admin-context';
 import { EmptyState } from '@/features/admin/ui/bits';
+import { isAccounting } from '@/features/admin/lib/roles';
 
 export const metadata: Metadata = { title: 'Analítica' };
 export const dynamic = 'force-dynamic';
@@ -14,10 +15,10 @@ export default async function AnaliticaPage() {
     return null;
   }
   // Incluye montos vendidos y rendimiento por persona: admin solamente.
-  if (ctx.profile.role !== 'admin') {
+  if (!isAccounting(ctx.profile.role)) {
     return (
       <EmptyState
-        title="Solo para administradores"
+        title="Sección restringida"
         hint="La analítica del proyecto no está disponible para el rol de ventas."
       />
     );

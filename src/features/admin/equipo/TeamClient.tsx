@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { TeamRole } from '@/lib/db-types';
+import { ALL_ROLES, ROLE_HINT, ROLE_LABEL } from '@/features/admin/lib/roles';
 import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
 import { Badge, EmptyState, Spinner, btnPrimary, btnSecondary, inputClass } from '@/features/admin/ui/bits';
 import { Dialog } from '@/features/admin/ui/dialog';
@@ -128,8 +129,11 @@ export default function TeamClient({ selfId }: { selfId: string }) {
                 className="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs"
                 aria-label={`Rol de ${p.full_name}`}
               >
-                <option value="admin">Administrador</option>
-                <option value="ventas">Ventas</option>
+                {ALL_ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABEL[r]}
+                  </option>
+                ))}
               </select>
               <button
                 type="button"
@@ -163,9 +167,15 @@ export default function TeamClient({ selfId }: { selfId: string }) {
             className={inputClass}
           />
           <select value={role} onChange={(e) => setRole(e.target.value as TeamRole)} className={inputClass}>
-            <option value="ventas">Ventas — verifica pagos y gestiona reservas</option>
-            <option value="admin">Administrador — acceso total</option>
+            {ALL_ROLES.map((r) => (
+              <option key={r} value={r}>
+                {ROLE_LABEL[r]}
+              </option>
+            ))}
           </select>
+          {/* Qué implica el rol elegido, ahí mismo: elegir entre tres nombres
+              sin saber qué abre cada uno es cómo se reparte de más por las dudas. */}
+          <p className="rounded-lg bg-stone-50 p-2.5 text-xs text-stone-600">{ROLE_HINT[role]}</p>
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
           <p className="text-xs text-stone-400">
             Recibirá un correo con un enlace para crear su contraseña y entrar al panel.
