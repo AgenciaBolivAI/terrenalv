@@ -236,7 +236,7 @@ export default async function Home() {
           </h1>
           {/* Slogan oficial de Terrenalv S.R.L. */}
           <p className="mt-4 text-lg font-bold italic text-earth-tan sm:text-xl">
-            «Lo que se dice, se cumple»/<br/>
+            «Lo que se dice, se cumple»<br/>
             El cliente propone su forma de pago<br/>
             By Terreenalv S.R.L.
           </p>
