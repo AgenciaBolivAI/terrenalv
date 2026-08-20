@@ -20,6 +20,8 @@ import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
 import { Badge, Spinner, btnPrimary, btnSecondary, inputClass } from '@/features/admin/ui/bits';
 import { Dialog } from '@/features/admin/ui/dialog';
 import Estados from './Estados';
+import Comprobantes, { type Account } from './Comprobantes';
+import Gestion from './Gestion';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
 import { num as fnum, type Cell as XCell } from '@/features/admin/export';
 import { IconWhatsapp } from '@/features/admin/ui/icons';
@@ -47,7 +49,7 @@ import {
   type SaleWithoutPlan,
 } from './types';
 
-type Tab = 'resumen' | 'cobrar' | 'egresos' | 'libro' | 'estados';
+type Tab = 'resumen' | 'cobrar' | 'egresos' | 'libro' | 'estados' | 'comprobantes' | 'gestion';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'resumen', label: 'Resumen' },
@@ -55,6 +57,8 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'egresos', label: 'Egresos' },
   { id: 'libro', label: 'Libro' },
   { id: 'estados', label: 'Estados' },
+  { id: 'comprobantes', label: 'Comprobantes' },
+  { id: 'gestion', label: 'Gestión' },
 ];
 
 /**
@@ -136,6 +140,21 @@ export default function AccountingClient({
   const [libroBusy, setLibroBusy] = useState(false);
   /** Set by clicking a row of the libro mayor: shows only that account. */
   const [cuentaFiltro, setCuentaFiltro] = useState<string | null>(null);
+
+  // El plan de cuentas lo usan el editor de comprobantes y la pestaña de
+  // gestión, así que se carga una vez acá y no dos veces abajo. Se llama
+  // `plan` y no `accounts` porque `accounts` ya son las cuentas por cobrar.
+  const [plan, setPlan] = useState<Account[]>([]);
+  const loadPlan = useCallback(async () => {
+    const { data } = await supabase
+      .from('chart_of_accounts')
+      .select('code, name, kind, is_active, is_system')
+      .order('sort_order');
+    setPlan((data ?? []) as unknown as Account[]);
+  }, [supabase]);
+  useEffect(() => {
+    void loadPlan();
+  }, [loadPlan]);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -895,6 +914,19 @@ export default function AccountingClient({
       ) : null}
 
       {tab === 'estados' ? <Estados projectId={projectId} projectName={projectName} /> : null}
+
+      {tab === 'comprobantes' ? (
+        <Comprobantes projectId={projectId} projectName={projectName} accounts={plan} />
+      ) : null}
+
+      {tab === 'gestion' ? (
+        <Gestion
+          projectId={projectId}
+          projectName={projectName}
+          accounts={plan}
+          onAccountsChanged={() => void loadPlan()}
+        />
+      ) : null}
 
       {/* ------------------------------- Dialogs ------------------------------ */}
       <StatementDialog
