@@ -18,6 +18,7 @@ import {
   IconScroll,
   IconLedger,
   IconChart,
+  IconLayers,
   IconSettings,
   IconUsers,
 } from '@/features/admin/ui/icons';
@@ -26,6 +27,7 @@ import type { TeamRole } from '@/lib/db-types';
 import { ROLE_LABEL } from '@/features/admin/lib/roles';
 import NotificationBell from './NotificationBell';
 import ThemeToggle from './ThemeToggle';
+import ProjectSwitcher, { type SwitchableProject } from './ProjectSwitcher';
 
 interface NavItem {
   href: string;
@@ -43,6 +45,7 @@ const NAV: NavItem[] = [
   { href: '/admin/contabilidad', label: 'Contabilidad', icon: IconLedger, roles: ['admin', 'contabilidad'] },
   { href: '/admin/analitica', label: 'Analítica', icon: IconChart, roles: ['admin', 'contabilidad'] },
   { href: '/admin/mapa', label: 'Mapa', icon: IconMap, roles: ['admin'] },
+  { href: '/admin/proyectos', label: 'Urbanizaciones', icon: IconLayers, roles: ['admin'] },
   { href: '/admin/equipo', label: 'Equipo', icon: IconUsers, roles: ['admin'] },
   { href: '/admin/configuracion', label: 'Configuración', icon: IconSettings, roles: ['admin'] },
   { href: '/admin/auditoria', label: 'Auditoría', icon: IconScroll, roles: ['admin'] },
@@ -56,12 +59,17 @@ export default function AdminShell({
   profile,
   projectId,
   projectName,
+  projects,
+  activeSlug,
   currency,
   children,
 }: {
   profile: Profile;
   projectId: string | null;
   projectName: string;
+  /** Todas las urbanizaciones administrables; alimenta el selector. */
+  projects: SwitchableProject[];
+  activeSlug: string | null;
   currency: 'USD' | 'BOB';
   children: React.ReactNode;
 }) {
@@ -143,7 +151,11 @@ export default function AdminShell({
                 </Link>
                 <p className="truncate text-[11px] text-stone-500">{projectName}</p>
               </div>
-              <p className="hidden text-sm font-semibold text-stone-700 md:block">{projectName}</p>
+              <ProjectSwitcher
+                projects={projects}
+                activeSlug={activeSlug}
+                className="hidden md:block"
+              />
               <div className="flex items-center gap-2">
                 <ThemeToggle className="hidden sm:flex" />
                 <NotificationBell />

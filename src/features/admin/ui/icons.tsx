@@ -82,3 +82,7 @@ export const IconLedger = (p: IconProps) =>
 // trata la sección.
 export const IconChart = (p: IconProps) =>
   base(p, <><path d="M4 20V10" /><path d="M10 20V4" /><path d="M16 20v-7" /><path d="M3 20h18" /></>);
+
+// Urbanizaciones: capas apiladas — varios proyectos sobre la misma base.
+export const IconLayers = (p: IconProps) =>
+  base(p, <><path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="m3 13 9 5 9-5" /><path d="m3 17 9 5 9-5" /></>);

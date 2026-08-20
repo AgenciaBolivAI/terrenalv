@@ -25,10 +25,23 @@ export const revalidate = 300;
 
 // Sin esto Next trata la ruta como totalmente dinámica por tener un segmento
 // variable, y no la prerenderiza aunque tenga revalidate — se veía en el build
-// como "ƒ" y sin columna de revalidación. Prados del Sur es el único proyecto
-// publicado; cualquier otro slug se sigue sirviendo bajo demanda.
-export function generateStaticParams() {
-  return [{ projectSlug: 'prados-del-sur' }];
+// como "ƒ" y sin columna de revalidación.
+//
+// Se listan las urbanizaciones publicadas, no una fija: al crear una nueva y
+// publicarla, el próximo deploy la prerenderiza sola. Una que se publique entre
+// deploys se sirve bajo demanda igual, así que nunca queda inaccesible.
+export async function generateStaticParams() {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return [{ projectSlug: 'prados-del-sur' }];
+  try {
+    const sb = createAnonClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data } = await sb.from('projects').select('slug').eq('status', 'activo');
+    const slugs = (data ?? []).map((p) => ({ projectSlug: p.slug as string }));
+    return slugs.length ? slugs : [{ projectSlug: 'prados-del-sur' }];
+  } catch {
+    return [{ projectSlug: 'prados-del-sur' }];
+  }
 }
 
 export const metadata: Metadata = {

@@ -1,8 +1,9 @@
 import 'server-only';
 
+import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import type { Profile } from '@/lib/db-types';
-import { PROJECT_SLUG } from './constants';
+import { PROJECT_SLUG, PROJECT_COOKIE } from './constants';
 import { hasSupabaseConfig } from '@/lib/supabase/config';
 
 export interface AdminProject {
@@ -22,6 +23,7 @@ export type AdminContext =
       email: string | null;
       profile: Profile;
       project: AdminProject | null;
+      projects: AdminProject[];
     };
 
 /**
@@ -49,18 +51,36 @@ export async function getAdminContext(): Promise<AdminContext> {
       return { ok: false, reason: 'profile', email: user.email ?? null };
     }
 
-    const { data: project } = await supabase
+    // Qué urbanización está mirando esta persona.
+    //
+    // Antes era una constante, así que el panel solo podía administrar Prados
+    // del Sur aunque la base fuera multi-proyecto desde el día uno. Ahora manda
+    // la cookie que deja el selector; si no hay (o apunta a un proyecto que ya
+    // no existe), cae al slug original y después a cualquiera que haya, para
+    // que el panel nunca quede sin proyecto por una cookie vieja.
+    const elegido = (await cookies()).get(PROJECT_COOKIE)?.value ?? null;
+
+    const { data: proyectos } = await supabase
       .from('projects')
       .select('id, slug, name, currency')
-      .eq('slug', PROJECT_SLUG)
-      .maybeSingle();
+      .neq('status', 'archivado')
+      .order('created_at');
+
+    const lista = (proyectos ?? []) as AdminProject[];
+    const project =
+      lista.find((p) => p.slug === elegido) ??
+      lista.find((p) => p.slug === PROJECT_SLUG) ??
+      lista[0] ??
+      null;
 
     return {
       ok: true,
       userId: user.id,
       email: user.email ?? null,
       profile: profile as Profile,
-      project: (project as AdminProject | null) ?? null,
+      project,
+      /** Todas las que puede administrar, para el selector de la barra. */
+      projects: lista,
     };
   } catch {
     return { ok: false, reason: 'env' };
