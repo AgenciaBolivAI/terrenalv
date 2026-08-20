@@ -18,7 +18,10 @@ const FLYER = { width: 900, height: 1125 };
 const RENDER = { width: 1280, height: 720, badge: 'Render del proyecto' };
 
 const PASARELLA: Slide[] = [
-  { ...FLYER, src: '/pasarella/01-precio.jpg', alt: 'Terreno de 300 m² desde Bs 24.800 al contado, o en cuotas sin banco. Agua y luz, internet, club house y papeles al día.' },
+  // 01-precio.jpg está fuera hasta que llegue un folleto nuevo: la imagen dice
+  // "desde Bs 24.800" impreso, y el precio de contado ahora arranca en Bs 29.999.
+  // No se puede editar una foto desde acá, y dejarla puesta era publicar un
+  // precio viejo al lado del nuevo en la misma pantalla.
   { ...FLYER, src: '/pasarella/02-comparativa.jpg', alt: 'Prados del Sur frente a otros proyectos: servicios básicos, sobre la avenida internacional, papeles al día y club house incluido.' },
   { ...FLYER, src: '/pasarella/03-alquiler.jpg', alt: 'Cada mes pagás alquiler por algo que nunca va a ser tuyo, o pagás cuotas por tu propio terreno. Servicios básicos, papeles al día, sin banco.' },
   { ...FLYER, src: '/pasarella/04-plusvalia.jpg', alt: 'Invertir en un terreno propio con plusvalía real: sobre la avenida internacional, zona de alto crecimiento, cuotas accesibles y club house incluido.' },
@@ -126,7 +129,7 @@ const FAQ: [string, string][] = [
   ],
   [
     '¿Dónde queda exactamente el proyecto?',
-    'En la zona de Zanja Honda, municipio de Cabezas, provincia Cordillera (Santa Cruz), con frente sobre la carretera Santa Cruz — Camiri. Abajo está el punto en el mapa.',
+    'En la zona de Zanja Honda, municipio de Cabezas, provincia Cordillera (Santa Cruz), con frente sobre la carretera internacional Argentina — Paraguay (ruta Santa Cruz — Camiri). Abajo está el punto en el mapa.',
   ],
 ];
 
@@ -233,10 +236,12 @@ export default async function Home() {
           </h1>
           {/* Slogan oficial de Terrenalv S.R.L. */}
           <p className="mt-4 text-lg font-bold italic text-earth-tan sm:text-xl">
-            «Lo que se dice, se cumple»
+            «Lo que se dice, se cumple»/<br/>
+            El cliente propone su forma de pago<br/>
+            By Terreenalv S.R.L.
           </p>
           <p className="mx-auto mt-5 max-w-2xl text-pretty text-lg text-emerald-50/90">
-            88 manzanas con lotes desde 300 m² (10 × 30) sobre la carretera Santa Cruz — Camiri.
+            Proyectos urbanisticos en la zona sur de Santa Cruz, carretera internacional Argentina— Paraguay.
             El mapa muestra el plano oficial lote por lote: elige el tuyo y resérvalo en minutos
             desde el celular.
           </p>
@@ -624,7 +629,7 @@ export default async function Home() {
               {(
                 [
                   ['Zona', <>Zanja Honda, municipio de Cabezas, provincia Cordillera — Santa Cruz, Bolivia.</>],
-                  ['Acceso', <>Frente directo sobre la carretera Santa Cruz — Camiri (Ruta 9), transitable todo el año.</>],
+                  ['Acceso', <>Frente directo sobre la carretera internacional Argentina — Paraguay, ruta Santa Cruz — Camiri (Ruta 9), transitable todo el año.</>],
                   ['Trazado', <>3,2 km de urbanización, avenida central de 30 m y calles de 13 m.</>],
                 ] as [string, React.ReactNode][]
               ).map(([k, v]) => (
@@ -745,6 +750,8 @@ export default async function Home() {
               Zona Zanja Honda, Municipio de Cabezas,
               <br />
               Provincia Cordillera — Santa Cruz, Bolivia
+              <br />
+              Carretera internacional Argentina — Paraguay
             </p>
           </div>
           <div>

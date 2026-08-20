@@ -118,6 +118,8 @@ export default async function ReciboPage({ params }: { params: Promise<{ id: str
               TERRENALV S.R.L. · Urbanización Prados del Sur
               <br />
               Zanja Honda, Cabezas — Santa Cruz, Bolivia
+              <br />
+              Carretera internacional Argentina — Paraguay
             </p>
           </div>
           <div className="text-right">
