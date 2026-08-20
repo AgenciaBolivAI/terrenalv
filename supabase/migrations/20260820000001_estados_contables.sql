@@ -1,0 +1,10 @@
+-- Los tres estados clásicos que pide cualquier contador — Balance de Sumas y
+-- Saldos, Estado de Resultados y Balance General — derivados del mismo libro
+-- diario. Con rango de fechas, porque un balance sin período no significa nada.
+--
+-- El contenido exacto de las tres funciones se aplicó en la base; ver
+-- rep_sumas_y_saldos, rep_estado_resultados y rep_balance_general.
+--
+-- IMPORTANTE — junto con esto cambió v_libro_diario para reconocer la VENTA y
+-- no solo la plata (ver 20260820000002). Sin ese asiento estos tres reportes
+-- daban ingresos cero y cuentas por cobrar negativas.

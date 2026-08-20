@@ -21,6 +21,8 @@
     "@tanstack/react-table": "^8.21.3",
     "browser-image-compression": "^2.0.2",
     "detect-gpu": "^5.0.70",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "next": "15.5.22",
     "papaparse": "^5.5.4",
     "polygon-clipping": "^0.15.7",

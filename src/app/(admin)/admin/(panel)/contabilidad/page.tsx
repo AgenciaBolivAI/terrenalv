@@ -8,7 +8,7 @@ import { isAccounting } from '@/features/admin/lib/roles';
 export const metadata: Metadata = { title: 'Contabilidad' };
 export const dynamic = 'force-dynamic';
 
-const TABS = ['resumen', 'cobrar', 'egresos', 'libro'] as const;
+const TABS = ['resumen', 'cobrar', 'egresos', 'libro', 'estados'] as const;
 type Tab = (typeof TABS)[number];
 
 export default async function ContabilidadPage({
@@ -41,6 +41,7 @@ export default async function ContabilidadPage({
   return (
     <AccountingClient
       projectId={ctx.project.id}
+      projectName={ctx.project.name}
       currency={ctx.project.currency ?? 'BOB'}
       initialTab={initialTab}
     />

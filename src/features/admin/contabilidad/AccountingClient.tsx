@@ -19,6 +19,9 @@ import { formatMoney, waLink } from '@/lib/format';
 import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
 import { Badge, Spinner, btnPrimary, btnSecondary, inputClass } from '@/features/admin/ui/bits';
 import { Dialog } from '@/features/admin/ui/dialog';
+import Estados from './Estados';
+import { ExportButtons } from '@/features/admin/export/ExportButtons';
+import { num as fnum, type Cell as XCell } from '@/features/admin/export';
 import { IconWhatsapp } from '@/features/admin/ui/icons';
 import { useToast } from '@/features/admin/ui/toast';
 import {
@@ -44,13 +47,14 @@ import {
   type SaleWithoutPlan,
 } from './types';
 
-type Tab = 'resumen' | 'cobrar' | 'egresos' | 'libro';
+type Tab = 'resumen' | 'cobrar' | 'egresos' | 'libro' | 'estados';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'resumen', label: 'Resumen' },
   { id: 'cobrar', label: 'Por cobrar' },
   { id: 'egresos', label: 'Egresos' },
   { id: 'libro', label: 'Libro' },
+  { id: 'estados', label: 'Estados' },
 ];
 
 /**
@@ -94,10 +98,12 @@ function Kpi({
 
 export default function AccountingClient({
   projectId,
+  projectName,
   currency,
   initialTab,
 }: {
   projectId: string;
+  projectName: string;
   currency: Currency;
   initialTab: Tab;
 }) {
@@ -218,43 +224,8 @@ export default function AccountingClient({
     setPagos((pRes.data ?? []) as unknown as PaymentRow[]);
   }
 
-  function exportCobrar() {
-    downloadCsv(
-      `por-cobrar-${new Date().toISOString().slice(0, 10)}.csv`,
-      toCsv(
-        ['Código', 'Cliente', 'CI', 'Teléfono', 'Manzana', 'Lote', 'Precio', 'Pagado', 'Saldo', 'Cuotas vencidas', 'Monto vencido', 'Días atraso', 'Próxima cuota'],
-        cobrarRows.map((a) => [
-          a.tracking_code, a.buyer_full_name, a.buyer_ci, a.buyer_phone, a.manzana, a.lote,
-          Number(a.total_price), Number(a.pagado), Number(a.saldo),
-          Number(a.cuotas_vencidas), Number(a.monto_vencido), a.dias_atraso ?? 0,
-          a.proxima_cuota ? dateLabel(a.proxima_cuota) : '',
-        ]),
-      ),
-    );
-  }
 
-  function exportCashflow() {
-    downloadCsv(
-      `ingresos-egresos-${new Date().toISOString().slice(0, 10)}.csv`,
-      toCsv(
-        ['Mes', 'Ingresos (Bs)', 'Egresos (Bs)', 'Resultado (Bs)'],
-        cashflow.map((m) => [monthLabel(m.mes), Number(m.ingresos_bob), Number(m.egresos_bob), Number(m.resultado_bob)]),
-      ),
-    );
-  }
 
-  function exportExpenses() {
-    downloadCsv(
-      `egresos-${new Date().toISOString().slice(0, 10)}.csv`,
-      toCsv(
-        ['Fecha', 'Categoría', 'Detalle', 'Proveedor', 'Monto', 'Moneda', 'Monto (Bs)'],
-        expenses.map((e) => [
-          dateLabel(e.incurred_on), EXPENSE_LABEL[e.category], e.description, e.supplier ?? '',
-          Number(e.amount), e.currency, Number(e.amount_bob),
-        ]),
-      ),
-    );
-  }
 
   const loadLibro = useCallback(async () => {
     setLibroBusy(true);
@@ -290,32 +261,7 @@ export default function AccountingClient({
   // halves of the screen always agree.
   const diarioFiltrado = (diario ?? []).filter((l) => !cuentaFiltro || l.cuenta === cuentaFiltro);
 
-  function exportDiario() {
-    if (!diario) return;
-    downloadCsv(
-      `libro-diario-${desde}-a-${hasta}.csv`,
-      toCsv(
-        ['Fecha', 'Comprobante', 'Glosa', 'Cuenta', 'Debe (Bs)', 'Haber (Bs)'],
-        diarioFiltrado.map((l) => [
-          dateLabel(l.fecha), l.comprobante, l.glosa, l.cuenta, Number(l.debe), Number(l.haber),
-        ]),
-      ),
-    );
-  }
 
-  function exportMayor() {
-    if (!mayor) return;
-    downloadCsv(
-      `libro-mayor-${todayIso()}.csv`,
-      toCsv(
-        ['Cuenta', 'Nombre', 'Tipo', 'Debe (Bs)', 'Haber (Bs)', 'Saldo (Bs)'],
-        mayor.map((a) => [
-          a.cuenta, a.cuenta_nombre, ACCOUNT_KIND_LABEL[a.tipo],
-          Number(a.debe), Number(a.haber), Number(a.saldo),
-        ]),
-      ),
-    );
-  }
 
   async function deleteExpense(e: Expense) {
     const note = window.prompt(`Motivo para eliminar "${e.description}":`);
@@ -409,9 +355,29 @@ export default function AccountingClient({
               <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
                 Ingresos y egresos por mes
               </h2>
-              <button type="button" className={btnSecondary} onClick={exportCashflow} disabled={!cashflow.length}>
-                Exportar CSV
-              </button>
+              <ExportButtons
+                disabled={!cashflow.length}
+                meta={{
+                  title: 'Ingresos y Egresos por Mes',
+                  subtitle: projectName,
+                  filename: `ingresos-egresos-${new Date().toISOString().slice(0, 10)}`,
+                  footnote: 'Ingresos: solo pagos aprobados, fechados al verificarse. Bolivianos.',
+                }}
+                columns={[
+                  { header: 'Mes' },
+                  { header: 'Ingresos', align: 'right' },
+                  { header: 'Egresos', align: 'right' },
+                  { header: 'Resultado', align: 'right' },
+                ]}
+                rows={() =>
+                  cashflow.map((m) => [
+                    monthLabel(m.mes),
+                    fnum(Number(m.ingresos_bob)),
+                    fnum(Number(m.egresos_bob)),
+                    fnum(Number(m.resultado_bob)),
+                  ]) as XCell[][]
+                }
+              />
             </div>
             {cashflow.length === 0 ? (
               <p className="py-8 text-center text-sm text-stone-400">
@@ -517,9 +483,42 @@ export default function AccountingClient({
                 />
                 Solo atrasados
               </label>
-              <button type="button" className={`${btnSecondary} ml-auto`} onClick={exportCobrar} disabled={!cobrarRows.length}>
-                Exportar CSV
-              </button>
+              <div className="ml-auto">
+                <ExportButtons
+                  disabled={!cobrarRows.length}
+                  orientation="landscape"
+                  meta={{
+                    title: onlyLate ? 'Clientes Atrasados' : 'Cuentas por Cobrar',
+                    subtitle: projectName,
+                    filename: `por-cobrar-${new Date().toISOString().slice(0, 10)}`,
+                    footnote: 'Saldo = cuotas pendientes. Días de atraso desde la cuota más vieja impaga.',
+                  }}
+                  columns={[
+                    { header: 'Código' },
+                    { header: 'Cliente' },
+                    { header: 'CI' },
+                    { header: 'Teléfono' },
+                    { header: 'Lote' },
+                    { header: 'Saldo', align: 'right' },
+                    { header: 'Cuotas' },
+                    { header: 'Vencidas', align: 'right' },
+                    { header: 'Atraso', align: 'right' },
+                  ]}
+                  rows={() =>
+                    cobrarRows.map((a) => [
+                      a.tracking_code,
+                      a.buyer_full_name,
+                      a.buyer_ci,
+                      a.buyer_phone,
+                      `Mz ${a.manzana}-${a.lote}`,
+                      fnum(Number(a.saldo)),
+                      `${a.cuotas_pagadas}/${a.cuotas_totales}`,
+                      fnum(Number(a.monto_vencido)),
+                      a.dias_atraso ? `${a.dias_atraso} d` : '—',
+                    ]) as XCell[][]
+                  }
+                />
+              </div>
             </div>
 
             {cobrarRows.length === 0 ? (
@@ -592,9 +591,32 @@ export default function AccountingClient({
         <section className="rounded-xl border border-stone-200 bg-white">
           <div className="flex flex-wrap items-center gap-3 border-b border-stone-200 px-4 py-3">
             <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">Egresos</h2>
-            <button type="button" className={`${btnSecondary} ml-auto`} onClick={exportExpenses} disabled={!expenses.length}>
-              Exportar CSV
-            </button>
+            <div className="ml-auto">
+              <ExportButtons
+                disabled={!expenses.length}
+                meta={{
+                  title: 'Egresos',
+                  subtitle: projectName,
+                  filename: `egresos-${new Date().toISOString().slice(0, 10)}`,
+                }}
+                columns={[
+                  { header: 'Fecha' },
+                  { header: 'Categoría' },
+                  { header: 'Detalle' },
+                  { header: 'Proveedor' },
+                  { header: 'Monto', align: 'right' },
+                ]}
+                rows={() =>
+                  expenses.map((e) => [
+                    dateLabel(e.incurred_on),
+                    EXPENSE_LABEL[e.category],
+                    e.description,
+                    e.supplier ?? '',
+                    fnum(Number(e.amount)),
+                  ]) as XCell[][]
+                }
+              />
+            </div>
             <button type="button" className={btnPrimary} onClick={() => setExpenseOpen(true)}>
               Nuevo egreso
             </button>
@@ -661,9 +683,35 @@ export default function AccountingClient({
               <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
                 Libro mayor — saldos por cuenta
               </h2>
-              <button type="button" className={`${btnSecondary} ml-auto`} onClick={exportMayor} disabled={!mayor?.length}>
-                Exportar CSV
-              </button>
+              <div className="ml-auto">
+                <ExportButtons
+                  disabled={!mayor?.length}
+                  meta={{
+                    title: 'Libro Mayor',
+                    subtitle: projectName,
+                    filename: `libro-mayor-${new Date().toISOString().slice(0, 10)}`,
+                    footnote: 'Saldos: activo y gasto por el debe; pasivo, patrimonio e ingreso por el haber.',
+                  }}
+                  columns={[
+                    { header: 'Cuenta' },
+                    { header: 'Nombre' },
+                    { header: 'Tipo' },
+                    { header: 'Debe', align: 'right' },
+                    { header: 'Haber', align: 'right' },
+                    { header: 'Saldo', align: 'right' },
+                  ]}
+                  rows={() =>
+                    (mayor ?? []).map((a) => [
+                      a.cuenta,
+                      a.cuenta_nombre,
+                      ACCOUNT_KIND_LABEL[a.tipo],
+                      fnum(Number(a.debe)),
+                      fnum(Number(a.haber)),
+                      fnum(Number(a.saldo)),
+                    ]) as XCell[][]
+                  }
+                />
+              </div>
             </div>
             {libroBusy && !mayor ? (
               <div className="flex justify-center py-8"><Spinner /></div>
@@ -743,9 +791,44 @@ export default function AccountingClient({
                 <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
                   className="rounded-lg border border-stone-200 px-2 py-1 text-sm" />
               </label>
-              <button type="button" className={`${btnSecondary} ml-auto`} onClick={exportDiario} disabled={!diario?.length}>
-                Exportar CSV
-              </button>
+              <div className="ml-auto">
+                <ExportButtons
+                  disabled={!diarioFiltrado.length}
+                  orientation="landscape"
+                  meta={{
+                    title: 'Libro Diario',
+                    subtitle: `${projectName} · ${dateLabel(desde)} a ${dateLabel(hasta)}`
+                      + (cuentaFiltro ? ` · cuenta ${cuentaFiltro}` : ''),
+                    filename: `libro-diario-${desde}-a-${hasta}`,
+                    footnote: 'Partida doble: cada transacción son dos líneas que suman cero.',
+                  }}
+                  columns={[
+                    { header: 'Fecha' },
+                    { header: 'Comprobante' },
+                    { header: 'Glosa' },
+                    { header: 'Cuenta' },
+                    { header: 'Debe', align: 'right' },
+                    { header: 'Haber', align: 'right' },
+                  ]}
+                  rows={() =>
+                    [
+                      ...diarioFiltrado.map((l) => [
+                        dateLabel(l.fecha),
+                        l.comprobante,
+                        l.glosa,
+                        l.cuenta,
+                        Number(l.debe) > 0 ? fnum(Number(l.debe)) : '',
+                        Number(l.haber) > 0 ? fnum(Number(l.haber)) : '',
+                      ]),
+                      [
+                        '', '', 'TOTALES', '',
+                        fnum(diarioFiltrado.reduce((a, l) => a + Number(l.debe), 0)),
+                        fnum(diarioFiltrado.reduce((a, l) => a + Number(l.haber), 0)),
+                      ],
+                    ] as XCell[][]
+                  }
+                />
+              </div>
             </div>
             {libroBusy && !diario ? (
               <div className="flex justify-center py-8"><Spinner /></div>
@@ -810,6 +893,8 @@ export default function AccountingClient({
           </section>
         </div>
       ) : null}
+
+      {tab === 'estados' ? <Estados projectId={projectId} projectName={projectName} /> : null}
 
       {/* ------------------------------- Dialogs ------------------------------ */}
       <StatementDialog
