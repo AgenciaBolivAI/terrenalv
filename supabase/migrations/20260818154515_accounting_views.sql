@@ -1,16 +1,3 @@
--- Accounting, part 3: the two aggregate reads the panel is built on.
---
--- Both are security_invoker views, so the RLS policies on the underlying tables
--- still apply and a view cannot become a way around them.
---
--- These exist because the alternative is pulling every installment row into the
--- browser to add it up — a 10-year plan is 120 rows per sale, and a few hundred
--- sales would mean tens of thousands of rows fetched to render one list.
-
--- ============================================================================
--- v_account_status — one row per payment plan: what was agreed, what came in,
--- what is still owed, and how late it is.
--- ============================================================================
 create or replace view public.v_account_status
 with (security_invoker = on) as
 select
@@ -31,8 +18,6 @@ select
   r.buyer_ci,
   m.code              as manzana,
   l.number            as lote,
-  -- 'anulada' cuotas belong to a cancelled plan: they are no longer owed and
-  -- must not inflate either the balance or the arrears.
   coalesce(sum(i.amount)      filter (where i.status <> 'anulada'), 0) as total_cuotas,
   coalesce(sum(i.amount_paid) filter (where i.status <> 'anulada'), 0) as pagado,
   coalesce(sum(i.amount - i.amount_paid) filter (where i.status <> 'anulada'), 0) as saldo,
@@ -45,8 +30,6 @@ select
   count(*) filter (where i.status = 'pagada') as cuotas_pagadas,
   count(*) filter (where i.status <> 'anulada') as cuotas_totales,
   min(i.due_date) filter (where i.status in ('pendiente', 'parcial')) as proxima_cuota,
-  -- Days late measured from the OLDEST unpaid cuota — that is the age of the
-  -- debt, which is what decides how hard the office chases it.
   (current_date - min(i.due_date) filter (
     where i.status in ('pendiente', 'parcial') and i.due_date < current_date
   ))::int as dias_atraso
@@ -57,13 +40,6 @@ join public.manzanas m     on m.id = l.manzana_id
 left join public.installments i on i.plan_id = p.id
 group by p.id, r.id, m.code, l.number;
 
--- ============================================================================
--- v_monthly_cashflow — money in and money out, by month, already in bolivianos.
---
--- Income counts APPROVED payments only, dated by verified_at: a comprobante
--- sitting unreviewed is not income yet, and dating it by created_at would book
--- it in the wrong month whenever verification crosses a month boundary.
--- ============================================================================
 create or replace view public.v_monthly_cashflow
 with (security_invoker = on) as
 select

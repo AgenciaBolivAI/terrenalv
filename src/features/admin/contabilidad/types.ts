@@ -65,6 +65,25 @@ export const EXPENSE_LABEL: Record<ExpenseCategory, string> = {
   otros: 'Otros',
 };
 
+/**
+ * Cuenta del plan a la que va cada categoría de egreso.
+ *
+ * Es el mismo mapeo que hace `v_libro_diario` en la base. Está duplicado acá
+ * a propósito y no leído de la base: sirve para que un gráfico de egresos abra
+ * el libro filtrado por la cuenta correcta, y si alguna vez los dos se separan,
+ * lo que manda es la vista — acá sólo se rompe un enlace, no un asiento.
+ */
+export const EXPENSE_ACCOUNT: Record<ExpenseCategory, string> = {
+  obra: '5111',
+  comisiones: '5211',
+  sueldos: '5221',
+  publicidad: '5311',
+  administracion: '5411',
+  impuestos: '5511',
+  financiero: '5611',
+  otros: '5911',
+};
+
 export interface Expense {
   id: string;
   incurred_on: string;

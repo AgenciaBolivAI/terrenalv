@@ -1,17 +1,3 @@
--- ============================================================================
--- update_setting: una clave AUSENTE pasaba la validación.
---
--- `jsonb_typeof(p_value->'months')` devuelve SQL NULL cuando la clave no
--- existe, y `NULL <> 'number'` es NULL — no TRUE — así que el `if` nunca
--- disparaba. El objeto se guardaba incompleto y el comprador simplemente
--- dejaba de ver el plan: "guardado con éxito" y nada cambia.
---
--- Afectaba a financing_plan (enabled, down_payment_value, months) y, desde
--- antes, a reserve_amount.value — el monto de la seña.
---
--- coalesce(jsonb_typeof(...), '') convierte la ausencia en un valor comparable.
--- ============================================================================
-
 create or replace function public.update_setting(
   p_project_id uuid, p_key text, p_value jsonb, p_is_public boolean default null
 )
@@ -29,7 +15,6 @@ begin
   v_actor := private.assert_admin();
   v_type := jsonb_typeof(p_value);
 
-  -- Whitelist + shape/range validation. Unknown keys are rejected outright.
   case p_key
     when 'hold_hours', 'retry_hours' then
       if v_type <> 'number' then raise exception 'SETTING_INVALID'; end if;
@@ -61,9 +46,7 @@ begin
         raise exception 'SETTING_INVALID';
       end if;
       if p_value->>'type' <> 'total' then
-        if coalesce(jsonb_typeof(p_value->'value'), '') <> 'number' then
-          raise exception 'SETTING_INVALID';
-        end if;
+        if jsonb_typeof(p_value->'value') <> 'number' then raise exception 'SETTING_INVALID'; end if;
         v_num := (p_value->>'value')::numeric;
         if v_num <= 0 then raise exception 'SETTING_INVALID'; end if;
         if p_value->>'type' = 'porcentaje' and v_num > 100 then raise exception 'SETTING_INVALID'; end if;
@@ -73,13 +56,11 @@ begin
       end if;
     when 'financing_plan' then
       if v_type <> 'object' then raise exception 'SETTING_INVALID'; end if;
-      if coalesce(jsonb_typeof(p_value->'enabled'), '') <> 'boolean' then
-        raise exception 'SETTING_INVALID';
-      end if;
+      if jsonb_typeof(p_value->'enabled') <> 'boolean' then raise exception 'SETTING_INVALID'; end if;
       if coalesce(p_value->>'down_payment_type', '') not in ('porcentaje', 'fijo') then
         raise exception 'SETTING_INVALID';
       end if;
-      if coalesce(jsonb_typeof(p_value->'down_payment_value'), '') <> 'number' then
+      if jsonb_typeof(p_value->'down_payment_value') <> 'number' then
         raise exception 'SETTING_INVALID';
       end if;
       v_num := (p_value->>'down_payment_value')::numeric;
@@ -87,9 +68,7 @@ begin
       if p_value->>'down_payment_type' = 'porcentaje' and v_num > 100 then
         raise exception 'SETTING_INVALID';
       end if;
-      if coalesce(jsonb_typeof(p_value->'months'), '') <> 'number' then
-        raise exception 'SETTING_INVALID';
-      end if;
+      if jsonb_typeof(p_value->'months') <> 'number' then raise exception 'SETTING_INVALID'; end if;
       v_num := (p_value->>'months')::numeric;
       if v_num < 1 or v_num > 600 or v_num <> trunc(v_num) then
         raise exception 'SETTING_INVALID';
@@ -116,7 +95,6 @@ begin
       raise exception 'SETTING_UNKNOWN';
   end case;
 
-  -- Secrets can never be published to anon.
   if coalesce(p_is_public, false) and p_key in ('internal_cron_secret', 'notification_emails',
                                                 'payment_instructions') then
     raise exception 'SETTING_NOT_PUBLISHABLE';
@@ -146,3 +124,14 @@ $$;
 revoke execute on function public.update_setting(uuid, text, jsonb, boolean) from public, anon;
 grant execute on function public.update_setting(uuid, text, jsonb, boolean)
   to authenticated, service_role;
+
+insert into public.settings (project_id, key, value, is_public)
+values (null, 'financing_plan', jsonb_build_object(
+          'enabled', true,
+          'down_payment_type', 'porcentaje',
+          'down_payment_value', 30,
+          'months', 36,
+          'annual_interest_pct', 0,
+          'note', 'Plan referencial. El plan definitivo se confirma en oficina.'
+        ), true)
+on conflict (project_id, key) do nothing;

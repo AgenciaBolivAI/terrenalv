@@ -227,9 +227,9 @@ create policy bank_assets_admin_delete on storage.objects
   for delete to authenticated
   using (bucket_id = 'bank-assets' and private.is_admin());
 
--- payment-proofs: NO anon policies whatsoever. Guests upload only via single-use
--- signed upload URLs minted by the server (service key — bypasses RLS) with a
--- server-chosen path. Team reads; admin deletes.
+-- payment-proofs: NO anon policies whatsoever. Guests upload only via the
+-- server-proxied route (service key — bypasses RLS) with a server-chosen path.
+-- Team reads; admin deletes.
 create policy proofs_team_read on storage.objects
   for select to authenticated
   using (bucket_id = 'payment-proofs' and private.is_team());

@@ -1,21 +1,3 @@
--- Accounting, part 2: the operations.
---
--- Every write goes through here rather than through table grants, for the same
--- reason lot status does: a schedule half-written, or a payment recorded without
--- being applied to a cuota, is worse than no accounting at all — it looks right
--- and is wrong. Each function does the whole job in one transaction.
---
--- Reading is NOT here. installments/plans/allocations are readable by the team
--- through RLS, so reports are plain queries from the app; only money going out
--- (expenses) is admin-only.
-
--- 'efectivo' added to payment_provider_kind in the previous migration: cuotas
--- are largely paid in cash at the counter, and a report that calls that
--- "manual_qr" is lying about how the money arrived.
-
--- ============================================================================
--- Create the payment plan for a confirmed sale
--- ============================================================================
 create or replace function public.admin_create_installment_plan(
   p_reservation_id uuid,
   p_months int,
@@ -45,7 +27,6 @@ begin
 
   select * into v_res from public.reservations where id = p_reservation_id;
   if not found then raise exception 'RESERVATION_NOT_FOUND'; end if;
-  -- A plan is a debt. It only exists once the sale is real.
   if v_res.status <> 'confirmada' then raise exception 'RESERVATION_NOT_CONFIRMED'; end if;
 
   if p_months is null or p_months < 1 or p_months > 480 then raise exception 'INVALID_MONTHS'; end if;
@@ -67,11 +48,6 @@ begin
      p_note, v_actor)
   returning id into v_plan_id;
 
-  -- Without interest the cuotas must add up to exactly what is financed, so the
-  -- last one absorbs the rounding: 12 x 2.066,75 would otherwise leave centavos
-  -- owing forever and the plan would never close itself.
-  -- With interest the agreed monthly figure stands as given and the total is
-  -- simply higher than the financed amount — that difference IS the interest.
   v_target := case when coalesce(p_annual_interest_pct, 0) = 0
                    then v_financed
                    else round(p_monthly_amount * p_months, 2) end;
@@ -103,9 +79,6 @@ begin
 end;
 $fn$;
 
--- ============================================================================
--- Register a cuota payment and apply it
--- ============================================================================
 create or replace function public.admin_register_cuota_payment(
   p_reservation_id uuid,
   p_amount numeric,
@@ -173,14 +146,10 @@ begin
       returning id into v_pay_id;
       exit;
     exception when unique_violation then
-      -- A reference the caller typed by hand is theirs to fix; only a generated
-      -- one may be retried.
       if v_try >= 3 or nullif(btrim(coalesce(p_reference, '')), '') is not null then raise; end if;
     end;
   end loop;
 
-  -- Waterfall: oldest unpaid cuota first, which is what both the office and the
-  -- buyer assume is happening, and what keeps the mora figure honest.
   v_left := p_amount;
   for v_row in
     select id, amount - amount_paid as falta
@@ -204,17 +173,12 @@ begin
     null, jsonb_build_object('payment_id', v_pay_id, 'monto', p_amount,
                              'aplicado', v_applied, 'sobrante', v_left, 'cuotas', v_cuotas));
 
-  -- A leftover is not an error — the buyer may have overpaid, and the office
-  -- needs to see it rather than have it silently vanish.
   return jsonb_build_object(
     'payment_id', v_pay_id, 'reference_code', v_ref,
     'aplicado', v_applied, 'sobrante', v_left, 'cuotas_afectadas', v_cuotas);
 end;
 $fn$;
 
--- ============================================================================
--- Cancel a plan (keeps the row and its history)
--- ============================================================================
 create or replace function public.admin_cancel_installment_plan(p_plan_id uuid, p_note text)
 returns jsonb
 language plpgsql
@@ -234,8 +198,6 @@ begin
   returning * into v_plan;
   if not found then raise exception 'PLAN_NOT_CANCELLABLE'; end if;
 
-  -- Unpaid cuotas stop being owed; paid ones stay as they are, because the
-  -- money really did come in and the reports must keep showing it.
   update public.installments
      set status = 'anulada', updated_at = now()
    where plan_id = p_plan_id and status in ('pendiente', 'parcial');
@@ -248,9 +210,6 @@ begin
 end;
 $fn$;
 
--- ============================================================================
--- Expenses
--- ============================================================================
 create or replace function public.admin_record_expense(
   p_project_id uuid,
   p_incurred_on date,
@@ -306,8 +265,6 @@ begin
 end;
 $fn$;
 
--- Soft delete: an expense that was already counted in a closed month must stay
--- recoverable and stay in the audit trail.
 create or replace function public.admin_delete_expense(p_expense_id uuid, p_note text)
 returns jsonb
 language plpgsql
@@ -334,22 +291,3 @@ begin
   return jsonb_build_object('ok', true);
 end;
 $fn$;
-
--- ============================================================================
--- Permissions — same as every other team RPC: never anon.
--- ============================================================================
-revoke execute on function
-  public.admin_create_installment_plan(uuid, int, numeric, numeric, date, numeric, text),
-  public.admin_register_cuota_payment(uuid, numeric, date, public.payment_provider_kind, text, text),
-  public.admin_cancel_installment_plan(uuid, text),
-  public.admin_record_expense(uuid, date, public.expense_category, text, numeric, char, text, text, text),
-  public.admin_delete_expense(uuid, text)
-from public, anon;
-
-grant execute on function
-  public.admin_create_installment_plan(uuid, int, numeric, numeric, date, numeric, text),
-  public.admin_register_cuota_payment(uuid, numeric, date, public.payment_provider_kind, text, text),
-  public.admin_cancel_installment_plan(uuid, text),
-  public.admin_record_expense(uuid, date, public.expense_category, text, numeric, char, text, text, text),
-  public.admin_delete_expense(uuid, text)
-to authenticated, service_role;

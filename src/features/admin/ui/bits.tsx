@@ -64,3 +64,42 @@ export const btnSecondary =
   'hover:border-stone-400 hover:bg-stone-100 hover:text-stone-900 active:bg-stone-200';
 
 export const btnDanger = `${btnBase} bg-red-600 font-semibold text-white hover:bg-red-700 active:bg-red-800`;
+
+/**
+ * A figure with no way to reach what it counts is a dead end: you read
+ * "Vencido Bs 4.050" and then have to go hunting for the right screen and
+ * re-apply the filter by hand. Every tile opens its own records, already
+ * filtered — por eso `onClick` es obligatorio y no opcional.
+ */
+export function Kpi({
+  label,
+  value,
+  hint,
+  tone = 'normal',
+  onClick,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: 'normal' | 'good' | 'bad';
+  onClick: () => void;
+}) {
+  const color =
+    tone === 'good' ? 'text-brand' : tone === 'bad' ? 'text-red-600' : 'text-stone-900';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group cursor-pointer rounded-xl border border-stone-200 bg-white p-4 text-left
+                 transition-colors hover:border-brand-light hover:bg-stone-50
+                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
+    >
+      <p className="flex items-center justify-between gap-2 text-xs font-semibold tracking-wide text-stone-500 uppercase">
+        {label}
+        <span aria-hidden="true" className="text-stone-300 group-hover:text-brand-light">&rsaquo;</span>
+      </p>
+      <p className={`mt-2 text-2xl font-bold tabular-nums ${color}`}>{value}</p>
+      {hint ? <p className="mt-1 text-xs text-stone-400">{hint}</p> : null}
+    </button>
+  );
+}

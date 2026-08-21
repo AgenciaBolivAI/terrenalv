@@ -17,17 +17,26 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { formatMoney, waLink } from '@/lib/format';
 import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
-import { Badge, Spinner, btnPrimary, btnSecondary, inputClass } from '@/features/admin/ui/bits';
+import { Badge, Kpi, Spinner, btnPrimary, btnSecondary, inputClass } from '@/features/admin/ui/bits';
 import { Dialog } from '@/features/admin/ui/dialog';
 import Estados from './Estados';
 import Comprobantes, { type Account } from './Comprobantes';
 import Gestion from './Gestion';
+import Tesoreria, {
+  CuentaSelect,
+  Directorio,
+  useTesoreria,
+  type ContactKind,
+  type TreasuryAccount,
+} from './Tesoreria';
+import { GroupedBars, Legend, SERIES } from '@/features/admin/analitica/Charts';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
 import { num as fnum, type Cell as XCell } from '@/features/admin/export';
 import { IconWhatsapp } from '@/features/admin/ui/icons';
 import { useToast } from '@/features/admin/ui/toast';
 import {
   ACCOUNT_KIND_LABEL,
+  EXPENSE_ACCOUNT,
   EXPENSE_CATEGORIES,
   EXPENSE_LABEL,
   dateLabel,
@@ -49,56 +58,33 @@ import {
   type SaleWithoutPlan,
 } from './types';
 
-type Tab = 'resumen' | 'cobrar' | 'egresos' | 'libro' | 'estados' | 'comprobantes' | 'gestion';
+type Tab =
+  | 'resumen'
+  | 'cobrar'
+  | 'egresos'
+  | 'bancos'
+  | 'directorio'
+  | 'libro'
+  | 'estados'
+  | 'comprobantes'
+  | 'gestion';
+
+/** Quién puede aparecer como contraparte de un egreso: un cliente no. */
+const EXPENSE_CONTACT_KINDS: { contactKinds: ContactKind[] } = {
+  contactKinds: ['proveedor', 'empleado', 'otro'],
+};
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'resumen', label: 'Resumen' },
   { id: 'cobrar', label: 'Por cobrar' },
   { id: 'egresos', label: 'Egresos' },
+  { id: 'bancos', label: 'Bancos y caja' },
+  { id: 'directorio', label: 'Directorio' },
   { id: 'libro', label: 'Libro' },
   { id: 'estados', label: 'Estados' },
   { id: 'comprobantes', label: 'Comprobantes' },
   { id: 'gestion', label: 'Gestión' },
 ];
-
-/**
- * A figure with no way to reach what it counts is a dead end: you read
- * "Vencido Bs 4.050" and then have to go hunting for the right screen and
- * re-apply the filter by hand. Every tile opens its own records, already
- * filtered.
- */
-function Kpi({
-  label,
-  value,
-  hint,
-  tone = 'normal',
-  onClick,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-  tone?: 'normal' | 'good' | 'bad';
-  onClick: () => void;
-}) {
-  const color =
-    tone === 'good' ? 'text-brand' : tone === 'bad' ? 'text-red-600' : 'text-stone-900';
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group cursor-pointer rounded-xl border border-stone-200 bg-white p-4 text-left
-                 transition-colors hover:border-brand-light hover:bg-stone-50
-                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
-    >
-      <p className="flex items-center justify-between gap-2 text-xs font-semibold tracking-wide text-stone-500 uppercase">
-        {label}
-        <span aria-hidden="true" className="text-stone-300 group-hover:text-brand-light">&rsaquo;</span>
-      </p>
-      <p className={`mt-2 text-2xl font-bold tabular-nums ${color}`}>{value}</p>
-      {hint ? <p className="mt-1 text-xs text-stone-400">{hint}</p> : null}
-    </button>
-  );
-}
 
 export default function AccountingClient({
   projectId,
@@ -122,6 +108,7 @@ export default function AccountingClient({
   const [cashflow, setCashflow] = useState<MonthlyCashflow[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [noPlan, setNoPlan] = useState<SaleWithoutPlan[]>([]);
+  const [tesoreria, setTesoreria] = useState<TreasuryAccount[]>([]);
 
   const [onlyLate, setOnlyLate] = useState(false);
   const [detail, setDetail] = useState<AccountStatus | null>(null);
@@ -158,7 +145,7 @@ export default function AccountingClient({
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    const [accRes, cfRes, expRes, resRes] = await Promise.all([
+    const [accRes, cfRes, expRes, resRes, tesRes] = await Promise.all([
       supabase.from('v_account_status').select('*').eq('project_id', projectId),
       supabase
         .from('v_monthly_cashflow')
@@ -178,12 +165,14 @@ export default function AccountingClient({
         .select('id, tracking_code, buyer_full_name, price_agreed, currency, confirmed_at, lots!reservations_lot_id_fkey(number, manzanas(code))')
         .eq('project_id', projectId)
         .eq('status', 'confirmada'),
+      supabase.from('v_tesoreria_saldos').select('*').eq('is_active', true).order('name'),
     ]);
 
     const acc = (accRes.data ?? []) as unknown as AccountStatus[];
     setAccounts(acc);
     setCashflow((cfRes.data ?? []) as unknown as MonthlyCashflow[]);
     setExpenses((expRes.data ?? []) as unknown as Expense[]);
+    setTesoreria((tesRes.data ?? []) as unknown as TreasuryAccount[]);
 
     // A confirmed sale with no plan row is a buyer nobody is billing.
     const planned = new Set(acc.map((a) => a.reservation_id));
@@ -217,6 +206,76 @@ export default function AccountingClient({
     planes: active.length,
   };
   const thisMonth = cashflow[0];
+
+  // Donde esta la plata hoy y en que se esta yendo. Se calcula aca y no en la
+  // base porque son sumas de filas que la pagina ya tiene cargadas.
+  const disponible = tesoreria.reduce((s, t) => s + Number(t.saldo), 0);
+
+  // Las cifras de arriba son acumuladas de toda la vida del proyecto, asi que
+  // el libro que abren tiene que arrancar donde arrancaron los movimientos: si
+  // abriera en el mes corriente, la lista no sumaria lo que dice el tile.
+  // Indicadores que un dueno mira antes que cualquier tabla.
+  //
+  // Cobertura de caja: cuantos meses aguanta la operacion con lo que hay en el
+  // banco, al ritmo de gasto de los ultimos meses. Es la pregunta que de verdad
+  // importa cuando se decide si arrancar una obra o esperar.
+  const indicadores = useMemo(() => {
+    const meses = cashflow.slice(0, 6);
+    const egresoMedio = meses.length
+      ? meses.reduce((a, m) => a + Number(m.egresos_bob), 0) / meses.length
+      : 0;
+    const ingresoMes = Number(cashflow[0]?.ingresos_bob ?? 0);
+    const egresoMes = Number(cashflow[0]?.egresos_bob ?? 0);
+    return {
+      egresoMedio,
+      // Null en dos casos, y los dos importan: sin gasto conocido no hay ritmo
+      // que proyectar, y sin bancos cargados el disponible es 0 — mostrar
+      // "0 meses" en rojo ahi seria una alarma falsa por un dato que falta,
+      // no por plata que falta.
+      cobertura: egresoMedio > 0 && tesoreria.length > 0 ? disponible / egresoMedio : null,
+      sinCuentas: tesoreria.length === 0,
+      margen: ingresoMes > 0 ? ((ingresoMes - egresoMes) / ingresoMes) * 100 : null,
+      moraPct: totals.porCobrar > 0 ? (totals.vencido / totals.porCobrar) * 100 : 0,
+    };
+  }, [cashflow, disponible, tesoreria.length, totals.porCobrar, totals.vencido]);
+
+  // Egresos de los ultimos meses, abiertos por categoria: sirve para ver si una
+  // categoria se esta disparando, cosa que el total acumulado esconde.
+  const tendencia = useMemo(() => {
+    const porMes = new Map<string, Record<string, number>>();
+    for (const e of expenses) {
+      const mes = `${e.incurred_on.slice(0, 7)}-01`;
+      const fila = porMes.get(mes) ?? {};
+      fila[e.category] = (fila[e.category] ?? 0) + Number(e.amount_bob);
+      porMes.set(mes, fila);
+    }
+    const meses = [...porMes.keys()].sort().slice(-6);
+    // Solo las categorias con movimiento, y como mucho seis: la paleta tiene
+    // seis colores y mas series en un grafico agrupado no se leen.
+    const usadas = EXPENSE_CATEGORIES.filter((c) =>
+      meses.some((m) => (porMes.get(m)?.[c] ?? 0) > 0),
+    ).slice(0, SERIES.length);
+    return {
+      data: meses.map((m) => ({ label: monthLabel(m), values: porMes.get(m) ?? {} })),
+      series: usadas.map((c, i) => ({ key: c, label: EXPENSE_LABEL[c], color: SERIES[i] })),
+    };
+  }, [expenses]);
+
+  const desdeTodo =
+    [
+      ...expenses.map((e) => e.incurred_on),
+      ...cashflow.map((m) => m.mes),
+      ...tesoreria.map((t) => t.opening_date).filter((d): d is string => !!d),
+    ].sort()[0] ?? monthStartIso();
+  const porCategoria = useMemo(() => {
+    const m = new Map<ExpenseCategory, number>();
+    for (const e of expenses) m.set(e.category, (m.get(e.category) ?? 0) + Number(e.amount_bob));
+    const rows = [...m.entries()]
+      .map(([category, total]) => ({ category, total }))
+      .sort((a, b) => b.total - a.total);
+    const max = Math.max(1, ...rows.map((r) => r.total));
+    return { rows, max };
+  }, [expenses]);
 
   const cobrarRows = (onlyLate ? active.filter((a) => Number(a.cuotas_vencidas) > 0) : active).sort(
     (a, b) => Number(b.monto_vencido) - Number(a.monto_vencido) || Number(b.saldo) - Number(a.saldo),
@@ -278,7 +337,12 @@ export default function AccountingClient({
 
   // The libro mayor row you clicked narrows the diario below it, so the two
   // halves of the screen always agree.
-  const diarioFiltrado = (diario ?? []).filter((l) => !cuentaFiltro || l.cuenta === cuentaFiltro);
+  // Coincidencia por prefijo, no exacta: filtrar por 1111 tiene que traer
+  // tambien 1111.01 y 1111.02, que son las cuentas de cada banco y cada caja.
+  // Con igualdad estricta, el KPI de caja abriria un libro vacio.
+  const diarioFiltrado = (diario ?? []).filter(
+    (l) => !cuentaFiltro || l.cuenta === cuentaFiltro || l.cuenta.startsWith(`${cuentaFiltro}.`),
+  );
 
 
 
@@ -367,6 +431,180 @@ export default function AccountingClient({
               tone={Number(thisMonth?.resultado_bob ?? 0) < 0 ? 'bad' : 'good'}
               onClick={() => abrirLibro(monthStartIso(), todayIso(), null)}
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Kpi
+              label="Cobertura de caja"
+              value={
+                indicadores.cobertura === null
+                  ? '—'
+                  : `${indicadores.cobertura.toFixed(1)} meses`
+              }
+              hint={
+                indicadores.sinCuentas
+                  ? 'cargá los bancos y cajas para verlo'
+                  : indicadores.cobertura === null
+                    ? 'sin egresos para proyectar'
+                    : `al ritmo de ${formatMoney(Math.round(indicadores.egresoMedio), 'BOB')}/mes`
+              }
+              tone={
+                indicadores.cobertura !== null && indicadores.cobertura < 3 ? 'bad' : 'normal'
+              }
+              onClick={() => setTab('bancos')}
+            />
+            <Kpi
+              label="Margen del mes"
+              value={indicadores.margen === null ? '—' : `${indicadores.margen.toFixed(0)}%`}
+              hint={
+                indicadores.margen === null
+                  ? 'sin ingresos este mes'
+                  : 'de cada Bs cobrado, lo que queda'
+              }
+              tone={
+                indicadores.margen === null ? 'normal' : indicadores.margen < 0 ? 'bad' : 'good'
+              }
+              onClick={() => abrirLibro(monthStartIso(), todayIso(), null)}
+            />
+            <Kpi
+              label="Cartera vencida"
+              value={`${indicadores.moraPct.toFixed(0)}%`}
+              hint="del total por cobrar"
+              tone={indicadores.moraPct > 15 ? 'bad' : 'normal'}
+              onClick={() => {
+                setOnlyLate(true);
+                setTab('cobrar');
+              }}
+            />
+            <Kpi
+              label="Egresos del mes"
+              value={formatMoney(Number(cashflow[0]?.egresos_bob ?? 0), 'BOB')}
+              hint={
+                indicadores.egresoMedio > 0
+                  ? `promedio ${formatMoney(Math.round(indicadores.egresoMedio), 'BOB')}`
+                  : 'sin historial para comparar'
+              }
+              tone={
+                Number(cashflow[0]?.egresos_bob ?? 0) > indicadores.egresoMedio * 1.5 &&
+                indicadores.egresoMedio > 0
+                  ? 'bad'
+                  : 'normal'
+              }
+              onClick={() => setTab('egresos')}
+            />
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-2">
+            <section className="rounded-xl border border-stone-200 bg-white p-4">
+              <div className="flex items-baseline justify-between gap-2">
+                <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+                  Donde esta la plata
+                </h2>
+                <button
+                  type="button"
+                  className="cursor-pointer text-xs text-stone-500 hover:text-brand hover:underline
+                             focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
+                  onClick={() => setTab('bancos')}
+                >
+                  Bancos y caja &rsaquo;
+                </button>
+              </div>
+              {tesoreria.length === 0 ? (
+                <p className="mt-3 text-sm text-stone-500">
+                  Todavia no hay bancos ni cajas cargados, asi que todo el efectivo aparece junto en
+                  una sola cuenta.{' '}
+                  <button
+                    type="button"
+                    className="cursor-pointer font-medium text-brand hover:underline
+                               focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
+                    onClick={() => setTab('bancos')}
+                  >
+                    Cargalos aca
+                  </button>{' '}
+                  y cada cobro y cada egreso va a decir por donde paso.
+                </p>
+              ) : (
+                <>
+                  <p className="mt-2 text-2xl font-bold tabular-nums text-stone-900">
+                    {formatMoney(disponible, currency)}
+                  </p>
+                  <p className="mb-3 text-xs text-stone-400">
+                    disponible en {tesoreria.length} cuenta(s)
+                  </p>
+                  <ul className="space-y-1">
+                    {tesoreria.map((t) => (
+                      <li key={t.id}>
+                        <button
+                          type="button"
+                          onClick={() => abrirLibro(t.opening_date ?? desdeTodo, todayIso(), t.account_code)}
+                          className="flex w-full cursor-pointer items-center justify-between gap-3
+                                     rounded-lg px-2 py-1.5 text-left text-sm hover:bg-stone-50
+                                     focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
+                        >
+                          <span className="truncate text-stone-700">{t.name}</span>
+                          <span
+                            className={`shrink-0 font-semibold tabular-nums ${
+                              Number(t.saldo) < 0 ? 'text-red-600' : 'text-stone-900'
+                            }`}
+                          >
+                            {formatMoney(Number(t.saldo), t.currency)}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </section>
+
+            <section className="rounded-xl border border-stone-200 bg-white p-4">
+              <div className="flex items-baseline justify-between gap-2">
+                <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+                  En que se va la plata
+                </h2>
+                <button
+                  type="button"
+                  className="cursor-pointer text-xs text-stone-500 hover:text-brand hover:underline
+                             focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
+                  onClick={() => setTab('egresos')}
+                >
+                  Egresos &rsaquo;
+                </button>
+              </div>
+              <p className="mt-1 mb-3 text-xs text-stone-400">
+                Total acumulado por categoria. Clic para ver los asientos.
+              </p>
+              {porCategoria.rows.length === 0 ? (
+                <p className="text-sm text-stone-500">Todavia no hay egresos registrados.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {porCategoria.rows.map((c) => (
+                    <li key={c.category}>
+                      <button
+                        type="button"
+                        onClick={() => abrirLibro(desdeTodo, todayIso(), EXPENSE_ACCOUNT[c.category])}
+                        className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-1
+                                   text-left text-sm hover:bg-stone-50
+                                   focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
+                      >
+                        <span className="w-28 shrink-0 truncate text-stone-600">
+                          {EXPENSE_LABEL[c.category]}
+                        </span>
+                        <span className="relative h-4 flex-1 overflow-hidden rounded bg-stone-100">
+                          <span
+                            className="absolute inset-y-0 left-0 rounded bg-brand-light"
+                            style={{ width: `${Math.max(1.5, (c.total / porCategoria.max) * 100)}%` }}
+                          />
+                        </span>
+                        <span className="w-24 shrink-0 text-right font-semibold tabular-nums text-stone-800">
+                          {formatMoney(c.total, 'BOB')}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
           </div>
 
           <section className="rounded-xl border border-stone-200 bg-white">
@@ -607,6 +845,25 @@ export default function AccountingClient({
 
       {/* -------------------------------- EGRESOS ----------------------------- */}
       {tab === 'egresos' ? (
+        <div className="space-y-5">
+        {tendencia.series.length ? (
+          <section className="rounded-xl border border-stone-200 bg-white p-4">
+            <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+              Egresos por mes y categoría
+            </h2>
+            <p className="mt-1 mb-3 text-xs text-stone-400">
+              Últimos {tendencia.data.length} mes(es). El total acumulado esconde una categoría que
+              se dispara; acá se ve.
+            </p>
+            <Legend items={tendencia.series.map((x) => ({ label: x.label, color: x.color }))} />
+            <GroupedBars
+              data={tendencia.data}
+              series={tendencia.series}
+              format={(n) => formatMoney(n, 'BOB')}
+            />
+          </section>
+        ) : null}
+
         <section className="rounded-xl border border-stone-200 bg-white">
           <div className="flex flex-wrap items-center gap-3 border-b border-stone-200 px-4 py-3">
             <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">Egresos</h2>
@@ -684,17 +941,18 @@ export default function AccountingClient({
             </div>
           )}
         </section>
+        </div>
       ) : null}
 
       {/* --------------------------------- LIBRO ------------------------------ */}
       {tab === 'libro' ? (
         <div className="space-y-5">
           <p className="rounded-xl border border-stone-200 bg-white p-4 text-xs text-stone-500">
-            Libro diario y mayor <strong>derivados</strong> de los movimientos ya registrados: cada
-            pago aprobado y cada egreso se proyecta en dos lineas que suman cero. No hay asientos
-            manuales, ajustes ni cierres — eso lo hace tu contador en su sistema, y para eso estan
-            los CSV. Las cuentas siguen la forma boliviana habitual y son un punto de partida para
-            mapear, no un plan de cuentas certificado.
+            Libro diario y mayor. Cada venta confirmada, cada cobro aprobado y cada egreso se
+            proyecta solo en dos líneas que suman cero, y a eso se suman los comprobantes que se
+            cargan a mano en la pestaña <strong>Comprobantes</strong>. Cada banco y cada caja tiene
+            su propia cuenta, así que el saldo de una cuenta acá es el que se compara contra el
+            extracto.
           </p>
 
           <section className="rounded-xl border border-stone-200 bg-white">
@@ -911,6 +1169,19 @@ export default function AccountingClient({
             )}
           </section>
         </div>
+      ) : null}
+
+      {tab === 'bancos' ? (
+        <Tesoreria
+          projectId={projectId}
+          projectName={projectName}
+          currency={currency}
+          onVerLibro={(code, desdeCuenta) => abrirLibro(desdeCuenta ?? desdeTodo, todayIso(), code)}
+        />
+      ) : null}
+
+      {tab === 'directorio' ? (
+        <Directorio projectId={projectId} projectName={projectName} currency={currency} />
       ) : null}
 
       {tab === 'estados' ? <Estados projectId={projectId} projectName={projectName} /> : null}
@@ -1266,6 +1537,10 @@ function RegisterPaymentDialog({
   const [paidOn, setPaidOn] = useState(() => new Date().toISOString().slice(0, 10));
   const [provider, setProvider] = useState<'efectivo' | 'manual_qr' | 'banco_ganadero' | 'bnb'>('efectivo');
   const [reference, setReference] = useState('');
+  // A qué cuenta entró el cobro: sin esto el asiento cae en la 1111 genérica y
+  // el saldo del banco en el sistema deja de coincidir con el extracto.
+  const { cuentas } = useTesoreria();
+  const [cuentaId, setCuentaId] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1285,6 +1560,7 @@ function RegisterPaymentDialog({
       p_provider: provider,
       p_reference: reference.trim() || null,
       p_note: note.trim() || null,
+      p_treasury_account_id: cuentaId || null,
     });
     setBusy(false);
     if (err) {
@@ -1330,6 +1606,14 @@ function RegisterPaymentDialog({
             <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="N° de comprobante" className={inputClass} />
           </div>
         </div>
+        <CuentaSelect
+          cuentas={cuentas}
+          value={cuentaId}
+          onChange={setCuentaId}
+          label="Depositado en"
+          monto={Number(amount)}
+          signo={1}
+        />
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Nota (opcional)" className={inputClass} />
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
       </div>
@@ -1369,6 +1653,13 @@ function ExpenseDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // De qué cuenta salió y a quién se le pagó. Ambos opcionales: un egreso que
+  // ya ocurrió tiene que poder registrarse aunque nadie haya cargado todavía
+  // los bancos ni el directorio.
+  const { cuentas, contactos: proveedores } = useTesoreria(EXPENSE_CONTACT_KINDS);
+  const [cuentaId, setCuentaId] = useState('');
+  const [contactId, setContactId] = useState('');
+
   async function save() {
     setError(null);
     if (!description.trim()) {
@@ -1391,6 +1682,8 @@ function ExpenseDialog({
       p_supplier: supplier.trim() || null,
       p_receipt_storage_path: null,
       p_note: note.trim() || null,
+      p_treasury_account_id: cuentaId || null,
+      p_contact_id: contactId || null,
     });
     setBusy(false);
     if (err) {
@@ -1422,11 +1715,59 @@ function ExpenseDialog({
         </div>
         <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Detalle (ej. cemento para calles)" className={inputClass} />
         <div className="grid grid-cols-2 gap-3">
-          <input value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Proveedor (opcional)" className={inputClass} />
           <div>
-            <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={`Monto en ${currency === 'BOB' ? 'Bs' : '$us'}`} className={inputClass} />
+            <label className="mb-1 block text-xs text-stone-500">Proveedor</label>
+            {proveedores.length ? (
+              <select
+                value={contactId}
+                onChange={(e) => {
+                  setContactId(e.target.value);
+                  if (e.target.value) setSupplier('');
+                }}
+                className={inputClass}
+              >
+                <option value="">— sin proveedor —</option>
+                {proveedores.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                    {c.tax_id ? ` · ${c.tax_id}` : ''}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={supplier}
+                onChange={(e) => setSupplier(e.target.value)}
+                placeholder="Proveedor (opcional)"
+                className={inputClass}
+              />
+            )}
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">
+              Monto en {currency === 'BOB' ? 'Bs' : '$us'}
+            </label>
+            <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className={inputClass} />
           </div>
         </div>
+
+        {proveedores.length && !contactId ? (
+          <input
+            value={supplier}
+            onChange={(e) => setSupplier(e.target.value)}
+            placeholder="…o escribí el proveedor a mano si no está en el directorio"
+            className={inputClass}
+          />
+        ) : null}
+
+        <CuentaSelect
+          cuentas={cuentas}
+          value={cuentaId}
+          onChange={setCuentaId}
+          label="Pagado desde"
+          monto={Number(amount)}
+          signo={-1}
+        />
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Nota (opcional)" className={inputClass} />
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
       </div>

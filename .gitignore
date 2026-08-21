@@ -54,3 +54,9 @@ __pycache__/
 
 # Originales de WhatsApp del club house: las copias servidas viven en public/clubhouse/
 /clubhouse/
+
+# salida de build local
+build.log
+
+# estado local de la CLI de Supabase
+supabase/.temp/

@@ -1,25 +1,3 @@
--- Reservar un lote desde la oficina.
---
--- /admin/lotes tenía "Vender en oficina" (mark_sold_offline) pero no había
--- forma de dejar un lote RESERVADO desde el panel: el vendedor que cerraba una
--- seña en el mostrador tenía que crear la reserva desde el mapa público
--- haciéndose pasar por el comprador, o dejar el lote como disponible y confiar
--- en que nadie más lo tomara.
---
--- El estado del lote NO se toca a mano por eso mismo: 'reservado' sin una
--- reserva detrás es un lote que nadie puede liberar nunca — sin plazo, sin
--- comprador y sin botón de cancelar. Esta función crea la reserva de verdad,
--- con su plazo y su intención de pago, igual que la del mapa público, y recién
--- entonces mueve el lote.
---
--- Diferencias con la reserva pública (create_reservation):
---   * source = 'oficina', para poder medir cuánto cierra el equipo en persona.
---   * no exige aceptación de términos: la firma es en papel en la oficina.
---   * sin client_meta (no hay navegador del comprador que registrar).
--- Todo lo demás — seña, plazo, código de seguimiento, fila de pago — es igual,
--- así que la reserva se comporta como cualquier otra: vence sola por el cron,
--- se puede extender, cancelar y confirmar con los RPC que ya existen.
-
 create or replace function public.admin_reserve_offline(
   p_lot_id uuid,
   p_full_name text,
@@ -62,8 +40,6 @@ begin
   v_phone := private.normalize_phone_bo(p_phone);
   if coalesce(v_phone, '') = '' then raise exception 'BUYER_PHONE_REQUIRED'; end if;
 
-  -- Mover el lote y bloquearlo en un solo paso: dos vendedores reservando el
-  -- mismo lote a la vez, el segundo recibe LOT_NOT_AVAILABLE.
   update public.lots
      set status = 'reservado'
    where id = p_lot_id and status = 'disponible' and deleted_at is null
@@ -76,8 +52,6 @@ begin
   v_price := public.lot_price(v_lot.id);
   if v_price is null or v_price <= 0 then raise exception 'LOT_NOT_PRICED'; end if;
 
-  -- Seña, plazo y tipo de cambio: exactamente los mismos ajustes que usa la
-  -- reserva pública, para que la oficina y la web nunca coticen distinto.
   v_reserve := coalesce(private.get_setting(v_lot.project_id, 'reserve_amount'),
                         '{"type":"total"}'::jsonb);
   v_rate := coalesce((private.get_setting(v_lot.project_id, 'exchange_rate_bob_per_usd'))::numeric, 6.96);
@@ -121,8 +95,6 @@ begin
 
   update public.lots set active_reservation_id = v_res_id where id = v_lot.id;
 
-  -- Intención de pago, misma transacción: la glosa existe antes de que el
-  -- comprador vaya al banco, igual que en la reserva web.
   v_try := 0;
   loop
     v_try := v_try + 1;
@@ -147,7 +119,7 @@ begin
     'reservation', v_res_id,
     null, jsonb_build_object(
       'lot_id', v_lot.id, 'manzana', v_mz_code, 'lote', v_lot.number,
-      'seña', v_amount_due, 'moneda', v_amount_due_cur,
+      'sena', v_amount_due, 'moneda', v_amount_due_cur,
       'vence', v_expires, 'nota', p_note));
 
   return jsonb_build_object(
@@ -160,7 +132,6 @@ begin
 end;
 $$;
 
--- Mismo trato que el resto de los RPC de equipo: nunca para anon/public.
 revoke execute on function
   public.admin_reserve_offline(uuid, text, text, text, text, int, text)
 from public, anon;

@@ -1,19 +1,3 @@
--- Alta de nuevos proyectos / urbanizaciones.
---
--- La base ya era multi-proyecto desde el principio: projects existe y lotes,
--- manzanas, reservas, pagos, cuotas y egresos llevan todos project_id. Lo único
--- que ataba el panel a Prados del Sur era una constante en el código.
---
--- Lo que faltaba de verdad era el alta: crear un proyecto a mano dejaba a medias
--- las categorías de precio y la numeración de códigos de seguimiento, y eso se
--- descubre recién cuando el primer comprador no puede reservar. Esta función
--- deja el proyecto listo para cargarle el plano.
---
--- Los ajustes (hold_hours, seña, datos de pago, plan de cuotas) NO se duplican
--- por proyecto: viven con project_id null como valores globales y cada proyecto
--- los hereda. Si mañana una urbanización necesita otra seña, se guarda una fila
--- con su project_id y private.get_setting la prefiere — el mecanismo ya existe.
-
 create or replace function public.admin_create_project(
   p_name text,
   p_slug text,
@@ -37,8 +21,6 @@ begin
 
   if btrim(coalesce(p_name, '')) = '' then raise exception 'NAME_REQUIRED'; end if;
 
-  -- El slug va en la URL pública del mapa, así que se normaliza acá y no se
-  -- confía en lo que llegue del formulario.
   v_slug := lower(btrim(coalesce(nullif(btrim(p_slug), ''), p_name)));
   v_slug := translate(v_slug, 'áéíóúüñÁÉÍÓÚÜÑ', 'aeiouunAEIOUUN');
   v_slug := regexp_replace(v_slug, '[^a-z0-9]+', '-', 'g');
@@ -48,14 +30,8 @@ begin
     raise exception 'SLUG_TAKEN';
   end if;
 
-  -- El prefijo encabeza cada código de reserva (PDS-A1B2-C3D4). Dos proyectos
-  -- con el mismo prefijo harían códigos que se confunden entre sí al leerlos.
-  -- upper() ANTES de filtrar: al revés, el filtro '[^A-Z0-9]' se comía las
-  -- minúsculas del prefijo derivado y todos los proyectos terminaban en 'PRY',
-  -- así que el segundo que se creara sin prefijo explícito chocaba con el
-  -- primero por PREFIX_TAKEN.
-  v_prefix := regexp_replace(upper(coalesce(nullif(btrim(p_tracking_prefix), ''),
-                    substr(regexp_replace(v_slug, '[^a-z]', '', 'g'), 1, 3))), '[^A-Z0-9]', '', 'g');
+  v_prefix := upper(regexp_replace(coalesce(nullif(btrim(p_tracking_prefix), ''),
+                    substr(regexp_replace(v_slug, '[^a-z]', '', 'g'), 1, 3)), '[^A-Z0-9]', '', 'g'));
   if length(v_prefix) < 2 then v_prefix := 'PRY'; end if;
   if exists (select 1 from public.projects where upper(tracking_prefix) = v_prefix) then
     raise exception 'PREFIX_TAKEN';
@@ -66,14 +42,10 @@ begin
   values
     (v_slug, btrim(p_name), nullif(btrim(coalesce(p_description, '')), ''),
      nullif(btrim(coalesce(p_location, '')), ''),
-     -- Nace en borrador: se publica recién cuando tiene plano, si no la web
-     -- ofrecería una urbanización sin un solo lote que mostrar.
      'borrador',
      coalesce(p_currency, 'BOB'), v_prefix, 32720)
   returning id into v_id;
 
-  -- Las mismas cinco categorías que usa Prados del Sur, en cero: sin ellas no
-  -- hay forma de ponerle precio a un lote, y un lote sin precio no se reserva.
   insert into public.pricing_categories (project_id, code, name, color_hex, price_per_m2, sort_order)
   values
     (v_id, 'A', 'Categoría A', '#F97316', 0, 1),
@@ -90,8 +62,6 @@ begin
 end;
 $fn$;
 
--- Publicar / despublicar una urbanización. Es lo que decide si aparece en la
--- web pública, así que es explícito y queda auditado.
 create or replace function public.admin_set_project_status(p_project_id uuid, p_status text)
 returns jsonb
 language plpgsql
@@ -109,8 +79,6 @@ begin
   select status into v_before from public.projects where id = p_project_id;
   if v_before is null then raise exception 'PROJECT_NOT_FOUND'; end if;
 
-  -- Publicar sin geometría deja el mapa en "Mapa en preparación" para cualquiera
-  -- que entre desde una campaña. Mejor frenarlo acá.
   if p_status = 'activo' then
     select count(*) into v_lotes from public.lots
      where project_id = p_project_id and deleted_at is null and state = 'published';
@@ -137,8 +105,6 @@ grant execute on function
   public.admin_set_project_status(uuid, text)
 to authenticated, service_role;
 
--- Resumen por proyecto para la pantalla de alta: cuánto plano tiene cargado y
--- cuánto se vendió, que es lo que dice si un proyecto está listo o a medias.
 create or replace view public.v_proyectos
 with (security_invoker = on) as
 select
