@@ -69,3 +69,8 @@ pagina.html
 # Analisis local de planos: PDFs de terceros y salidas intermedias
 api/_plano/__pycache__/
 api/__pycache__/
+
+# Salidas del importador de planos del sistema anterior
+*-import.json
+*-lotes.csv
+tf*.html
