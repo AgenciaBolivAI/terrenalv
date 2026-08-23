@@ -61,3 +61,7 @@ build.log
 # estado local de la CLI de Supabase
 supabase/.temp/
 build.time
+
+# Paginas de terceros descargadas para analisis: pueden traer datos personales
+pagina.html
+*.competitor.html

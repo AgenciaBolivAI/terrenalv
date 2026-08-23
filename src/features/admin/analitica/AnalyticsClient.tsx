@@ -273,7 +273,6 @@ export default function AnalyticsClient({
         <h1 className="text-lg font-bold text-stone-900">Analítica</h1>
         <p className="text-xs text-stone-500">
           {titulo} · {periodoLabel}
-          {consolidado ? ' · cifras en bolivianos' : ''}
         </p>
       </div>
 
@@ -291,7 +290,7 @@ export default function AnalyticsClient({
               subtitle: `${titulo} · ${periodoLabel}`,
               filename: `analitica-${new Date().toISOString().slice(0, 10)}`,
               footnote: consolidado
-                ? 'Consolidado de todas las urbanizaciones, en bolivianos al tipo de cambio actual. La contabilidad usa el cambio histórico, así que puede diferir.'
+                ? 'Consolidado de todas las urbanizaciones. Terrenalv opera solo en bolivianos.'
                 : undefined,
             }}
             columns={[
@@ -376,9 +375,9 @@ export default function AnalyticsClient({
           </div>
           <p className="mt-2 text-xs text-stone-400">
             Acumulado de toda la vida de cada urbanización, no del período elegido arriba: sirve
-            para comparar proyectos que arrancaron en momentos distintos. Todo en bolivianos para
-            poder ponerlos en la misma columna. Una urbanización recién creada aparece igual, con
-            ceros — es la única forma de notar que no se está vendiendo ahí.
+            para comparar proyectos que arrancaron en momentos distintos. Una urbanización recién
+            creada aparece igual, con ceros — es la única forma de notar que no se está vendiendo
+            ahí.
           </p>
         </Section>
       ) : null}

@@ -405,7 +405,7 @@ export default function AccountingClient({
           <h1 className="text-lg font-bold text-stone-900">Contabilidad</h1>
           <p className="text-xs text-stone-500">
             {projectName}
-            {consolidado ? ' · libros de la empresa, en bolivianos' : ''}
+            {consolidado ? ' · libros de la empresa' : ''}
           </p>
         </div>
         <div className="ml-auto flex gap-1 rounded-xl border border-stone-200 bg-white p-1">
