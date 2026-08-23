@@ -18,6 +18,7 @@ import { num as fnum, type Cell as XCell } from '@/features/admin/export';
 import {
   ScopeBar,
   periodStart,
+  pickMoney,
   scopeCurrency,
   scopeLabel,
   type ProjectScope,
@@ -123,12 +124,7 @@ export default function AnalyticsClient({
   /** Consolidado suma proyectos que podrían estar en monedas distintas, así que
    *  ahí se leen las columnas normalizadas a bolivianos. */
   const money = useCallback(
-    (row: object, field: string): number => {
-      // `object` y no un Record: las filas son interfaces declaradas, que no
-      // satisfacen una firma de índice aunque tengan las claves.
-      const r = row as Record<string, unknown>;
-      return Number((consolidado ? (r[`${field}_bob`] ?? r[field]) : r[field]) ?? 0);
-    },
+    (row: object, field: string) => pickMoney(row, field, consolidado),
     [consolidado],
   );
 

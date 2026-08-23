@@ -10,7 +10,10 @@
     "//build": "NOT --turbopack. The Turbopack build does not trace sharp's native platform package into the serverless function, so every payment-proof upload failed with 'Could not load the sharp module using the linux-x64 runtime'. The webpack build traces it automatically — verified in route.js.nft.json, which lists 74 sharp files and the platform's @img binary. Dev keeps Turbopack; nothing is traced there.",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run",
+    "verify": "tsx scripts/predeploy.ts",
+    "predeploy": "tsx scripts/predeploy.ts"
   },
   "dependencies": {
     "@react-email/components": "^1.0.12",

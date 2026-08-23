@@ -1,0 +1,8 @@
+# Runtime Python de Vercel, solo para leer planos CAD en PDF.
+#
+# El resto de la app es Next.js. Este runtime existe porque el intérprete del
+# stream de contenido del PDF —el que conserva a qué capa CAD pertenece cada
+# línea— ya está escrito y probado en Python contra el plano real de Prados del
+# Sur: 2.078 lotes, 88 manzanas, lote mediano 300,00 m² exactos. Reescribirlo en
+# TypeScript sería rehacer la parte difícil para ganar nada.
+PyMuPDF==1.24.10

@@ -65,3 +65,7 @@ build.time
 # Paginas de terceros descargadas para analisis: pueden traer datos personales
 pagina.html
 *.competitor.html
+
+# Analisis local de planos: PDFs de terceros y salidas intermedias
+api/_plano/__pycache__/
+api/__pycache__/

@@ -12,55 +12,12 @@
 // ambas sin tocar código: la lista sale de `projects`.
 
 import type { AdminProject } from '@/features/admin/lib/project-types';
+import {
+  PERIODS,
+  type ProjectScope,
+} from './scope-core';
 
-/** `null` = todas las urbanizaciones juntas. */
-export type ProjectScope = string | null;
-
-export interface Period {
-  /** Días hacia atrás desde hoy. `null` = toda la historia. */
-  days: number | null;
-  label: string;
-}
-
-export const PERIODS: Period[] = [
-  { days: 30, label: '30 días' },
-  { days: 90, label: '90 días' },
-  { days: 180, label: '6 meses' },
-  { days: 365, label: '12 meses' },
-  { days: null, label: 'Todo' },
-];
-
-/** yyyy-mm-dd del inicio del período, o null si es "Todo". */
-export function periodStart(days: number | null): string | null {
-  if (days === null) return null;
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
-}
-
-/** Cómo se llama lo que se está mirando — para títulos y para el PDF/CSV. */
-export function scopeLabel(scope: ProjectScope, projects: AdminProject[]): string {
-  if (scope === null) {
-    return projects.length === 1
-      ? projects[0]?.name ?? 'Todas las urbanizaciones'
-      : `Todas las urbanizaciones (${projects.length})`;
-  }
-  return projects.find((p) => p.id === scope)?.name ?? 'Urbanización';
-}
-
-/**
- * Moneda en la que mostrar las cifras.
- *
- * Consolidado siempre en bolivianos: es la única forma de sumar proyectos que
- * podrían llevarse en monedas distintas. Un proyecto solo se muestra en la suya.
- */
-export function scopeCurrency(
-  scope: ProjectScope,
-  projects: AdminProject[],
-): 'BOB' | 'USD' {
-  if (scope === null) return 'BOB';
-  return projects.find((p) => p.id === scope)?.currency ?? 'BOB';
-}
+export * from './scope-core';
 
 export function ScopeBar({
   projects,
