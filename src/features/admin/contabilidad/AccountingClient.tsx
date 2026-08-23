@@ -17,7 +17,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { formatMoney, waLink } from '@/lib/format';
 import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
-import { Badge, Kpi, Spinner, btnPrimary, btnSecondary, inputClass } from '@/features/admin/ui/bits';
+import { Badge, EmptyState, Kpi, Spinner, btnPrimary, btnSecondary, inputClass } from '@/features/admin/ui/bits';
 import { Dialog } from '@/features/admin/ui/dialog';
 import Estados from './Estados';
 import Comprobantes, { type Account } from './Comprobantes';
@@ -32,6 +32,13 @@ import Tesoreria, {
 import { GroupedBars, Legend, SERIES } from '@/features/admin/analitica/Charts';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
 import { num as fnum, type Cell as XCell } from '@/features/admin/export';
+import {
+  ScopeBar,
+  scopeCurrency,
+  scopeLabel,
+  type ProjectScope,
+} from '@/features/admin/ui/scope';
+import type { AdminProject } from '@/features/admin/lib/project-types';
 import { IconWhatsapp } from '@/features/admin/ui/icons';
 import { useToast } from '@/features/admin/ui/toast';
 import {
@@ -88,17 +95,28 @@ const TABS: { id: Tab; label: string }[] = [
 
 export default function AccountingClient({
   projectId,
-  projectName,
-  currency,
+  projects,
   initialTab,
 }: {
+  /** La urbanización activa en la barra: valor inicial del filtro. */
   projectId: string;
-  projectName: string;
-  currency: Currency;
+  projects: AdminProject[];
   initialTab: Tab;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const { push } = useToast();
+
+  // Terrenalv S.R.L. es UNA empresa con varias urbanizaciones, así que sus
+  // libros son los de la empresa entera. Por eso arranca consolidado: mostrar
+  // solo una urbanización daría un balance que no es el de la sociedad.
+  const [scope, setScope] = useState<ProjectScope>(projects.length > 1 ? null : projectId);
+  const currency: Currency = scopeCurrency(scope, projects);
+  const projectName = scopeLabel(scope, projects);
+  const consolidado = scope === null && projects.length > 1;
+
+  /** Los comprobantes y el cierre escriben en UNA gestión: no existe un
+   *  comprobante "de todas las urbanizaciones". */
+  const escrituraBloqueada = scope === null && projects.length > 1;
 
   const [tab, setTab] = useState<Tab>(initialTab);
   const [loading, setLoading] = useState(true);
@@ -143,28 +161,36 @@ export default function AccountingClient({
     void loadPlan();
   }, [loadPlan]);
 
+  /** Un solo lugar decide el alcance de TODAS las consultas de la pantalla: si
+   *  una vista se filtrara y otra no, los totales no cuadrarían entre sí. */
+  const alcance = useCallback(
+    <T,>(q: T): T => {
+      if (scope === null) return q;
+      return (q as unknown as { eq: (c: string, v: string) => T }).eq('project_id', scope);
+    },
+    [scope],
+  );
+
   const fetchAll = useCallback(async () => {
     setLoading(true);
     const [accRes, cfRes, expRes, resRes, tesRes] = await Promise.all([
-      supabase.from('v_account_status').select('*').eq('project_id', projectId),
-      supabase
-        .from('v_monthly_cashflow')
-        .select('*')
-        .eq('project_id', projectId)
+      alcance(supabase.from('v_account_status').select('*')),
+      alcance(supabase.from('v_monthly_cashflow').select('*'))
         .order('mes', { ascending: false })
         .limit(24),
-      supabase
-        .from('expenses')
-        .select('id, incurred_on, category, description, supplier, amount, currency, amount_bob, note, created_at')
-        .eq('project_id', projectId)
+      alcance(
+        supabase
+          .from('expenses')
+          .select('id, incurred_on, category, description, supplier, amount, currency, amount_bob, note, created_at, project_id'),
+      )
         .is('deleted_at', null)
         .order('incurred_on', { ascending: false })
         .limit(1000),
-      supabase
-        .from('reservations')
-        .select('id, tracking_code, buyer_full_name, price_agreed, currency, confirmed_at, lots!reservations_lot_id_fkey(number, manzanas(code))')
-        .eq('project_id', projectId)
-        .eq('status', 'confirmada'),
+      alcance(
+        supabase
+          .from('reservations')
+          .select('id, tracking_code, buyer_full_name, price_agreed, currency, confirmed_at, lots!reservations_lot_id_fkey(number, manzanas(code))'),
+      ).eq('status', 'confirmada'),
       supabase.from('v_tesoreria_saldos').select('*').eq('is_active', true).order('name'),
     ]);
 
@@ -191,7 +217,7 @@ export default function AccountingClient({
     });
     setNoPlan(sales.filter((s) => !planned.has(s.id)));
     setLoading(false);
-  }, [supabase, projectId]);
+  }, [supabase, alcance]);
 
   useEffect(() => {
     void fetchAll();
@@ -308,11 +334,12 @@ export default function AccountingClient({
   const loadLibro = useCallback(async () => {
     setLibroBusy(true);
     const [mRes, dRes] = await Promise.all([
-      supabase.from('v_libro_mayor').select('*').eq('project_id', projectId).order('sort_order'),
-      supabase
-        .from('v_libro_diario')
-        .select('fecha, comprobante, glosa, cuenta, debe, haber, origen, origen_id')
-        .eq('project_id', projectId)
+      alcance(supabase.from('v_libro_mayor').select('*')).order('sort_order'),
+      alcance(
+        supabase
+          .from('v_libro_diario')
+          .select('fecha, comprobante, glosa, cuenta, debe, haber, origen, origen_id'),
+      )
         .gte('fecha', desde)
         .lte('fecha', hasta)
         .order('fecha')
@@ -321,7 +348,7 @@ export default function AccountingClient({
     setMayor((mRes.data ?? []) as unknown as LedgerAccount[]);
     setDiario((dRes.data ?? []) as unknown as LedgerLine[]);
     setLibroBusy(false);
-  }, [supabase, projectId, desde, hasta]);
+  }, [supabase, alcance, desde, hasta]);
 
   useEffect(() => {
     if (tab === 'libro') void loadLibro();
@@ -374,7 +401,13 @@ export default function AccountingClient({
   return (
     <div className="mx-auto max-w-6xl space-y-5">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-lg font-bold text-stone-900">Contabilidad</h1>
+        <div className="min-w-0">
+          <h1 className="text-lg font-bold text-stone-900">Contabilidad</h1>
+          <p className="text-xs text-stone-500">
+            {projectName}
+            {consolidado ? ' · libros de la empresa, en bolivianos' : ''}
+          </p>
+        </div>
         <div className="ml-auto flex gap-1 rounded-xl border border-stone-200 bg-white p-1">
           {TABS.map((t) => (
             <button
@@ -391,6 +424,8 @@ export default function AccountingClient({
           ))}
         </div>
       </div>
+
+      <ScopeBar projects={projects} scope={scope} onScope={setScope} />
 
       {/* ------------------------------- RESUMEN ------------------------------ */}
       {tab === 'resumen' ? (
@@ -1173,7 +1208,7 @@ export default function AccountingClient({
 
       {tab === 'bancos' ? (
         <Tesoreria
-          projectId={projectId}
+          projectId={scope ?? projectId}
           projectName={projectName}
           currency={currency}
           onVerLibro={(code, desdeCuenta) => abrirLibro(desdeCuenta ?? desdeTodo, todayIso(), code)}
@@ -1181,16 +1216,41 @@ export default function AccountingClient({
       ) : null}
 
       {tab === 'directorio' ? (
-        <Directorio projectId={projectId} projectName={projectName} currency={currency} />
+        <Directorio projectId={scope} projectName={projectName} currency={currency} />
       ) : null}
 
-      {tab === 'estados' ? <Estados projectId={projectId} projectName={projectName} /> : null}
+      {tab === 'estados' ? <Estados projectId={scope} projectName={projectName} /> : null}
 
-      {tab === 'comprobantes' ? (
-        <Comprobantes projectId={projectId} projectName={projectName} accounts={plan} />
+      {escrituraBloqueada && (tab === 'comprobantes' || tab === 'gestion') ? (
+        <section className="rounded-xl border border-stone-200 bg-white p-6">
+          <EmptyState
+            title="Elegí una urbanización"
+            hint={
+              tab === 'comprobantes'
+                ? 'Un comprobante se asienta en la gestión de UNA urbanización — no existe un asiento "de todas". Elegila arriba y volvé a esta pestaña.'
+                : 'El cierre de gestión y la reexpresión se hacen por urbanización, porque cada una tiene su propio ejercicio. Elegí cuál arriba.'
+            }
+          />
+          <div className="mt-4 flex flex-wrap gap-2">
+            {projects.map((pr) => (
+              <button
+                key={pr.id}
+                type="button"
+                className={btnSecondary}
+                onClick={() => setScope(pr.id)}
+              >
+                {pr.name}
+              </button>
+            ))}
+          </div>
+        </section>
       ) : null}
 
-      {tab === 'gestion' ? (
+      {!escrituraBloqueada && tab === 'comprobantes' ? (
+        <Comprobantes projectId={scope ?? projectId} projectName={projectName} accounts={plan} />
+      ) : null}
+
+      {!escrituraBloqueada && tab === 'gestion' ? (
         <Gestion
           projectId={projectId}
           projectName={projectName}

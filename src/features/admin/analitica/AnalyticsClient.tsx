@@ -13,7 +13,16 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { formatMoney } from '@/lib/format';
 import { Spinner, btnSecondary } from '@/features/admin/ui/bits';
-import { downloadCsv, toCsv } from '@/features/admin/contabilidad/types';
+import { ExportButtons } from '@/features/admin/export/ExportButtons';
+import { num as fnum, type Cell as XCell } from '@/features/admin/export';
+import {
+  ScopeBar,
+  periodStart,
+  scopeCurrency,
+  scopeLabel,
+  type ProjectScope,
+} from '@/features/admin/ui/scope';
+import type { AdminProject } from '@/features/admin/lib/project-types';
 import { GroupedBars, Legend, RankBars, StackedRow, EmptyChart } from './Charts';
 import {
   bsCorto,
@@ -27,6 +36,7 @@ import {
   type ProyeccionRow,
   type TiemposRow,
 } from './types';
+import type { PorProyectoRow } from './types';
 
 type Currency = 'USD' | 'BOB';
 
@@ -89,13 +99,38 @@ function Tile({
 
 export default function AnalyticsClient({
   projectId,
-  currency,
+  projects,
 }: {
+  /** La urbanización activa en la barra: es solo el valor inicial del filtro. */
   projectId: string;
-  currency: Currency;
+  projects: AdminProject[];
 }) {
   const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(true);
+
+  // Arranca en "todas" cuando hay mas de una urbanizacion: el tablero es de la
+  // empresa, y abrir mostrando solo una escondería el resto sin avisar. Con una
+  // sola urbanización da exactamente lo mismo, así que no cambia nada hoy.
+  const [scope, setScope] = useState<ProjectScope>(projects.length > 1 ? null : projectId);
+  const [dias, setDias] = useState<number | null>(365);
+  const [porProyecto, setPorProyecto] = useState<PorProyectoRow[]>([]);
+
+  const currency: Currency = scopeCurrency(scope, projects);
+  const consolidado = scope === null && projects.length > 1;
+  const titulo = scopeLabel(scope, projects);
+  const periodoLabel = dias === null ? 'toda la historia' : `últimos ${dias} días`;
+
+  /** Consolidado suma proyectos que podrían estar en monedas distintas, así que
+   *  ahí se leen las columnas normalizadas a bolivianos. */
+  const money = useCallback(
+    (row: object, field: string): number => {
+      // `object` y no un Record: las filas son interfaces declaradas, que no
+      // satisfacen una firma de índice aunque tengan las claves.
+      const r = row as Record<string, unknown>;
+      return Number((consolidado ? (r[`${field}_bob`] ?? r[field]) : r[field]) ?? 0);
+    },
+    [consolidado],
+  );
 
   const [funnel, setFunnel] = useState<FunnelRow[]>([]);
   const [tiempos, setTiempos] = useState<TiemposRow[]>([]);
@@ -107,15 +142,33 @@ export default function AnalyticsClient({
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [f, t, d, c, a, pr, e] = await Promise.all([
-      supabase.from('v_an_funnel_mensual').select('*').eq('project_id', projectId).order('mes').limit(24),
-      supabase.from('v_an_tiempos').select('*').eq('project_id', projectId).order('mes').limit(24),
-      supabase.from('v_an_demanda_manzana').select('*').eq('project_id', projectId),
-      supabase.from('v_an_colocacion').select('*').eq('project_id', projectId).order('mes').limit(24),
-      supabase.from('v_an_aging').select('*').eq('project_id', projectId).order('orden'),
-      supabase.from('v_an_proyeccion').select('*').eq('project_id', projectId).order('mes').limit(18),
-      supabase.from('v_an_equipo').select('*').eq('project_id', projectId),
+    const desde = periodStart(dias);
+
+    // Un solo lugar decide el alcance: sin esto, una vista se filtraría por
+    // proyecto y otra no, y las cifras de la misma pantalla no cuadrarían.
+    const alcance = <T,>(q: T): T => {
+      let r = q as unknown as { eq: (c: string, v: string) => unknown };
+      if (scope !== null) r = r.eq('project_id', scope) as typeof r;
+      return r as unknown as T;
+    };
+    /** Las vistas mensuales se recortan por el mes en que cae `desde`. */
+    const desdeMes = <T,>(q: T): T => {
+      if (!desde) return q;
+      const mes = `${desde.slice(0, 7)}-01`;
+      return (q as unknown as { gte: (c: string, v: string) => T }).gte('mes', mes);
+    };
+
+    const [f, t, d, c, a, pr, e, pp] = await Promise.all([
+      desdeMes(alcance(supabase.from('v_an_funnel_mensual').select('*'))).order('mes').limit(24),
+      desdeMes(alcance(supabase.from('v_an_tiempos').select('*'))).order('mes').limit(24),
+      alcance(supabase.from('v_an_demanda_manzana').select('*')),
+      desdeMes(alcance(supabase.from('v_an_colocacion').select('*'))).order('mes').limit(24),
+      alcance(supabase.from('v_an_aging').select('*')).order('orden'),
+      alcance(supabase.from('v_an_proyeccion').select('*')).order('mes').limit(18),
+      alcance(supabase.from('v_an_equipo').select('*')),
+      supabase.from('v_an_por_proyecto').select('*').order('name'),
     ]);
+    setPorProyecto((pp.data ?? []) as unknown as PorProyectoRow[]);
     setFunnel((f.data ?? []) as unknown as FunnelRow[]);
     setTiempos((t.data ?? []) as unknown as TiemposRow[]);
     setDemanda((d.data ?? []) as unknown as DemandaRow[]);
@@ -124,7 +177,7 @@ export default function AnalyticsClient({
     setProyeccion((pr.data ?? []) as unknown as ProyeccionRow[]);
     setEquipo((e.data ?? []) as unknown as EquipoRow[]);
     setLoading(false);
-  }, [supabase, projectId]);
+  }, [supabase, scope, dias]);
 
   useEffect(() => {
     void load();
@@ -145,13 +198,13 @@ export default function AnalyticsClient({
   const pctColocado = totalLotes > 0 ? (colocados / totalLotes) * 100 : 0;
 
   const meses = mesesDeInventario(colocacion, disponibles);
-  const valorColocado = colocacion.reduce((s, r) => s + Number(r.valor_colocado), 0);
+  const valorColocado = colocacion.reduce((s, r) => s + money(r, 'valor_colocado'), 0);
   const ultimoFunnel = funnel[funnel.length - 1];
   const totalCreadas = funnel.reduce((s, r) => s + Number(r.creadas), 0);
   const totalConfirmadas = funnel.reduce((s, r) => s + Number(r.confirmadas), 0);
   const convGlobal = totalCreadas > 0 ? (totalConfirmadas / totalCreadas) * 100 : 0;
-  const porCobrarTotal = aging.reduce((s, r) => s + Number(r.monto), 0);
-  const vencidoTotal = aging.filter((r) => r.orden > 0).reduce((s, r) => s + Number(r.monto), 0);
+  const porCobrarTotal = aging.reduce((s, r) => s + money(r, 'monto'), 0);
+  const vencidoTotal = aging.filter((r) => r.orden > 0).reduce((s, r) => s + money(r, 'monto'), 0);
   const pctMora = porCobrarTotal > 0 ? (vencidoTotal / porCobrarTotal) * 100 : 0;
 
   // Top / bottom manzanas by placement.
@@ -180,47 +233,155 @@ export default function AnalyticsClient({
     4: 'var(--an-5)',
   };
 
-  function exportarTodo() {
-    downloadCsv(
-      `analitica-${new Date().toISOString().slice(0, 10)}.csv`,
-      toCsv(
-        ['Bloque', 'Clave', 'Métrica', 'Valor'],
-        [
-          ...funnel.flatMap((r) => [
-            ['Embudo', mesCorto(r.mes), 'Reservas creadas', Number(r.creadas)],
-            ['Embudo', mesCorto(r.mes), 'Con comprobante', Number(r.con_comprobante)],
-            ['Embudo', mesCorto(r.mes), 'Confirmadas', Number(r.confirmadas)],
-            ['Embudo', mesCorto(r.mes), 'Expiradas', Number(r.expiradas)],
-            ['Embudo', mesCorto(r.mes), 'Conversión %', Number(r.tasa_conversion ?? 0)],
-          ]),
-          ...colocacion.flatMap((r) => [
-            ['Colocación', mesCorto(r.mes), 'Lotes colocados', Number(r.lotes_colocados)],
-            ['Colocación', mesCorto(r.mes), 'Valor colocado', Number(r.valor_colocado)],
-            ['Colocación', mesCorto(r.mes), 'Ticket promedio', Number(r.ticket_promedio)],
-            ['Colocación', mesCorto(r.mes), 'Precio por m²', Number(r.precio_m2_realizado ?? 0)],
-          ]),
-          ...demanda.map((m) => ['Demanda', m.manzana, '% colocado', Number(m.pct_colocado ?? 0)]),
-          ...aging.map((r) => ['Antigüedad', r.tramo, 'Monto', Number(r.monto)]),
-          ...proyeccion.map((r) => ['Proyección', mesCorto(r.mes), 'Por cobrar', Number(r.por_cobrar)]),
-          ...equipo.map((e) => [
-            'Equipo',
-            e.full_name,
-            'Ventas cerradas',
-            Number(e.ventas_cerradas),
-          ]),
-        ] as (string | number)[][],
-      ),
-    );
+  /** Las mismas filas alimentan el CSV y el PDF: si se armaran por separado,
+   *  con el tiempo una de las dos exportaciones se quedaría sin un bloque. */
+  function filasExport(): XCell[][] {
+    return [
+      ...porProyecto.map((r) => [
+        'Por urbanización', r.name, 'Colocado %', fnum(Number(r.pct_colocado), 1),
+      ]),
+      ...porProyecto.map((r) => [
+        'Por urbanización', r.name, 'Valor colocado (Bs)', fnum(Number(r.valor_colocado_bob)),
+      ]),
+      ...porProyecto.map((r) => [
+        'Por urbanización', r.name, 'Por cobrar (Bs)', fnum(Number(r.por_cobrar_bob)),
+      ]),
+      ...funnel.flatMap((r) => [
+        ['Embudo', mesCorto(r.mes), 'Reservas creadas', fnum(Number(r.creadas), 0)],
+        ['Embudo', mesCorto(r.mes), 'Con comprobante', fnum(Number(r.con_comprobante), 0)],
+        ['Embudo', mesCorto(r.mes), 'Confirmadas', fnum(Number(r.confirmadas), 0)],
+        ['Embudo', mesCorto(r.mes), 'Expiradas', fnum(Number(r.expiradas), 0)],
+        ['Embudo', mesCorto(r.mes), 'Conversión %', fnum(Number(r.tasa_conversion ?? 0), 1)],
+      ]),
+      ...colocacion.flatMap((r) => [
+        ['Colocación', mesCorto(r.mes), 'Lotes colocados', fnum(Number(r.lotes_colocados), 0)],
+        ['Colocación', mesCorto(r.mes), 'Valor colocado', fnum(money(r, 'valor_colocado'))],
+        ['Colocación', mesCorto(r.mes), 'Ticket promedio', fnum(money(r, 'ticket_promedio'))],
+        ['Colocación', mesCorto(r.mes), 'Precio por m²', fnum(money(r, 'precio_m2_realizado'))],
+      ]),
+      ...demanda.map((m) => ['Demanda', m.manzana, '% colocado', fnum(Number(m.pct_colocado ?? 0), 1)]),
+      ...aging.map((r) => ['Antigüedad', r.tramo, 'Monto', fnum(money(r, 'monto'))]),
+      ...proyeccion.map((r) => ['Proyección', mesCorto(r.mes), 'Por cobrar', fnum(money(r, 'por_cobrar'))]),
+      ...equipo.map((e) => ['Equipo', e.full_name, 'Ventas cerradas', fnum(Number(e.ventas_cerradas), 0)]),
+      ...equipo.map((e) => ['Equipo', e.full_name, 'Monto vendido', fnum(money(e, 'monto_vendido'))]),
+    ] as XCell[][];
   }
 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-baseline gap-3">
         <h1 className="text-lg font-bold text-stone-900">Analítica</h1>
-        <button type="button" className={`${btnSecondary} ml-auto`} onClick={exportarTodo}>
-          Exportar todo a CSV
-        </button>
+        <p className="text-xs text-stone-500">
+          {titulo} · {periodoLabel}
+          {consolidado ? ' · cifras en bolivianos' : ''}
+        </p>
       </div>
+
+      <ScopeBar
+        projects={projects}
+        scope={scope}
+        onScope={setScope}
+        period={dias}
+        onPeriod={setDias}
+        right={
+          <ExportButtons
+            orientation="landscape"
+            meta={{
+              title: 'Analítica',
+              subtitle: `${titulo} · ${periodoLabel}`,
+              filename: `analitica-${new Date().toISOString().slice(0, 10)}`,
+              footnote: consolidado
+                ? 'Consolidado de todas las urbanizaciones, en bolivianos al tipo de cambio actual. La contabilidad usa el cambio histórico, así que puede diferir.'
+                : undefined,
+            }}
+            columns={[
+              { header: 'Bloque' },
+              { header: 'Clave' },
+              { header: 'Métrica' },
+              { header: 'Valor', align: 'right' },
+            ]}
+            rows={filasExport}
+          />
+        }
+      />
+
+      {/* --- Cada urbanización, incluidas las que todavía no venden nada ---- */}
+      {porProyecto.length > 1 || scope === null ? (
+        <Section
+          title="Cada urbanización"
+          question="¿Cuál se está vendiendo y cuál está quieta? Clic en una para ver solo esa."
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-175 text-sm">
+              <thead>
+                <tr className="border-b border-stone-200 text-left text-xs text-stone-500">
+                  <th className="py-1.5">Urbanización</th>
+                  <th className="py-1.5 text-right">Lotes</th>
+                  <th className="py-1.5 text-right">Colocado</th>
+                  <th className="py-1.5 text-right">Valor colocado</th>
+                  <th className="py-1.5 text-right">Por cobrar</th>
+                  <th className="py-1.5 text-right">Vencido</th>
+                  <th className="py-1.5 text-right">Resultado</th>
+                  <th className="py-1.5">Última venta</th>
+                </tr>
+              </thead>
+              <tbody>
+                {porProyecto.map((r) => (
+                  <tr
+                    key={r.project_id}
+                    onClick={() => setScope(r.project_id)}
+                    className={`cursor-pointer border-b border-stone-100 last:border-0 hover:bg-stone-50 ${
+                      scope === r.project_id ? 'bg-green-50' : ''
+                    }`}
+                  >
+                    <td className="py-1.5 font-medium text-stone-900">
+                      {r.name}
+                      {r.status !== 'activo' ? (
+                        <span className="ml-2 rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">
+                          {r.status}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums">
+                      {Number(r.lotes).toLocaleString('es-BO')}
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums">{Number(r.pct_colocado).toFixed(1)}%</td>
+                    <td className="py-1.5 text-right tabular-nums">
+                      {formatMoney(Number(r.valor_colocado_bob), 'BOB')}
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums">
+                      {formatMoney(Number(r.por_cobrar_bob), 'BOB')}
+                    </td>
+                    <td
+                      className={`py-1.5 text-right tabular-nums ${
+                        Number(r.vencido_bob) > 0 ? 'text-red-600' : 'text-stone-500'
+                      }`}
+                    >
+                      {formatMoney(Number(r.vencido_bob), 'BOB')}
+                    </td>
+                    <td
+                      className={`py-1.5 text-right font-semibold tabular-nums ${
+                        Number(r.resultado_bob) < 0 ? 'text-red-600' : 'text-stone-900'
+                      }`}
+                    >
+                      {formatMoney(Number(r.resultado_bob), 'BOB')}
+                    </td>
+                    <td className="py-1.5 text-xs text-stone-400">
+                      {r.ultima_venta ?? 'sin ventas'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-stone-400">
+            Acumulado de toda la vida de cada urbanización, no del período elegido arriba: sirve
+            para comparar proyectos que arrancaron en momentos distintos. Todo en bolivianos para
+            poder ponerlos en la misma columna. Una urbanización recién creada aparece igual, con
+            ceros — es la única forma de notar que no se está vendiendo ahí.
+          </p>
+        </Section>
+      ) : null}
 
       {/* --- Headline: the four numbers a decision usually starts from ----- */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -372,10 +533,10 @@ export default function AnalyticsClient({
                     <tr key={r.mes} className="border-b border-stone-100 last:border-0">
                       <td className="py-1.5 text-stone-700">{mesCorto(r.mes)}</td>
                       <td className="py-1.5 text-right tabular-nums">{r.lotes_colocados}</td>
-                      <td className="py-1.5 text-right tabular-nums">{formatMoney(Number(r.valor_colocado), currency)}</td>
-                      <td className="py-1.5 text-right tabular-nums">{formatMoney(Number(r.ticket_promedio), currency)}</td>
+                      <td className="py-1.5 text-right tabular-nums">{formatMoney(money(r, 'valor_colocado'), currency)}</td>
+                      <td className="py-1.5 text-right tabular-nums">{formatMoney(money(r, 'ticket_promedio'), currency)}</td>
                       <td className="py-1.5 text-right tabular-nums font-semibold">
-                        {r.precio_m2_realizado ? formatMoney(Number(r.precio_m2_realizado), currency) : '—'}
+                        {r.precio_m2_realizado ? formatMoney(money(r, 'precio_m2_realizado'), currency) : '—'}
                       </td>
                     </tr>
                   ))}
@@ -438,7 +599,7 @@ export default function AnalyticsClient({
         <StackedRow
           parts={aging.map((r) => ({
             label: r.tramo,
-            value: Number(r.monto),
+            value: money(r, 'monto'),
             color: AGING_COLOR[r.orden] ?? 'var(--an-5)',
           }))}
           format={(n) => formatMoney(n, currency)}
@@ -453,7 +614,7 @@ export default function AnalyticsClient({
           <GroupedBars
             data={proyeccion.map((r) => ({
               label: mesCorto(r.mes),
-              values: { por_cobrar: Number(r.por_cobrar) },
+              values: { por_cobrar: money(r, 'por_cobrar') },
             }))}
             series={[{ key: 'por_cobrar', label: 'Por cobrar', color: 'var(--an-6)' }]}
             format={(n) => bsCorto(n)}
@@ -487,7 +648,7 @@ export default function AnalyticsClient({
                     <td className="py-1.5 font-medium text-stone-800">{e.full_name}</td>
                     <td className="py-1.5 text-stone-500">{e.rol === 'admin' ? 'Administrador' : 'Ventas'}</td>
                     <td className="py-1.5 text-right tabular-nums">{e.ventas_cerradas}</td>
-                    <td className="py-1.5 text-right tabular-nums">{formatMoney(Number(e.monto_vendido), currency)}</td>
+                    <td className="py-1.5 text-right tabular-nums">{formatMoney(money(e, 'monto_vendido'), currency)}</td>
                     <td className="py-1.5 text-right tabular-nums">{e.pagos_verificados}</td>
                   </tr>
                 ))}

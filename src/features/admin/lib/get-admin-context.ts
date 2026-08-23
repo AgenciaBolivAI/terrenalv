@@ -6,12 +6,8 @@ import type { Profile } from '@/lib/db-types';
 import { PROJECT_SLUG, PROJECT_COOKIE } from './constants';
 import { hasSupabaseConfig } from '@/lib/supabase/config';
 
-export interface AdminProject {
-  id: string;
-  slug: string;
-  name: string;
-  currency: 'USD' | 'BOB';
-}
+export type { AdminProject } from './project-types';
+import type { AdminProject } from './project-types';
 
 export type AdminContext =
   | { ok: false; reason: 'env' }

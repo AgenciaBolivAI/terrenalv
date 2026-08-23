@@ -176,6 +176,8 @@ export default function Tesoreria({
   currency,
   onVerLibro,
 }: {
+  /** Los saldos son de la empresa (una cuenta bancaria no es de un proyecto),
+   *  pero el asiento del traspaso se registra en una gestión concreta. */
   projectId: string;
   projectName: string;
   currency: Currency;
@@ -779,7 +781,8 @@ export function Directorio({
   projectName,
   currency,
 }: {
-  projectId: string;
+  /** null = ranking de proveedores de todas las urbanizaciones. */
+  projectId: string | null;
   projectName: string;
   currency: Currency;
 }) {
@@ -795,10 +798,10 @@ export function Directorio({
   const load = useCallback(async () => {
     const [c, r] = await Promise.all([
       supabase.from('contacts').select('*').order('name'),
-      supabase
-        .from('v_an_proveedores')
-        .select('*')
-        .eq('project_id', projectId)
+      (projectId === null
+        ? supabase.from('v_an_proveedores').select('*')
+        : supabase.from('v_an_proveedores').select('*').eq('project_id', projectId)
+      )
         .order('total', { ascending: false })
         .limit(10),
     ]);

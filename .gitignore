@@ -60,3 +60,4 @@ build.log
 
 # estado local de la CLI de Supabase
 supabase/.temp/
+build.time

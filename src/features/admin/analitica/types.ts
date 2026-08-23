@@ -99,3 +99,32 @@ export function mesesDeInventario(
   const ritmo = total / recientes.length;
   return disponibles / ritmo;
 }
+
+/**
+ * Una fila por urbanización, con lo que se compara entre proyectos.
+ *
+ * Todo en bolivianos: es la única forma de poner en la misma columna un
+ * proyecto que se lleva en BOB y otro en USD.
+ */
+export interface PorProyectoRow {
+  project_id: string;
+  name: string;
+  slug: string;
+  status: string;
+  currency: 'BOB' | 'USD';
+  lotes: number;
+  disponibles: number;
+  vendidos: number;
+  reservados: number;
+  sin_precio: number;
+  pct_colocado: number;
+  valor_colocado_bob: number;
+  ventas: number;
+  ultima_venta: string | null;
+  por_cobrar_bob: number;
+  vencido_bob: number;
+  planes_activos: number;
+  ingresos_bob: number;
+  egresos_bob: number;
+  resultado_bob: number;
+}

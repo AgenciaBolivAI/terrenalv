@@ -49,7 +49,14 @@ function Money({ v, bold }: { v: number; bold?: boolean }) {
   );
 }
 
-export default function Estados({ projectId, projectName }: { projectId: string; projectName: string }) {
+export default function Estados({
+  projectId,
+  projectName,
+}: {
+  /** null = los libros de la empresa entera, no los de una urbanización. */
+  projectId: string | null;
+  projectName: string;
+}) {
   const supabase = useMemo(() => createClient(), []);
   const [tab, setTab] = useState<Estado>('sumas');
   const [desde, setDesde] = useState(monthStartIso);

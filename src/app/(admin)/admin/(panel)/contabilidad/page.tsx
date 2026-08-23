@@ -44,8 +44,7 @@ export default async function ContabilidadPage({
   return (
     <AccountingClient
       projectId={ctx.project.id}
-      projectName={ctx.project.name}
-      currency={ctx.project.currency ?? 'BOB'}
+      projects={ctx.projects}
       initialTab={initialTab}
     />
   );

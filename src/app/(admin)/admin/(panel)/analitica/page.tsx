@@ -27,5 +27,7 @@ export default async function AnaliticaPage() {
     return <EmptyState title="Proyecto no encontrado" hint="Ejecuta las migraciones." />;
   }
 
-  return <AnalyticsClient projectId={ctx.project.id} currency={ctx.project.currency ?? 'BOB'} />;
+  // Se le pasan TODAS las urbanizaciones: el filtro de alcance vive en el
+  // cliente, así que una urbanización nueva aparece sola, sin tocar código.
+  return <AnalyticsClient projectId={ctx.project.id} projects={ctx.projects} />;
 }
