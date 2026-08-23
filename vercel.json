@@ -1,4 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "npm ci --include=optional"
+  "installCommand": "npm ci --include=optional",
+  "functions": {
+    "api/plano.py": {
+      "memory": 3009,
+      "maxDuration": 300
+    }
+  }
 }
