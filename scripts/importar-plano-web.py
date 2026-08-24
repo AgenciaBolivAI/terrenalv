@@ -109,6 +109,65 @@ def fichas(html):
     return objs
 
 
+def dentro(pt, poly):
+    """Punto dentro de polígono (ray casting)."""
+    x, y = pt
+    c = False
+    n = len(poly)
+    for i in range(n):
+        x1, y1 = poly[i]
+        x2, y2 = poly[(i + 1) % n]
+        if ((y1 > y) != (y2 > y)) and (x < (x2 - x1) * (y - y1) / ((y2 - y1) or 1e-12) + x1):
+            c = not c
+    return c
+
+
+def poligonos(svg):
+    out = []
+    for m in re.finditer(r'<polygon[^>]*points="([^"]+)"', svg):
+        nums = [float(v) for v in re.findall(r'-?\d+\.?\d*', m.group(1))]
+        pts = list(zip(nums[0::2], nums[1::2]))
+        if len(pts) >= 3:
+            out.append(pts)
+    return out
+
+
+def calibrar_por_area(svg, pts, areas):
+    """Metros por unidad, por conservación de área.
+
+    Para cada polígono del dibujo se suman las superficies REALES de los lotes
+    cuyo punto cae adentro, y se compara con el área del polígono medida en
+    unidades de dibujo. Es mucho más fuerte que leer una etiqueta suelta:
+    en Los Pinos II salen 750 muestras independientes que coinciden dentro del
+    0,5 %, contra las 4 etiquetas del otro método.
+
+    Devuelve None si ningún polígono encierra lotes — pasa cuando los únicos
+    polígonos del plano son las áreas verdes, que por definición no tienen
+    lotes adentro.
+    """
+    cand = []
+    for poly in poligonos(svg):
+        av = shoelace(poly)
+        if av <= 0:
+            continue
+        xs = [q[0] for q in poly]
+        ys = [q[1] for q in poly]
+        x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+        total = 0.0
+        for pid, (x, y) in pts.items():
+            if x0 <= x <= x1 and y0 <= y <= y1 and dentro((x, y), poly):
+                total += areas.get(pid, 0.0)
+        if total > 0:
+            cand.append(math.sqrt(total / av))
+    if len(cand) < 5:
+        return None, cand
+    med = st.median(cand)
+    buenas = [c for c in cand if abs(c - med) / med < 0.15]
+    if len(buenas) < 5:
+        return None, cand
+    return st.median(buenas), buenas
+
+
 def calibrar(svg):
     """Metros por unidad de dibujo, según las superficies impresas en el plano.
 
@@ -150,6 +209,27 @@ def calibrar(svg):
     return st.median(buenas), buenas
 
 
+def dibujo_del_plano(svg):
+    """El plano sin los puntos de estado.
+
+    Se quitan los <circle> porque el estado lo pinta nuestro mapa encima, con
+    su propia leyenda y sus colores; dejar los del sistema anterior mostraría
+    dos verdades distintas sobre el mismo lote.
+
+    Todo lo demás se conserva tal cual: las manzanas, las calles y —lo que
+    importa— las cotas impresas en cada lado, que son las que le dicen al
+    comprador dónde termina su lote.
+    """
+    limpio = re.sub(r'<circle\b[^>]*/?>', '', svg)
+    limpio = re.sub(r'\n{3,}', '\n', limpio)
+    return limpio + '</svg>'
+
+
+def caja_del_svg(svg):
+    m = re.search(r'viewBox="([\d.\-]+)\s+([\d.\-]+)\s+([\d.\-]+)\s+([\d.\-]+)"', svg[:3000])
+    return [float(m.group(i)) for i in (1, 2, 3, 4)] if m else None
+
+
 # ------------------------------------------------------------------ armado
 def rectangulo(cx, cy, area_m2, escala, frente=None, fondo=None):
     """Rectángulo del área real, centrado en el punto del lote.
@@ -167,6 +247,65 @@ def rectangulo(cx, cy, area_m2, escala, frente=None, fondo=None):
     return [[cx - hf, cy - hd], [cx + hf, cy - hd], [cx + hf, cy + hd], [cx - hf, cy + hd]]
 
 
+def celdas_de_manzana(puntos, areas_m2, escala):
+    """Un polígono por lote, que no se pisa con el vecino.
+
+    Rectángulos centrados en cada punto NO sirven: los puntos están a unos 9 m
+    y un lote mide 15×20, así que los rectángulos se solapan y `save_lots` los
+    rechaza —con razón, dos lotes no pueden ocupar el mismo suelo.
+
+    Voronoi resuelve justo eso: parte el plano en celdas, una por punto, que
+    encajan sin solaparse. Después cada celda se encoge alrededor de su punto
+    hasta que su área da la superficie REAL del lote; lo que queda entre celdas
+    es la calle. Una celda que ya es más chica que su lote no se agranda: antes
+    invadiría al vecino.
+
+    Sigue siendo una aproximación —los lados no son los del levantamiento— pero
+    es una que respeta las tres cosas que sí sabemos: dónde está cada lote,
+    cuánto mide, y que no se pisan entre sí.
+    """
+    from shapely import voronoi_polygons
+    from shapely.affinity import scale as escalar
+    from shapely.geometry import MultiPoint, Point
+
+    pts = [Point(x, y) for x, y in puntos]
+    if len(pts) < 2:
+        return [None] * len(pts)
+
+    mp = MultiPoint(pts)
+    # El casco con holgura evita celdas infinitas en el borde de la manzana.
+    borde = mp.convex_hull.buffer(max(mp.bounds[2] - mp.bounds[0],
+                                      mp.bounds[3] - mp.bounds[1]) * 0.08 + 1e-6)
+    try:
+        celdas = list(voronoi_polygons(mp, extend_to=borde).geoms)
+    except Exception:
+        return [None] * len(pts)
+
+    # voronoi_polygons no promete el orden, así que cada celda se asigna al
+    # punto que contiene.
+    salida = [None] * len(pts)
+    for c in celdas:
+        c = c.intersection(borde)
+        if c.is_empty:
+            continue
+        for i, q in enumerate(pts):
+            if salida[i] is None and c.covers(q):
+                salida[i] = c
+                break
+
+    res = []
+    for i, c in enumerate(salida):
+        if c is None or c.is_empty or c.area <= 0:
+            res.append(None)
+            continue
+        objetivo = areas_m2[i] / (escala ** 2)   # m² -> unidades de dibujo
+        if objetivo < c.area:
+            f = math.sqrt(objetivo / c.area)
+            c = escalar(c, xfact=f, yfact=f, origin=pts[i])
+        res.append(list(c.exterior.coords)[:-1])
+    return res
+
+
 def a_metros(pt, escala, orig):
     """Unidades de dibujo → metros, con Y hacia arriba y origen en la esquina."""
     return [round((pt[0] - orig[0]) * escala, 3), round((orig[1] - pt[1]) * escala, 3)]
@@ -181,14 +320,32 @@ def main():
 
     html = io.open(ruta, encoding='utf8', errors='replace').read()
     svg = leer_svg(html)
-    escala, muestras = calibrar(svg)
+
+    pts = puntos_de_lote(svg)
+    fs = fichas(html)
+    areas_por_pid = {}
+    for o in fs:
+        pid = str(o.get('IDPRODUCTO') or '').strip()
+        try:
+            a = float(o.get('SUPERFICIE') or 0)
+        except ValueError:
+            a = 0.0
+        if pid and a > 0:
+            areas_por_pid[pid] = a
+
+    # Primero conservación de área: cientos de muestras contra unas pocas
+    # etiquetas. Las etiquetas quedan de respaldo para los planos cuyos únicos
+    # polígonos son áreas verdes, que no encierran ningún lote.
+    metodo = 'conservación de área'
+    escala, muestras = calibrar_por_area(svg, pts, areas_por_pid)
+    if not escala:
+        metodo = 'superficies impresas'
+        escala, muestras = calibrar(svg)
     if not escala:
         print(f'No se pudo calibrar la escala ({len(muestras)} etiqueta(s) útil(es)).')
         print('Sin escala no se importa: los lotes saldrían con un tamaño inventado.')
         sys.exit(1)
 
-    pts = puntos_de_lote(svg)
-    fs = fichas(html)
     por_clave = {}
     for o in fs:
         pid = str(o.get('IDPRODUCTO') or '').strip()
@@ -196,7 +353,7 @@ def main():
             por_clave[pid] = o
 
     comunes = sorted(set(pts) & set(por_clave))
-    print(f'escala      : {escala:.4f} m/unidad  ({len(muestras)} etiquetas coincidentes)')
+    print(f'escala      : {escala:.4f} m/unidad  ({len(muestras)} muestras, {metodo})')
     print(f'puntos      : {len(pts)}')
     print(f'fichas      : {len(por_clave)}')
     print(f'cruzan      : {len(comunes)}')
@@ -230,11 +387,10 @@ def main():
             except ValueError:
                 return None
 
-        anillo_vb = rectangulo(cx, cy, area, escala, num('FRENTE'), num('FONDO'))
         manzanas.setdefault(mz, []).append({
             'number': lt,
-            'ring': [a_metros(p, escala, orig) for p in anillo_vb],
             'area_m2': round(area, 2),
+            '_pt': (cx, cy),
             'frontage_m': num('FRENTE'),
             'depth_m': num('FONDO'),
             'is_corner': 'ESQUINA' in str(o.get('TIPOLOTE') or '').upper(),
@@ -242,8 +398,27 @@ def main():
             'needs_review': True,
             'precio': (lambda v: round(v, 2) if v else None)(num('PRECIOUNIT')),
             'vendido': bool(str(o.get('IDVENTA') or '').strip()),
-            '_vb': [tuple(p) for p in anillo_vb],
         })
+
+    # Las celdas se calculan por manzana: partir todo el plano de una vez haría
+    # que un lote del borde le robara suelo a la manzana de enfrente.
+    descartados = 0
+    for mz, lotes in manzanas.items():
+        anillos = celdas_de_manzana([l['_pt'] for l in lotes],
+                                    [l['area_m2'] for l in lotes], escala)
+        vivos = []
+        for l, anillo in zip(lotes, anillos):
+            if not anillo or len(anillo) < 3:
+                descartados += 1
+                continue
+            l['_vb'] = [tuple(q) for q in anillo]
+            l['ring'] = [a_metros(q, escala, orig) for q in anillo]
+            l.pop('_pt', None)
+            vivos.append(l)
+        manzanas[mz] = vivos
+    manzanas = {k: v for k, v in manzanas.items() if v}
+    if descartados:
+        print(f'  {descartados} lote(s) sin celda utilizable: no se importan')
 
     total = sum(len(v) for v in manzanas.values())
     m2 = sum(l['area_m2'] for v in manzanas.values() for l in v)
@@ -252,10 +427,17 @@ def main():
     print(f'lotes       : {total}   ({vendidos} vendidos)')
     print(f'superficie  : {m2:,.0f} m2   promedio {m2/max(total,1):,.1f} m2')
 
+    svg_out = f'{slug}-plano.svg'
+    io.open(svg_out, 'w', encoding='utf8').write(dibujo_del_plano(svg))
+    print(f'escrito {svg_out}  ({os.path.getsize(svg_out):,} bytes)')
+
     salida = f'{slug}-import.json'
     payload = {
         'slug': slug,
         'escala_m_por_unidad': round(escala, 4),
+        'viewbox': caja_del_svg(svg),
+        'origen_unidades': [round(orig[0], 3), round(orig[1], 3)],
+        'plano_svg': svg_out,
         'manzanas': [
             {'code': f'M-{mz}',
              'ring': [a_metros(p, escala, orig)
