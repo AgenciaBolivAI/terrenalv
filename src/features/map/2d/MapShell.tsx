@@ -22,6 +22,7 @@ import { LotBottomSheet } from './LotBottomSheet';
 import { LotSearch } from './LotSearch';
 import { MapLegend } from './MapLegend';
 import { PlanSurface } from './PlanSurface';
+import type { PlanoFondoSpec } from './PlanoFondo';
 import { PlanViewport } from './PlanViewport';
 import { ViewToggle } from './ViewToggle';
 import type { ViewportController } from './viewbox';
@@ -41,9 +42,16 @@ interface MapShellProps {
   project: MapProjectInfo;
   /** Payment terms, resolved server-side. Null = show price only. */
   financingPlan?: FinancingPlan | null;
+  planoFondo?: PlanoFondoSpec | null;
 }
 
-export function MapShell({ snapshot, statuses, project, financingPlan = null }: MapShellProps) {
+export function MapShell({
+  snapshot,
+  statuses,
+  project,
+  financingPlan = null,
+  planoFondo = null,
+}: MapShellProps) {
   const hydratedRef = useRef(false);
   if (!hydratedRef.current) {
     hydratedRef.current = true;
@@ -90,7 +98,7 @@ export function MapShell({ snapshot, statuses, project, financingPlan = null }: 
       {/* 2D stays mounted while in 3D (display:none) to preserve pan state. */}
       <div className={viewMode === '3d' ? 'hidden' : 'h-full w-full'}>
         <PlanViewport controllerRef={controllerRef}>
-          <PlanSurface />
+          <PlanSurface planoFondo={planoFondo} />
         </PlanViewport>
       </div>
 

@@ -9,11 +9,12 @@ import { useMapStore } from '../store/useMapStore';
 import { ElementsLayer } from './ElementsLayer';
 import { LabelLayer } from './LabelLayer';
 import { ManzanaGroup } from './ManzanaGroup';
+import { PlanoFondo, type PlanoFondoSpec } from './PlanoFondo';
 import { getViewBox } from './viewbox';
 
 const TAP_SLOP_PX = 8;
 
-export function PlanSurface() {
+export function PlanSurface({ planoFondo = null }: { planoFondo?: PlanoFondoSpec | null }) {
   const planBbox = useMapStore((s) => s.planBbox);
   const elements = useMapStore((s) => s.elements);
   const manzanas = useMapStore((s) => s.manzanas);
@@ -64,6 +65,10 @@ export function PlanSurface() {
           <line x1={0} y1={17} x2={6} y2={17} stroke="#57534e" strokeWidth={1.4} />
         </pattern>
       </defs>
+
+      {/* El dibujo del topógrafo va primero: es el fondo sobre el que se
+          dibujan los lotes, y lleva las cotas de cada lado. */}
+      <PlanoFondo spec={planoFondo} />
 
       <ElementsLayer elements={elements} />
       <g>

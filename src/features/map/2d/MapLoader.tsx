@@ -24,6 +24,7 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/lib/supabase/config';
 import type { MapProjectInfo } from '../data/loadGeometry';
 import { loadStatuses } from '../data/loadStatuses';
 import type { GeometrySnapshot, StatusSnapshot } from '../data/types';
+import type { PlanoFondoSpec } from './PlanoFondo';
 import { MapShell } from './MapShell';
 
 function isValidSnapshot(x: unknown): x is GeometrySnapshot {
@@ -72,10 +73,12 @@ export function MapLoader({
   project,
   snapshotUrl,
   financingPlan,
+  planoFondo,
 }: {
   project: MapProjectInfo;
   snapshotUrl: string | null;
   financingPlan: FinancingPlan | null;
+  planoFondo?: PlanoFondoSpec | null;
 }) {
   const [snapshot, setSnapshot] = useState<GeometrySnapshot | null>(null);
   const [statuses, setStatuses] = useState<StatusSnapshot | null>(null);
@@ -142,6 +145,7 @@ export function MapLoader({
       statuses={statuses}
       project={project}
       financingPlan={financingPlan}
+      planoFondo={planoFondo ?? null}
     />
   );
 }

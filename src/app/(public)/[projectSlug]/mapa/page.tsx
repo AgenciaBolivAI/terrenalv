@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { Logo } from '@/components/Logo';
 import { ActiveReservationBanner } from '@/features/reservations/components/ActiveReservationBanner';
 import { MapLoader } from '@/features/map/2d/MapLoader';
+import type { PlanoFondoSpec } from '@/features/map/2d/PlanoFondo';
 import { loadMapManifest } from '@/features/map/data/loadGeometry';
 import { parseFinancingPlan } from '@/lib/financing';
 import { createClient as createAnonClient } from '@supabase/supabase-js';
@@ -90,12 +91,26 @@ export default async function MapaPage({
   const [geo, planRes] = await Promise.all([
     loadMapManifest(projectSlug),
     anon
-      ? anon.from('settings').select('project_id, value').eq('key', 'financing_plan')
+      ? anon.from('settings').select('project_id, key, value').in('key', ['financing_plan', 'plano_fondo'])
       : Promise.resolve({ data: null }),
   ]);
   if (!geo) return <MapaEnPreparacion />;
 
-  const planRows = (planRes.data ?? []) as { project_id: string | null; value: unknown }[];
+  const filas = (planRes.data ?? []) as {
+    project_id: string | null;
+    key: string;
+    value: unknown;
+  }[];
+  const planRows = filas.filter((r) => r.key === 'financing_plan');
+
+  // El dibujo del plano del topógrafo, para las urbanizaciones migradas del
+  // sistema anterior: nuestros polígonos ahí son una aproximación y las cotas
+  // reales las lleva ese dibujo. Va en la misma consulta que el plan de pago
+  // para no pagar otro viaje a la base.
+  const fondoRow = filas.find(
+    (r) => r.key === 'plano_fondo' && r.project_id === geo.project.projectId,
+  );
+  const planoFondo = (fondoRow?.value as PlanoFondoSpec | undefined) ?? null;
 
   // Se resuelve el plan de pago con las filas ya traídas arriba: pedirlo después
   // del manifiesto encadenaba dos viajes a sa-east-1, uno detrás del otro.
@@ -124,6 +139,7 @@ export default async function MapaPage({
         project={geo.project}
         snapshotUrl={geo.snapshotUrl}
         financingPlan={financingPlan}
+        planoFondo={planoFondo}
       />
 
       <div className="pointer-events-none absolute inset-x-0 top-16 z-20 flex justify-center px-3">
