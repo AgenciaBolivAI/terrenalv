@@ -238,7 +238,7 @@ export default async function Home() {
           <p className="mt-4 text-lg font-bold italic text-earth-tan sm:text-xl">
             «Lo que se dice, se cumple»<br/>
             El cliente propone su forma de pago<br/>
-            By Terreenalv S.R.L.
+            By Terrenalv S.R.L.
           </p>
           <p className="mx-auto mt-5 max-w-2xl text-pretty text-lg text-emerald-50/90">
             Proyectos urbanisticos en la zona sur de Santa Cruz, carretera internacional Argentina— Paraguay.
