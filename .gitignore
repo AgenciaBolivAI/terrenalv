@@ -74,3 +74,6 @@ api/__pycache__/
 *-import.json
 *-lotes.csv
 tf*.html
+
+# Dibujos de plano: van al bucket maps, no al repo
+*-plano.svg
