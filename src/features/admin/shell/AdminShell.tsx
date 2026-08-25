@@ -58,6 +58,8 @@ const GRUPOS: { titulo: string; items: NavItem[] }[] = [
       { href: '/admin/ventas', label: 'Ventas', icon: IconCheck },
       { href: '/admin/clientes', label: 'Clientes', icon: IconUsers },
       { href: '/admin/notificaciones', label: 'Notificaciones', icon: IconBell },
+      // Sin roles: es la pantalla del vendedor, que no entra a Contabilidad.
+      { href: '/admin/mi-cuenta', label: 'Mi cuenta', icon: IconUsers },
     ],
   },
   {

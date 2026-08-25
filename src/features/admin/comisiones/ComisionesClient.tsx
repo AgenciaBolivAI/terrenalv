@@ -65,6 +65,31 @@ interface Comision {
   por_pagar: number;
 }
 
+interface Movimiento {
+  movimiento_id: string;
+  tipo: 'reserva' | 'venta' | 'pago_comision';
+  cuando: string;
+  proyecto: string;
+  profile_id: string;
+  empleado: string;
+  rol: string;
+  reservation_id: string | null;
+  tracking_code: string | null;
+  manzana: string | null;
+  lote: string | null;
+  comprador: string | null;
+  monto: number;
+  comision: number;
+  estado: string;
+  nota: string | null;
+}
+
+const MOV_BADGE: Record<Movimiento['tipo'], { texto: string; clase: string }> = {
+  reserva: { texto: 'Tomó una reserva', clase: 'bg-amber-100 text-amber-800' },
+  venta: { texto: 'Cerró una venta', clase: 'bg-green-100 text-green-700' },
+  pago_comision: { texto: 'Se le pagó comisión', clase: 'bg-stone-200 text-stone-700' },
+};
+
 export default function ComisionesClient() {
   const supabase = useMemo(() => createClient(), []);
   const { push } = useToast();
@@ -74,14 +99,26 @@ export default function ComisionesClient() {
   const [abierto, setAbierto] = useState<string | null>(null);
   const [pagando, setPagando] = useState<Comision | null>(null);
   const [soloPendientes, setSoloPendientes] = useState(false);
+  // Dos vistas del mismo asunto: cuánto le toca a cada uno HOY (equipo), y qué
+  // fue pasando en el tiempo (movimientos) — que es lo que se mira cuando
+  // alguien reclama o hay que auditar un pago.
+  const [vista, setVista] = useState<'equipo' | 'movimientos'>('equipo');
+  const [movs, setMovs] = useState<Movimiento[]>([]);
+  const [filtroEmpleado, setFiltroEmpleado] = useState<string>('');
 
   const cargar = useCallback(async () => {
-    const [v, d] = await Promise.all([
+    const [v, d, mv] = await Promise.all([
       supabase.from('v_comisiones_por_vendedor').select('*').order('por_pagar', { ascending: false }),
       supabase.from('v_comisiones').select('*').order('fecha_venta', { ascending: false }),
+      supabase
+        .from('v_referidos_movimientos')
+        .select('*')
+        .order('cuando', { ascending: false })
+        .limit(500),
     ]);
     setVendedores((v.data ?? []) as unknown as Vendedor[]);
     setDetalle((d.data ?? []) as unknown as Comision[]);
+    setMovs((mv.data ?? []) as unknown as Movimiento[]);
     setLoading(false);
   }, [supabase]);
 
@@ -125,6 +162,27 @@ export default function ComisionesClient() {
         </Link>
       </div>
 
+      <div className="flex gap-1 rounded-xl border border-stone-200 bg-white p-1">
+        <button
+          type="button"
+          onClick={() => setVista('equipo')}
+          className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium ${
+            vista === 'equipo' ? 'bg-green-50 text-brand' : 'text-stone-600 hover:bg-stone-50'
+          }`}
+        >
+          Por vendedor
+        </button>
+        <button
+          type="button"
+          onClick={() => setVista('movimientos')}
+          className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium ${
+            vista === 'movimientos' ? 'bg-green-50 text-brand' : 'text-stone-600 hover:bg-stone-50'
+          }`}
+        >
+          Movimientos ({movs.length})
+        </button>
+      </div>
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi
           label="Vendedores con ventas"
@@ -154,7 +212,98 @@ export default function ComisionesClient() {
         />
       </div>
 
-      <section className="rounded-xl border border-stone-200 bg-white">
+      {vista === 'movimientos' ? (
+        <section className="rounded-xl border border-stone-200 bg-white">
+          <div className="flex flex-wrap items-center gap-2 border-b border-stone-200 px-4 py-3">
+            <select
+              value={filtroEmpleado}
+              onChange={(e) => setFiltroEmpleado(e.target.value)}
+              className={`${inputClass} w-auto min-w-56`}
+            >
+              <option value="">Todo el equipo</option>
+              {vendedores.map((v) => (
+                <option key={v.profile_id} value={v.profile_id}>
+                  {v.vendedor}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-stone-500">
+              Quién tomó qué reserva, qué venta cerró y cuándo se le pagó.
+            </p>
+          </div>
+          {movs.filter((m) => !filtroEmpleado || m.profile_id === filtroEmpleado).length === 0 ? (
+            <div className="px-4 py-8">
+              <EmptyState
+                title="Sin movimientos"
+                hint="Cuando una venta o reserva quede asignada a alguien del equipo, aparece acá."
+              />
+            </div>
+          ) : (
+            <ul className="divide-y divide-stone-100">
+              {movs
+                .filter((m) => !filtroEmpleado || m.profile_id === filtroEmpleado)
+                .map((m) => {
+                  const b = MOV_BADGE[m.tipo];
+                  return (
+                    <li
+                      key={`${m.tipo}-${m.movimiento_id}`}
+                      className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm"
+                    >
+                      <span className="w-24 shrink-0 text-xs text-stone-500">
+                        {dateLabel(m.cuando)}
+                      </span>
+                      <Badge className={b.clase}>{b.texto}</Badge>
+                      <span className="font-medium text-stone-900">{m.empleado}</span>
+                      {m.manzana || m.lote ? (
+                        <span className="text-stone-600">
+                          Mz {m.manzana ?? '—'}, Lote {m.lote ?? '—'}
+                        </span>
+                      ) : null}
+                      {m.comprador ? (
+                        <span className="text-xs text-stone-400">{m.comprador}</span>
+                      ) : null}
+                      {m.reservation_id ? (
+                        <Link
+                          href={`/admin/ventas?open=${m.reservation_id}`}
+                          className="font-mono text-xs font-semibold text-brand hover:underline"
+                        >
+                          {m.tracking_code}
+                        </Link>
+                      ) : null}
+                      <span className="ml-auto text-right">
+                        {m.tipo === 'pago_comision' ? (
+                          <span className="font-semibold tabular-nums text-stone-800">
+                            − {formatMoney(Number(m.monto), 'BOB')}
+                          </span>
+                        ) : (
+                          <>
+                            <span className="tabular-nums text-stone-600">
+                              {formatMoney(Number(m.monto), 'BOB')}
+                            </span>
+                            {Number(m.comision) > 0 ? (
+                              <span className="ml-2 font-semibold tabular-nums text-brand">
+                                comisión {formatMoney(Number(m.comision), 'BOB')}
+                              </span>
+                            ) : null}
+                          </>
+                        )}
+                      </span>
+                      {m.nota ? (
+                        <span className="w-full text-[11px] text-stone-400">{m.nota}</span>
+                      ) : null}
+                    </li>
+                  );
+                })}
+            </ul>
+          )}
+          <p className="border-t border-stone-100 px-4 py-2 text-xs text-stone-400">
+            Los últimos 500 movimientos. Una venta aparece con la comisión que generó; un pago,
+            con lo que salió de caja.
+          </p>
+        </section>
+      ) : null}
+
+      <section className={`rounded-xl border border-stone-200 bg-white ${vista === 'equipo' ? '' : 'hidden'}`}>
         <div className="flex flex-wrap items-center gap-2 border-b border-stone-200 px-4 py-3">
           <button
             type="button"
