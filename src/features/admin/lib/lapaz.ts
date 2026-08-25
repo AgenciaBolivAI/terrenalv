@@ -8,6 +8,20 @@ function laPazParts(d: Date): { y: number; m: number; d: number } {
   return { y: shifted.getUTCFullYear(), m: shifted.getUTCMonth(), d: shifted.getUTCDate() };
 }
 
+/**
+ * El día del calendario La_Paz de un instante, como 'YYYY-MM-DD'.
+ *
+ * Para mostrar la fecha de una columna `timestamptz`. Cortar los diez primeros
+ * caracteres del ISO —el atajo de siempre— devuelve el día UTC, y entre las
+ * 20:00 y la medianoche en Bolivia ese día ya es mañana: un comprobante subido
+ * a las nueve de la noche salía fechado al día siguiente. Las columnas que la
+ * base ya entrega como `date` no pasan por acá; sólo los instantes.
+ */
+export function laPazDateOf(instant: string | Date): string {
+  const p = laPazParts(typeof instant === 'string' ? new Date(instant) : instant);
+  return `${p.y}-${String(p.m + 1).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`;
+}
+
 /** 00:00 of the given instant's La_Paz calendar day, as ISO UTC. */
 export function laPazDayStartIso(now: Date = new Date()): string {
   const p = laPazParts(now);

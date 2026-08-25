@@ -127,4 +127,5 @@ export interface PorProyectoRow {
   ingresos_bob: number;
   egresos_bob: number;
   resultado_bob: number;
+  traspasos: number;
 }

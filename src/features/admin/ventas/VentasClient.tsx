@@ -19,7 +19,10 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { formatDateTime, formatMoney, waLink } from '@/lib/format';
+import { formatMoney, waLink } from '@/lib/format';
+import type { PaymentStatus, RejectionReason } from '@/lib/db-types';
+import { PAYMENT_STATUS_LABEL, REJECTION_REASON_LABEL } from '@/features/admin/lib/labels';
+import { laPazDateOf } from '@/features/admin/lib/lapaz';
 import { Badge, EmptyState, Kpi, Spinner, btnDanger, btnPrimary, btnSecondary, inputClass } from '@/features/admin/ui/bits';
 import { IconSearch, IconWhatsapp } from '@/features/admin/ui/icons';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
@@ -60,33 +63,119 @@ interface Venta {
   abonado_migrado: number;
   /** Pagado en total: en el sistema anterior más lo cobrado acá. */
   pagado_total: number;
+  traspaso: boolean;
+  traspaso_de_tracking: string | null;
+  traspaso_de_comprador: string | null;
+  traspaso_pagado: number | null;
+  source: 'web' | 'oficina';
+  /**
+   * Cómo nació la venta. Ojo con `origen_declarado`: cuando es false la vista
+   * NO leyó el origen de la reserva —no está guardado— sino que lo dedujo de
+   * cómo se creó. Vale para ordenar la lista; no vale para afirmarle a nadie
+   * que esa venta se cerró en oficina.
+   */
+  origen: Origen;
+  origen_label: string;
+  origen_declarado: boolean;
+  /** Seña aprobada, en Bs. 0 = no reservó: entró directo con la cuota inicial. */
+  sena_pagada: number;
+  sena_fecha: string | null;
+  /** Ya viene etiquetada ('Efectivo', 'QR / transferencia', …); '' si no hubo seña. */
+  sena_forma: string;
 }
 
-/** Un pago aprobado de esa venta, para listar y abrir su recibo. */
-interface Pago {
-  id: string;
-  reference_code: string;
-  purpose: string;
-  provider: string;
+/**
+ * Los orígenes que hoy produce `private.origen_de_venta`. NO es un enum de la
+ * base: cuando la reserva trae `client_meta->>'origen'` la función lo devuelve
+ * tal cual, y ese jsonb no tiene CHECK que lo cierre. Por eso las tablas de
+ * abajo se indexan por string y con salida por defecto.
+ */
+type Origen =
+  | 'app'
+  | 'oficina_reserva'
+  | 'oficina_directa'
+  | 'migrada'
+  /** Lote que cambió de comprador: la vista trae además las columnas traspaso_*. */
+  | 'traspaso';
+
+/**
+ * Una fila de v_historial_pagos: TODO pago de la venta, aprobado o no.
+ *
+ * La vista ya trae `tipo` y `forma` en español, así que acá no se vuelve a
+ * traducir nada: si mañana entra otro proveedor de cobro, la etiqueta la pone
+ * la base y todas las pantallas la dicen igual, sin tocar este archivo.
+ */
+interface PagoHist {
+  payment_id: string;
+  purpose: 'reserva' | 'cuota' | 'abono';
+  tipo: string;
+  forma: string;
   amount: number;
   currency: 'BOB' | 'USD';
   amount_bob: number;
-  verified_at: string | null;
+  exchange_rate_used: number | null;
+  estado: PaymentStatus;
+  /** Fecha de aprobación: la vista la saca de verified_at, así que es null mientras el pago no se apruebe. */
+  fecha: string | null;
+  /**
+   * Cuándo se cargó. Ojo: `fecha` es un `date` que la vista ya convirtió a
+   * La_Paz, pero esto es un `timestamptz` crudo — hay que convertirlo antes de
+   * mostrarlo (`laPazDateOf`), o el pago de las nueve de la noche se fecha
+   * mañana.
+   */
+  created_at: string;
+  motivo_rechazo: RejectionReason | null;
+  /** Solo los aprobados tienen recibo: no se imprime papel de un pago que no entró. */
+  tiene_recibo: boolean;
 }
 
-// Mismas etiquetas que usa contabilidad, para que un pago se llame igual en
-// todas las pantallas y en la glosa del libro.
-const PURPOSE_LABEL: Record<string, string> = {
-  reserva: 'Seña',
-  cuota: 'Cuota',
-  abono: 'Abono',
+// El color del estado tiene que leerse antes que el texto: verde lo que entró,
+// rojo lo que se rechazó, ámbar lo que sigue en el aire. Un pago cancelado no
+// es una alarma —el comprador reintentó y el intento quedó registrado— así que
+// va en gris para no competir con lo que sí hay que mirar.
+const ESTADO_BADGE: Record<PaymentStatus, string> = {
+  aprobado: 'bg-green-100 text-green-800',
+  rechazado: 'bg-red-100 text-red-700',
+  pendiente: 'bg-amber-100 text-amber-800',
+  comprobante_subido: 'bg-amber-100 text-amber-800',
+  cancelado: 'bg-stone-200 text-stone-600',
 };
-const PROVIDER_LABEL: Record<string, string> = {
-  efectivo: 'Efectivo',
-  manual_qr: 'QR / transferencia',
-  banco_ganadero: 'Banco Ganadero',
-  bnb: 'BNB',
+
+// La seña se destaca porque es el pago que explica cómo empezó todo; cuotas y
+// abonos son el goteo de siempre y no necesitan color propio.
+const TIPO_BADGE: Record<PagoHist['purpose'], string> = {
+  reserva: 'bg-sky-100 text-sky-800',
+  cuota: 'bg-stone-200 text-stone-700',
+  abono: 'bg-stone-100 text-stone-600',
 };
+
+// En la tabla el origen entra en una columna angosta, así que va abreviado; el
+// texto completo ('Reservó por la app', …) lo pone la vista y se muestra en el
+// detalle y en el export, donde sí hay lugar para leerlo.
+//
+// El tipo del índice es `string` y el valor `string | undefined` a propósito: un
+// origen que estas tablas no conozcan dejaba la celda MUDA —Badge sin color y
+// sin texto— porque el Record cerrado devolvía undefined y nadie lo miraba. Se
+// cae a `origen_label`, que la base calcula para todos los casos y en el peor
+// dice 'Otro', pero nunca queda en blanco.
+const ORIGEN_CORTO: Record<string, string | undefined> = {
+  app: 'App',
+  oficina_reserva: 'Oficina',
+  oficina_directa: 'Directa',
+  migrada: 'Migrada',
+  traspaso: 'Traspaso',
+};
+
+const ORIGEN_BADGE: Record<string, string | undefined> = {
+  app: 'bg-sky-100 text-sky-800',
+  oficina_reserva: 'bg-stone-100 text-stone-600',
+  oficina_directa: 'bg-stone-100 text-stone-600',
+  migrada: 'bg-stone-200 text-stone-500',
+  traspaso: 'bg-violet-100 text-violet-800',
+};
+
+/** Gris neutro para el origen que no está en las tablas de arriba. */
+const ORIGEN_BADGE_OTRO = 'bg-stone-100 text-stone-600';
 
 /**
  * 'ventas' es el filtro por defecto: solo compras iniciadas. 'sin_inicial' es
@@ -94,7 +183,18 @@ const PROVIDER_LABEL: Record<string, string> = {
  * tiene chip propio: solo se llega desde el KPI "Pagado" y aparece como chip
  * descartable, igual que el filtro por forma de pago en el libro.
  */
-type Filtro = 'ventas' | 'todas' | 'saldo' | 'migradas' | 'plan' | 'sin_inicial' | 'cobradas';
+type Filtro =
+  | 'ventas'
+  | 'todas'
+  | 'saldo'
+  | 'migradas'
+  | 'plan'
+  | 'sin_inicial'
+  | 'cobradas'
+  | 'app'
+  | 'oficina'
+  | 'directa'
+  | 'traspasos';
 
 const CHIPS: { id: Exclude<Filtro, 'cobradas'>; label: string }[] = [
   { id: 'ventas', label: 'Ventas' },
@@ -103,6 +203,12 @@ const CHIPS: { id: Exclude<Filtro, 'cobradas'>; label: string }[] = [
   { id: 'migradas', label: 'Migradas' },
   { id: 'plan', label: 'Con plan' },
   { id: 'sin_inicial', label: 'Sin cuota inicial' },
+  // Por origen: separan lo que cerró la web de lo que cerró el mostrador, que
+  // es la pregunta que hace la gerencia cuando discute comisiones.
+  { id: 'app', label: 'App' },
+  { id: 'oficina', label: 'Oficina' },
+  { id: 'directa', label: 'Directa' },
+  { id: 'traspasos', label: 'Traspasos' },
 ];
 
 export default function VentasClient({
@@ -128,12 +234,13 @@ export default function VentasClient({
   const [cobrar, setCobrar] = useState<CobroTarget | null>(null);
   const [editar, setEditar] = useState<Venta | null>(null);
   const [anular, setAnular] = useState<Venta | null>(null);
+  const [traspasar, setTraspasar] = useState<Venta | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('ventas');
 
   const [selected, setSelected] = useState<string | null>(null);
-  const [pagos, setPagos] = useState<Pago[] | null>(null);
+  const [pagos, setPagos] = useState<PagoHist[] | null>(null);
   const selectedRef = useRef<string | null>(null);
   selectedRef.current = selected;
 
@@ -171,7 +278,34 @@ export default function VentasClient({
     void fetchAll();
   }, [fetchAll]);
 
-  /** Detalle inline: los pagos aprobados de la venta, con su recibo. */
+  /**
+   * Detalle inline: el historial COMPLETO de pagos de la venta.
+   *
+   * Incluye los que no se aprobaron a propósito. Antes esta lista mostraba solo
+   * los aprobados y la oficina quedaba muda cuando el comprador juraba haber
+   * pagado: el comprobante estaba, pero rechazado por ilegible o por monto, y
+   * en pantalla no había ni rastro de él — solo un saldo que no bajaba. Un
+   * intento rechazado explica esa conversación; esconderlo la vuelve imposible.
+   *
+   * Ordena por created_at y no por `fecha`: `fecha` sale de verified_at y es
+   * null hasta que alguien aprueba el pago, así que ordenar por ella amontonaría
+   * justamente lo pendiente en una punta de la lista, fuera de su lugar
+   * cronológico.
+   */
+  /** Recarga el historial de la venta expandida sin colapsarla. */
+  const refrescarPagos = useCallback(
+    async (rid: string) => {
+      if (selectedRef.current !== rid) return;
+      const { data } = await supabase
+        .from('v_historial_pagos')
+        .select('*')
+        .eq('reservation_id', rid)
+        .order('created_at', { ascending: false });
+      setPagos((data ?? []) as unknown as PagoHist[]);
+    },
+    [supabase],
+  );
+
   const toggleDetail = useCallback(
     async (rid: string) => {
       if (selectedRef.current === rid) {
@@ -181,17 +315,42 @@ export default function VentasClient({
       setSelected(rid);
       setPagos(null);
       const { data } = await supabase
-        .from('payments')
-        .select('id, reference_code, purpose, provider, amount, currency, amount_bob, verified_at')
+        .from('v_historial_pagos')
+        .select('*')
         .eq('reservation_id', rid)
-        .eq('status', 'aprobado')
-        .order('verified_at', { ascending: false });
+        .order('created_at', { ascending: false });
       // Si mientras cargaba el usuario abrió otra fila, esta respuesta ya no
       // es la del detalle visible y se descarta.
-      if (selectedRef.current === rid) setPagos((data ?? []) as unknown as Pago[]);
+      if (selectedRef.current === rid) setPagos((data ?? []) as unknown as PagoHist[]);
     },
     [supabase],
   );
+
+  /**
+   * Resumen del historial abierto.
+   *
+   * Suma en Bs (amount_bob) y no en la moneda de cada pago: un historial puede
+   * mezclar dólares y bolivianos, y sumar cifras de dos monedas da un número
+   * que no significa nada. Solo los aprobados entran al total —un comprobante
+   * rechazado no es plata— pero los otros se cuentan aparte para que el
+   * "N pagos" no se lea como si todo hubiera entrado.
+   */
+  const resumen = useMemo(() => {
+    if (!pagos) return null;
+    const ok = pagos.filter((p) => p.estado === 'aprobado');
+    const porTipo = (purpose: PagoHist['purpose']) => {
+      const del = ok.filter((p) => p.purpose === purpose);
+      return { total: del.reduce((s, p) => s + Number(p.amount_bob), 0), n: del.length };
+    };
+    return {
+      total: ok.reduce((s, p) => s + Number(p.amount_bob), 0),
+      aprobados: ok.length,
+      otros: pagos.length - ok.length,
+      sena: porTipo('reserva'),
+      cuotas: porTipo('cuota'),
+      abonos: porTipo('abono'),
+    };
+  }, [pagos]);
 
   // ---- Enlace profundo ?open=<reservation_id> ----
   // Los lotes vendidos en /admin/lotes y las reservas recién confirmadas llegan
@@ -251,6 +410,13 @@ export default function VentasClient({
       if (filtro === 'migradas' && !r.migrada) return false;
       if (filtro === 'plan' && !r.con_plan) return false;
       if (filtro === 'cobradas' && !(Number(r.cobrado_aqui) > 0)) return false;
+      // 'oficina' es la venta que empezó como reserva en el mostrador;
+      // 'directa' es la que nunca pasó por una reserva. Son dos maneras
+      // distintas de vender y la oficina las trabaja distinto.
+      if (filtro === 'app' && r.origen !== 'app') return false;
+      if (filtro === 'oficina' && r.origen !== 'oficina_reserva') return false;
+      if (filtro === 'directa' && r.origen !== 'oficina_directa') return false;
+      if (filtro === 'traspasos' && !r.traspaso) return false;
       if (!q) return true;
       const lote = `${r.manzana ?? ''}-${r.lote ?? ''}`.toLowerCase();
       return (
@@ -410,7 +576,10 @@ export default function VentasClient({
                     fnum(Number(r.pagado_total)),
                     fnum(Number(r.saldo)),
                     r.compra_iniciada ? 'Venta' : 'Confirmada sin inicial',
-                    r.migrada ? 'Sistema anterior' : 'Sistema',
+                    // Va la etiqueta larga de la vista y no la abreviada de la
+                    // tabla: en el papel nadie tiene el resto de la pantalla
+                    // para adivinar qué quiere decir «Directa».
+                    r.origen_declarado ? r.origen_label : `${r.origen_label} (deducido)`,
                   ]) as XCell[][]
                 }
               />
@@ -428,6 +597,7 @@ export default function VentasClient({
                       <th className="px-4 py-2 text-xs font-semibold text-stone-500">Código</th>
                       <th className="px-3 py-2 text-xs font-semibold text-stone-500">Comprador</th>
                       <th className="px-3 py-2 text-xs font-semibold text-stone-500">Lote</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-stone-500">Origen</th>
                       <th className="px-3 py-2 text-xs font-semibold text-stone-500">Fecha</th>
                       <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Precio</th>
                       <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Pagado</th>
@@ -462,6 +632,11 @@ export default function VentasClient({
                               <span className="text-xs text-stone-400"> · {r.proyecto}</span>
                             ) : null}
                           </td>
+                          <td className="px-3 py-2">
+                            <Badge className={ORIGEN_BADGE[r.origen] ?? ORIGEN_BADGE_OTRO}>
+                              {ORIGEN_CORTO[r.origen] ?? r.origen_label}
+                            </Badge>
+                          </td>
                           <td className="px-3 py-2 whitespace-nowrap text-stone-600">
                             {dateLabel(r.fecha_venta)}
                           </td>
@@ -485,7 +660,7 @@ export default function VentasClient({
 
                         {selected === r.reservation_id ? (
                           <tr ref={detailRef} className="border-b border-stone-100 bg-stone-50/70 last:border-0">
-                            <td colSpan={8} className="px-4 py-4">
+                            <td colSpan={9} className="px-4 py-4">
                               <div className="grid gap-4 lg:grid-cols-2">
                                 <div className="space-y-3">
                                   <div>
@@ -538,6 +713,13 @@ export default function VentasClient({
                                       <button
                                         type="button"
                                         className={btnSecondary}
+                                        onClick={() => setTraspasar(r)}
+                                      >
+                                        Traspasar
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className={btnSecondary}
                                         onClick={() => setAnular(r)}
                                       >
                                         Anular venta
@@ -556,10 +738,11 @@ export default function VentasClient({
                                       <strong className="tabular-nums text-stone-900">
                                         {formatMoney(Number(r.pagado_total), 'BOB')}
                                       </strong>
-                                      {r.migrada && Number(r.abonado_migrado) > 0 ? (
+                                      {(r.migrada || r.traspaso) && Number(r.abonado_migrado) > 0 ? (
                                         <span className="text-xs text-stone-400">
                                           {' '}
-                                          ({formatMoney(Number(r.abonado_migrado), 'BOB')} antes +{' '}
+                                          ({formatMoney(Number(r.abonado_migrado), 'BOB')}
+                                          {r.traspaso ? ' del comprador anterior' : ' antes'} +{' '}
                                           {formatMoney(Number(r.cobrado_aqui), 'BOB')} acá)
                                         </span>
                                       ) : null}
@@ -575,6 +758,45 @@ export default function VentasClient({
                                       </strong>
                                     </span>
                                   </div>
+                                  {/* Cómo llegó esta venta: la primera pregunta
+                                      que hace cualquiera al abrir una ficha, y
+                                      hasta ahora había que reconstruirla mirando
+                                      si existía un pago de reserva. */}
+                                  <div className="rounded-lg border border-stone-200 bg-white px-3 py-2">
+                                    <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+                                      Cómo llegó esta venta
+                                    </p>
+                                    <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-stone-700">
+                                      <Badge className={ORIGEN_BADGE[r.origen] ?? ORIGEN_BADGE_OTRO}>
+                                        {ORIGEN_CORTO[r.origen] ?? r.origen_label}
+                                      </Badge>
+                                      {r.origen_label}
+                                    </p>
+                                    <p className="mt-1 text-sm text-stone-600">
+                                      {Number(r.sena_pagada) > 0
+                                        ? `Reservó con ${formatMoney(Number(r.sena_pagada), 'BOB')}${
+                                            r.sena_fecha ? ` el ${dateLabel(r.sena_fecha)}` : ''
+                                          }${r.sena_forma ? ` por ${r.sena_forma}` : ''}.`
+                                        : 'Sin seña: compró directo con la cuota inicial.'}
+                                    </p>
+                                    {!r.origen_declarado ? (
+                                      <p className="mt-1.5 text-xs text-stone-400">
+                                        El origen no quedó guardado en esta venta —las viejas no lo
+                                        traen— así que se dedujo de cómo nació: si vino del sistema
+                                        anterior, si hubo una reserva por la app o si se cargó en
+                                        oficina. Es una lectura, no un dato del contrato.
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                  {r.traspaso ? (
+                                    <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600">
+                                      Recibida por traspaso de{' '}
+                                      <strong>{r.traspaso_de_comprador ?? '—'}</strong> (
+                                      {r.traspaso_de_tracking ?? '—'}), que llevaba pagados{' '}
+                                      {formatMoney(Number(r.traspaso_pagado ?? 0), 'BOB')}. Los
+                                      recibos de esos pagos siguen a nombre de quien los hizo.
+                                    </p>
+                                  ) : null}
                                   {!r.compra_iniciada ? (
                                     <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                                       Confirmada, sin inicio de compra: el comprador todavía no pagó
@@ -593,9 +815,9 @@ export default function VentasClient({
 
                                 <div>
                                   <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
-                                    Pagos aprobados en este sistema
+                                    Historial de pagos en este sistema
                                   </p>
-                                  {pagos === null ? (
+                                  {pagos === null || resumen === null ? (
                                     <div className="mt-3">
                                       <Spinner />
                                     </div>
@@ -606,35 +828,109 @@ export default function VentasClient({
                                       .
                                     </p>
                                   ) : (
-                                    <ul className="mt-2 divide-y divide-stone-100 rounded-lg border border-stone-200 bg-white">
-                                      {pagos.map((p) => (
-                                        <li
-                                          key={p.id}
-                                          className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm"
-                                        >
-                                          <span className="whitespace-nowrap text-xs text-stone-500">
-                                            {p.verified_at ? formatDateTime(p.verified_at) : '—'}
+                                    <>
+                                      <div className="mt-2 rounded-lg border border-stone-200 bg-white px-3 py-2">
+                                        <p className="flex flex-wrap items-baseline gap-x-2 text-sm text-stone-500">
+                                          Aprobado
+                                          <strong className="text-base tabular-nums text-stone-900">
+                                            {formatMoney(resumen.total, 'BOB')}
+                                          </strong>
+                                          <span className="text-xs">
+                                            en {resumen.aprobados} pago(s)
+                                            {resumen.otros > 0
+                                              ? ` · ${resumen.otros} intento(s) sin aprobar`
+                                              : ''}
                                           </span>
-                                          <span className="text-stone-700">
-                                            {PURPOSE_LABEL[p.purpose] ?? p.purpose}
+                                        </p>
+                                        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-500">
+                                          <span>
+                                            Seña{' '}
+                                            <strong className="tabular-nums text-stone-700">
+                                              {formatMoney(resumen.sena.total, 'BOB')}
+                                            </strong>
                                           </span>
-                                          <span className="text-xs text-stone-400">
-                                            {PROVIDER_LABEL[p.provider] ?? p.provider}
+                                          <span>
+                                            Cuotas ({resumen.cuotas.n}){' '}
+                                            <strong className="tabular-nums text-stone-700">
+                                              {formatMoney(resumen.cuotas.total, 'BOB')}
+                                            </strong>
                                           </span>
-                                          <span className="ml-auto font-semibold tabular-nums text-stone-900">
-                                            {formatMoney(Number(p.amount), p.currency)}
+                                          <span>
+                                            Abonos ({resumen.abonos.n}){' '}
+                                            <strong className="tabular-nums text-stone-700">
+                                              {formatMoney(resumen.abonos.total, 'BOB')}
+                                            </strong>
                                           </span>
-                                          <a
-                                            href={`/admin/recibo/${p.id}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-xs font-semibold text-brand hover:underline"
-                                          >
-                                            Recibo
-                                          </a>
-                                        </li>
-                                      ))}
-                                    </ul>
+                                        </div>
+                                      </div>
+                                      <ul className="mt-2 divide-y divide-stone-100 rounded-lg border border-stone-200 bg-white">
+                                        {pagos.map((p) => {
+                                          const entro = p.estado === 'aprobado';
+                                          return (
+                                            <li key={p.payment_id} className="px-3 py-2">
+                                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                                                <span
+                                                  className="whitespace-nowrap text-xs text-stone-500"
+                                                  title={
+                                                    p.fecha
+                                                      ? 'Fecha de aprobación'
+                                                      : 'Fecha en que se cargó: este pago todavía no se aprobó'
+                                                  }
+                                                >
+                                                  {dateLabel(p.fecha ?? laPazDateOf(p.created_at))}
+                                                </span>
+                                                <Badge className={TIPO_BADGE[p.purpose]}>{p.tipo}</Badge>
+                                                <span className="text-xs text-stone-400">{p.forma}</span>
+                                                <Badge className={ESTADO_BADGE[p.estado]}>
+                                                  {PAYMENT_STATUS_LABEL[p.estado]}
+                                                </Badge>
+                                                {/* El importe de un pago que no entró se apaga: en
+                                                    gris nadie lo suma de un vistazo con los demás. */}
+                                                <span
+                                                  className={`ml-auto font-semibold tabular-nums ${
+                                                    entro ? 'text-stone-900' : 'text-stone-400 line-through'
+                                                  }`}
+                                                >
+                                                  {formatMoney(Number(p.amount), p.currency)}
+                                                </span>
+                                                {p.tiene_recibo ? (
+                                                  <a
+                                                    href={`/admin/recibo/${p.payment_id}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs font-semibold text-brand hover:underline"
+                                                  >
+                                                    Recibo
+                                                  </a>
+                                                ) : null}
+                                              </div>
+                                              {/* Un pago en dólares se cobró en dólares pero el libro
+                                                  vive en bolivianos: van los dos, con el tipo de cambio
+                                                  con el que se convirtió ese día, o el comprador y la
+                                                  contadora nunca cuadran la misma cifra. */}
+                                              {p.currency !== 'BOB' ? (
+                                                <p className="mt-0.5 text-xs text-stone-400">
+                                                  = {formatMoney(Number(p.amount_bob), 'BOB')}
+                                                  {p.exchange_rate_used
+                                                    ? ` · t/c ${fnum(Number(p.exchange_rate_used))}`
+                                                    : ''}
+                                                </p>
+                                              ) : null}
+                                              {p.motivo_rechazo ? (
+                                                <p className="mt-0.5 text-xs text-red-700">
+                                                  Motivo: {REJECTION_REASON_LABEL[p.motivo_rechazo]}
+                                                </p>
+                                              ) : null}
+                                            </li>
+                                          );
+                                        })}
+                                      </ul>
+                                      <p className="mt-2 text-xs text-stone-400">
+                                        Se listan también los intentos rechazados y cancelados: no suman
+                                        al saldo, pero son la explicación cuando el comprador dice que ya
+                                        pagó.
+                                      </p>
+                                    </>
                                   )}
                                 </div>
                               </div>
@@ -660,7 +956,14 @@ export default function VentasClient({
         <RegistrarCobroDialog
           cobro={cobrar}
           onClose={() => setCobrar(null)}
-          onPaid={() => void fetchAll()}
+          // Refresca la tabla Y el historial del detalle abierto: sin lo
+          // segundo, el cobro recién registrado —y su recibo— no aparecían
+          // hasta cerrar y reabrir la fila, que es exactamente donde la cajera
+          // lo va a buscar.
+          onPaid={() => {
+            void fetchAll();
+            void refrescarPagos(cobrar.reservation_id);
+          }}
         />
       ) : null}
 
@@ -670,6 +973,18 @@ export default function VentasClient({
           onClose={() => setEditar(null)}
           onSaved={() => {
             setEditar(null);
+            void fetchAll();
+          }}
+        />
+      ) : null}
+
+      {traspasar ? (
+        <TraspasarVentaDialog
+          venta={traspasar}
+          onClose={() => setTraspasar(null)}
+          onDone={() => {
+            setTraspasar(null);
+            setSelected(null);
             void fetchAll();
           }}
         />
@@ -904,6 +1219,140 @@ function AnularVentaDialog({
         </button>
         <button type="button" className={btnDanger} disabled={busy} onClick={() => void anular()}>
           {busy ? 'Anulando…' : 'Anular venta'}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+/* ========================================================================== */
+
+/**
+ * Traspasar la compra a otra persona.
+ *
+ * Terrenalv es dueña del lote hasta que se termina de pagar, así que esto no
+ * es un cambio de nombre: la venta vieja se cierra conservando sus pagos y
+ * recibos a nombre de quien los hizo, y nace una venta nueva que ARRASTRA lo
+ * pagado y el saldo del momento. Todo queda enlazado y en auditoría.
+ */
+function TraspasarVentaDialog({
+  venta,
+  onClose,
+  onDone,
+}: {
+  venta: Venta;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const supabase = useMemo(() => createClient(), []);
+  const { push } = useToast();
+  const [nombre, setNombre] = useState('');
+  const [ci, setCi] = useState('');
+  const [tel, setTel] = useState('');
+  const [correo, setCorreo] = useState('');
+  const [motivo, setMotivo] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [hecho, setHecho] = useState<{ codigo: string } | null>(null);
+
+  async function traspasar() {
+    setError(null);
+    if (nombre.trim().length < 5) {
+      setError('Escribe el nombre completo del comprador nuevo.');
+      return;
+    }
+    if (motivo.trim().length < 5) {
+      setError('Escribe el motivo del traspaso: queda en la auditoría.');
+      return;
+    }
+    setBusy(true);
+    const { data, error: err } = await supabase.rpc('admin_traspasar_venta', {
+      p_reservation_id: venta.reservation_id,
+      p_full_name: nombre.trim(),
+      p_ci: ci.trim(),
+      p_phone: tel.trim(),
+      p_email: correo.trim(),
+      p_note: motivo.trim(),
+    });
+    setBusy(false);
+    if (err) {
+      setError(adminErrorCopy(err.message));
+      return;
+    }
+    const r = data as { tracking_code?: string } | null;
+    push('Traspaso registrado.', 'success');
+    setHecho({ codigo: r?.tracking_code ?? '' });
+  }
+
+  if (hecho) {
+    return (
+      <Dialog open onClose={onDone} title="Traspaso registrado">
+        <div className="space-y-3">
+          <p className="rounded-lg bg-green-50 p-3 text-sm text-green-800">
+            La compra pasó de <strong>{venta.buyer_full_name}</strong> a{' '}
+            <strong>{nombre.trim()}</strong> con el código nuevo{' '}
+            <strong className="font-mono">{hecho.codigo}</strong>. Arrastra{' '}
+            {formatMoney(Number(venta.pagado_total), 'BOB')} pagados y{' '}
+            {formatMoney(Number(venta.saldo), 'BOB')} de saldo.
+          </p>
+          <p className="text-xs text-stone-500">
+            La venta anterior quedó cerrada con sus recibos intactos. Si el comprador nuevo va en
+            cuotas, creale su plan desde Contabilidad → Por cobrar.
+          </p>
+        </div>
+        <div className="mt-4 flex justify-end">
+          <button type="button" className={btnPrimary} onClick={onDone}>
+            Listo
+          </button>
+        </div>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Dialog open onClose={onClose} title={`Traspasar — ${venta.tracking_code}`}>
+      <div className="space-y-3">
+        <p className="rounded-lg bg-stone-50 p-3 text-sm text-stone-600">
+          {venta.buyer_full_name} cede su compra (Mz {venta.manzana ?? '—'}, Lote{' '}
+          {venta.lote ?? '—'}). El comprador nuevo recibe{' '}
+          <strong>{formatMoney(Number(venta.pagado_total), 'BOB')}</strong> ya pagados y un saldo
+          de <strong>{formatMoney(Number(venta.saldo), 'BOB')}</strong>.
+          {venta.con_plan
+            ? ' El plan de cuotas vigente se cancela: las condiciones se pactan de nuevo.'
+            : ''}
+        </p>
+        <input
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          placeholder="Nombre completo del comprador nuevo"
+          className={inputClass}
+        />
+        <div className="grid grid-cols-2 gap-3">
+          <input value={ci} onChange={(e) => setCi(e.target.value)} placeholder="CI" className={inputClass} />
+          <input value={tel} onChange={(e) => setTel(e.target.value)} placeholder="Celular" inputMode="tel" className={inputClass} />
+        </div>
+        <input
+          value={correo}
+          onChange={(e) => setCorreo(e.target.value)}
+          placeholder="Correo del comprador nuevo"
+          inputMode="email"
+          className={inputClass}
+        />
+        <textarea
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          rows={2}
+          placeholder="Motivo del traspaso (queda en la auditoría)"
+          className={inputClass}
+        />
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <button type="button" className={btnSecondary} onClick={onClose}>
+          Volver
+        </button>
+        <button type="button" className={btnPrimary} disabled={busy} onClick={() => void traspasar()}>
+          {busy ? 'Traspasando…' : 'Traspasar'}
         </button>
       </div>
     </Dialog>

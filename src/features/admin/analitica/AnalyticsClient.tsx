@@ -242,6 +242,9 @@ export default function AnalyticsClient({
       ...porProyecto.map((r) => [
         'Por urbanización', r.name, 'Por cobrar (Bs)', fnum(Number(r.por_cobrar_bob)),
       ]),
+      ...porProyecto.map((r) => [
+        'Por urbanización', r.name, 'Traspasos', fnum(Number(r.traspasos), 0),
+      ]),
       ...funnel.flatMap((r) => [
         ['Embudo', mesCorto(r.mes), 'Reservas creadas', fnum(Number(r.creadas), 0)],
         ['Embudo', mesCorto(r.mes), 'Con comprobante', fnum(Number(r.con_comprobante), 0)],
@@ -317,6 +320,7 @@ export default function AnalyticsClient({
                   <th className="py-1.5 text-right">Por cobrar</th>
                   <th className="py-1.5 text-right">Vencido</th>
                   <th className="py-1.5 text-right">Resultado</th>
+                  <th className="py-1.5 text-right">Trasp.</th>
                   <th className="py-1.5">Última venta</th>
                 </tr>
               </thead>
@@ -360,6 +364,9 @@ export default function AnalyticsClient({
                       }`}
                     >
                       {formatMoney(Number(r.resultado_bob), 'BOB')}
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums text-stone-500">
+                      {Number(r.traspasos) > 0 ? r.traspasos : '—'}
                     </td>
                     <td className="py-1.5 text-xs text-stone-400">
                       {r.ultima_venta ?? 'sin ventas'}
