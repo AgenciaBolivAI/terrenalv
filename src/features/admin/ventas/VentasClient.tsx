@@ -33,7 +33,7 @@ import { Dialog } from '@/features/admin/ui/dialog';
 import { useToast } from '@/features/admin/ui/toast';
 import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
 import RegistrarCobroDialog from '@/features/admin/contabilidad/RegistrarCobro';
-import { FichaClienteDialog } from '@/features/admin/clientes/FichaClienteDialog';
+import { HistorialCliente } from '@/features/admin/clientes/HistorialCliente';
 import type { CobroTarget } from '@/features/admin/contabilidad/types';
 import { ScopeBar, scopeLabel, type ProjectScope } from '@/features/admin/ui/scope';
 import type { AdminProject } from '@/features/admin/lib/project-types';
@@ -249,9 +249,10 @@ export default function VentasClient({
   const [editar, setEditar] = useState<Venta | null>(null);
   const [anular, setAnular] = useState<Venta | null>(null);
   const [traspasar, setTraspasar] = useState<Venta | null>(null);
-  // El nombre del comprador es una puerta, no un texto: abre su ficha sin
-  // perder la pantalla de Ventas.
-  const [ficha, setFicha] = useState<{ ci: string; nombre: string } | null>(null);
+  // Elegir a un comprador cambia el MODO de la pantalla: se deja de ver la
+  // lista de todas las ventas y se ve SOLO a esa persona — todo lo que compró,
+  // reservó, cedió o recibió, con sus pagos y recibos. Volver es un clic.
+  const [cliente, setCliente] = useState<{ ci: string; nombre: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('ventas');
@@ -462,6 +463,28 @@ export default function VentasClient({
     );
   }
 
+  // MODO CLIENTE: elegido un comprador, la pantalla es SUYA — nada del resto
+  // del mundo estorba. Todo lo que hizo con Terrenalv, con sus recibos.
+  if (cliente) {
+    return (
+      <div className="mx-auto max-w-6xl space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setCliente(null)}
+            className="text-sm font-semibold text-brand hover:underline"
+          >
+            ← Volver a todas las ventas
+          </button>
+          <p className="text-xs text-stone-500">
+            Viendo solo a <strong className="text-stone-700">{cliente.nombre}</strong>
+          </p>
+        </div>
+        <HistorialCliente ci={cliente.ci} />
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-6xl space-y-5">
       <div className="flex flex-wrap items-center gap-3">
@@ -648,7 +671,7 @@ export default function VentasClient({
                               title="Ver el perfil de este cliente"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setFicha({ ci: r.buyer_ci, nombre: r.buyer_full_name });
+                                setCliente({ ci: r.buyer_ci, nombre: r.buyer_full_name });
                               }}
                             >
                               {r.buyer_full_name}
@@ -702,7 +725,7 @@ export default function VentasClient({
                                         className="hover:text-brand hover:underline"
                                         title="Ver el perfil de este cliente"
                                         onClick={() =>
-                                          setFicha({ ci: r.buyer_ci, nombre: r.buyer_full_name })
+                                          setCliente({ ci: r.buyer_ci, nombre: r.buyer_full_name })
                                         }
                                       >
                                         {r.buyer_full_name}
@@ -1035,14 +1058,6 @@ export default function VentasClient({
             setEditar(null);
             void fetchAll();
           }}
-        />
-      ) : null}
-
-      {ficha ? (
-        <FichaClienteDialog
-          ci={ficha.ci}
-          nombre={ficha.nombre}
-          onClose={() => setFicha(null)}
         />
       ) : null}
 
