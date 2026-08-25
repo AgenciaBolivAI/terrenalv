@@ -18,6 +18,67 @@ import { Dialog } from '@/features/admin/ui/dialog';
 import { useToast } from '@/features/admin/ui/toast';
 import { CuentaSelect, useTesoreria } from '@/features/admin/contabilidad/Tesoreria';
 
+/**
+ * El equipo activo, para elegir quién vendió.
+ *
+ * La comisión se le paga a una persona, así que la venta tiene que saber de
+ * quién es. Preguntarlo DESPUÉS no funciona: a las tres semanas nadie se
+ * acuerda quién cerró qué, y la comisión se discute de memoria.
+ */
+function useEquipo() {
+  const supabase = useMemo(() => createClient(), []);
+  const [equipo, setEquipo] = useState<{ id: string; full_name: string; rol: string }[]>([]);
+  const [yo, setYo] = useState<string>('');
+
+  useEffect(() => {
+    let vivo = true;
+    void (async () => {
+      const [{ data }, { data: sesion }] = await Promise.all([
+        supabase.from('v_equipo_activo').select('id, full_name, rol').order('full_name'),
+        supabase.auth.getUser(),
+      ]);
+      if (!vivo) return;
+      setEquipo((data ?? []) as { id: string; full_name: string; rol: string }[]);
+      // Por defecto, quien está usando el panel: es quien está atendiendo.
+      if (sesion?.user?.id) setYo(sesion.user.id);
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [supabase]);
+
+  return { equipo, yo };
+}
+
+function VendedorSelect({
+  equipo,
+  value,
+  onChange,
+  label = 'Vendedor (quién cierra la venta)',
+}: {
+  equipo: { id: string; full_name: string; rol: string }[];
+  value: string;
+  onChange: (v: string) => void;
+  label?: string;
+}) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs text-stone-500">{label}</label>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className={inputClass}>
+        <option value="">Sin vendedor asignado</option>
+        {equipo.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.full_name} · {m.rol}
+          </option>
+        ))}
+      </select>
+      <p className="mt-1 text-[11px] text-stone-400">
+        De quién es la comisión. Se puede corregir después desde Ventas.
+      </p>
+    </div>
+  );
+}
+
 /** Lo mínimo que los diálogos necesitan saber del lote. */
 export interface LoteParaVender {
   id: string;
@@ -59,6 +120,11 @@ export function SellOfflineDialog({
   const [modalidad, setModalidad] = useState<'contado' | 'credito'>('contado');
   // ¿La cajera tecleó el monto a mano? Entonces no se lo pisamos nunca más.
   const [montoTocado, setMontoTocado] = useState(false);
+  const { equipo, yo } = useEquipo();
+  const [vendedor, setVendedor] = useState('');
+  useEffect(() => {
+    if (yo && !vendedor) setVendedor(yo);
+  }, [yo, vendedor]);
   const [moneda, setMoneda] = useState<'BOB' | 'USD'>('BOB');
   const [cambio, setCambio] = useState('');
   const [precio, setPrecio] = useState(defaultPrice != null ? String(defaultPrice) : '');
@@ -232,6 +298,7 @@ export function SellOfflineDialog({
       p_plan_monthly: llevaPlan ? cuotaNum : null,
       p_plan_first_due: llevaPlan ? primerVenc : null,
       p_plan_interes_mensual: llevaPlan ? Number(interes) || 0 : null,
+      p_sold_by: vendedor || null,
     });
     setBusy(false);
     if (err) {
@@ -308,6 +375,7 @@ export function SellOfflineDialog({
             className={inputClass}
           />
         </div>
+        <VendedorSelect equipo={equipo} value={vendedor} onChange={setVendedor} />
         <div>
           <label className="mb-1 block text-xs text-stone-500">Forma de pago</label>
           <select
@@ -566,6 +634,11 @@ export function ReserveDialog({
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [hours, setHours] = useState('');
+  const { equipo: equipoR, yo: yoR } = useEquipo();
+  const [vendedorR, setVendedorR] = useState('');
+  useEffect(() => {
+    if (yoR && !vendedorR) setVendedorR(yoR);
+  }, [yoR, vendedorR]);
   const [note, setNote] = useState('');
   // Cómo pagó. Antes iba escrito 'manual_qr' en la base para TODA venta de
   // oficina, así que el efectivo aparecía como plata que debía estar en el
@@ -613,6 +686,7 @@ export function ReserveDialog({
       p_hours: h,
       p_note: note.trim() || null,
       p_provider: forma,
+      p_sold_by: vendedorR || null,
     });
     setBusy(false);
     if (err) {
@@ -681,6 +755,12 @@ export function ReserveDialog({
           </p>
         </div>
 
+        <VendedorSelect
+          equipo={equipoR}
+          value={vendedorR}
+          onChange={setVendedorR}
+          label="Quién toma la reserva"
+        />
         <div>
           <label className="mb-1 block text-xs text-stone-500">
             Plazo en horas — vacío usa el del proyecto (48 h)

@@ -79,6 +79,12 @@ const GRUPOS: { titulo: string; items: NavItem[] }[] = [
         roles: ['admin', 'contabilidad'],
       },
       {
+        href: '/admin/comisiones',
+        label: 'Comisiones',
+        icon: IconUsers,
+        roles: ['admin', 'contabilidad'],
+      },
+      {
         href: '/admin/financiamiento',
         label: 'Financiamiento',
         icon: IconLayers,
