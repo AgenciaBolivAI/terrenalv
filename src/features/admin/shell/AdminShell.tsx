@@ -41,28 +41,79 @@ interface NavItem {
   roles?: TeamRole[];
 }
 
-const NAV: NavItem[] = [
-  { href: '/admin', label: 'Dashboard', icon: IconHome },
-  { href: '/admin/reservas', label: 'Reservas', icon: IconInbox },
-  { href: '/admin/ventas', label: 'Ventas', icon: IconCheck },
-  { href: '/admin/clientes', label: 'Clientes', icon: IconUsers },
-  { href: '/admin/mercado', label: 'Mercado', icon: IconStore },
-  { href: '/admin/traspasos', label: 'Traspasos', icon: IconExchange },
-  { href: '/admin/lotes', label: 'Lotes', icon: IconGrid },
-  { href: '/admin/notificaciones', label: 'Notificaciones', icon: IconBell },
-  { href: '/admin/contabilidad', label: 'Contabilidad', icon: IconLedger, roles: ['admin', 'contabilidad'] },
-  // Va pegado a Contabilidad porque es la otra mitad de la cobranza: allá se
-  // registra el cobro, acá se ve el cronograma que ese cobro va tachando. El
-  // icono es el ciclo de IconRotate — una cuota que vuelve cada mes — y no se
-  // repite en ninguna otra entrada de la barra.
-  { href: '/admin/planes', label: 'Planes de pago', icon: IconRotate, roles: ['admin', 'contabilidad'] },
-  { href: '/admin/analitica', label: 'Analítica', icon: IconChart, roles: ['admin', 'contabilidad'] },
-  { href: '/admin/mapa', label: 'Mapa', icon: IconMap, roles: ['admin'] },
-  { href: '/admin/proyectos', label: 'Urbanizaciones', icon: IconLayers, roles: ['admin'] },
-  { href: '/admin/equipo', label: 'Equipo', icon: IconUsers, roles: ['admin'] },
-  { href: '/admin/configuracion', label: 'Configuración', icon: IconSettings, roles: ['admin'] },
-  { href: '/admin/auditoria', label: 'Auditoría', icon: IconScroll, roles: ['admin'] },
+/**
+ * El menú, agrupado por lo que la persona vino a hacer.
+ *
+ * Dieciséis entradas en una sola tira son un muro: nadie encuentra «Planes de
+ * pago» leyendo de arriba a abajo cada vez. Los títulos son los del oficio —
+ * el mostrador, el mercado, el terreno, la plata, la empresa — no categorías
+ * de software.
+ */
+const GRUPOS: { titulo: string; items: NavItem[] }[] = [
+  {
+    titulo: 'Mostrador',
+    items: [
+      { href: '/admin', label: 'Dashboard', icon: IconHome },
+      { href: '/admin/reservas', label: 'Reservas', icon: IconInbox },
+      { href: '/admin/ventas', label: 'Ventas', icon: IconCheck },
+      { href: '/admin/clientes', label: 'Clientes', icon: IconUsers },
+      { href: '/admin/notificaciones', label: 'Notificaciones', icon: IconBell },
+    ],
+  },
+  {
+    titulo: 'Cobranza',
+    items: [
+      // Contabilidad y Planes de pago van juntos porque son las dos mitades de
+      // lo mismo: allá se registra el cobro, acá se ve el cronograma que ese
+      // cobro va tachando.
+      {
+        href: '/admin/contabilidad',
+        label: 'Contabilidad',
+        icon: IconLedger,
+        roles: ['admin', 'contabilidad'],
+      },
+      {
+        href: '/admin/planes',
+        label: 'Planes de pago',
+        icon: IconRotate,
+        roles: ['admin', 'contabilidad'],
+      },
+      {
+        href: '/admin/analitica',
+        label: 'Analítica',
+        icon: IconChart,
+        roles: ['admin', 'contabilidad'],
+      },
+    ],
+  },
+  {
+    titulo: 'Traspasos',
+    items: [
+      { href: '/admin/mercado', label: 'Mercado', icon: IconStore },
+      { href: '/admin/traspasos', label: 'Traspasos', icon: IconExchange },
+    ],
+  },
+  {
+    titulo: 'Terreno',
+    items: [
+      { href: '/admin/lotes', label: 'Lotes', icon: IconGrid },
+      { href: '/admin/mapa', label: 'Mapa', icon: IconMap, roles: ['admin'] },
+      { href: '/admin/proyectos', label: 'Urbanizaciones', icon: IconLayers, roles: ['admin'] },
+    ],
+  },
+  {
+    titulo: 'Empresa',
+    items: [
+      { href: '/admin/equipo', label: 'Equipo', icon: IconUsers, roles: ['admin'] },
+      { href: '/admin/configuracion', label: 'Configuración', icon: IconSettings, roles: ['admin'] },
+      { href: '/admin/auditoria', label: 'Auditoría', icon: IconScroll, roles: ['admin'] },
+    ],
+  },
 ];
+
+/** La lista plana, para el móvil y para lo que necesite recorrerla entera. */
+const NAV: NavItem[] = GRUPOS.flatMap((g) => g.items);
+
 
 function isActive(pathname: string, href: string): boolean {
   return href === '/admin' ? pathname === '/admin' : pathname.startsWith(href);
@@ -91,6 +142,12 @@ export default function AdminShell({
   const [moreOpen, setMoreOpen] = useState(false);
 
   const nav = NAV.filter((item) => !item.roles || item.roles.includes(profile.role));
+  // Un grupo sin nada que mostrar no se dibuja: un título suelto sin entradas
+  // hace pensar que algo se rompió.
+  const grupos = GRUPOS.map((g) => ({
+    titulo: g.titulo,
+    items: g.items.filter((i) => !i.roles || i.roles.includes(profile.role)),
+  })).filter((g) => g.items.length > 0);
   const mobileMain = nav.slice(0, 3);
   const mobileMore = nav.slice(3);
   const roleLabel = ROLE_LABEL[profile.role] ?? profile.role;
@@ -114,20 +171,31 @@ export default function AdminShell({
               </Link>
               <p className="mt-1 text-xs text-stone-500">{projectName}</p>
             </div>
-            <nav className="flex-1 space-y-1 px-3">
-              {nav.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium ${
-                    isActive(pathname, item.href)
-                      ? 'bg-green-50 text-brand'
-                      : 'text-stone-600 hover:bg-stone-50'
-                  }`}
-                >
-                  <item.icon className="h-5 w-5" />
-                  {item.label}
-                </Link>
+            {/* min-h-0 + overflow-y-auto: con dieciséis secciones el menú es
+                más alto que una laptop, y sin esto las últimas —Planes de
+                pago, Analítica, Configuración— quedaban cortadas abajo, sin
+                forma de llegar a ellas. */}
+            <nav className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 pb-3">
+              {grupos.map((g) => (
+                <div key={g.titulo} className="space-y-1">
+                  <p className="px-3 pt-1 text-[10px] font-bold tracking-wider text-stone-400 uppercase">
+                    {g.titulo}
+                  </p>
+                  {g.items.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium ${
+                        isActive(pathname, item.href)
+                          ? 'bg-green-50 text-brand'
+                          : 'text-stone-600 hover:bg-stone-50'
+                      }`}
+                    >
+                      <item.icon className="h-5 w-5" />
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
               ))}
             </nav>
             <div className="border-t border-stone-100 p-4">
@@ -240,24 +308,39 @@ export default function AdminShell({
                 <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-stone-200" />
                 <p className="mb-1 px-1 text-sm font-semibold text-stone-800">{profile.full_name}</p>
                 <p className="mb-3 px-1 text-xs text-stone-400">{roleLabel}</p>
-                <ul className="space-y-1">
-                  {mobileMore.map((item) => (
-                    <li key={item.href}>
-                      <Link
-                        href={item.href}
-                        onClick={() => setMoreOpen(false)}
-                        className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${
-                          isActive(pathname, item.href)
-                            ? 'bg-green-50 text-brand'
-                            : 'text-stone-700 hover:bg-stone-50'
-                        }`}
-                      >
-                        <item.icon className="h-5 w-5" />
-                        {item.label}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
+                <div className="max-h-[55vh] space-y-3 overflow-y-auto">
+                  {grupos.map((g) => {
+                    const items = g.items.filter((i) =>
+                      mobileMore.some((m) => m.href === i.href),
+                    );
+                    if (items.length === 0) return null;
+                    return (
+                      <div key={g.titulo}>
+                        <p className="px-1 pb-1 text-[10px] font-bold tracking-wider text-stone-400 uppercase">
+                          {g.titulo}
+                        </p>
+                        <ul className="space-y-1">
+                          {items.map((item) => (
+                            <li key={item.href}>
+                              <Link
+                                href={item.href}
+                                onClick={() => setMoreOpen(false)}
+                                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${
+                                  isActive(pathname, item.href)
+                                    ? 'bg-green-50 text-brand'
+                                    : 'text-stone-700 hover:bg-stone-50'
+                                }`}
+                              >
+                                <item.icon className="h-5 w-5" />
+                                {item.label}
+                              </Link>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                </div>
                 <div className="mt-3 border-t border-stone-100 pt-3">
                   <SignOutButton className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-stone-200 px-3 py-2 text-sm font-medium text-stone-600 hover:bg-stone-50">
                     <IconLogout className="h-4 w-4" /> Cerrar sesión

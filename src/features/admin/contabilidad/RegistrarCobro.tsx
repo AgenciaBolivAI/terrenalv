@@ -67,8 +67,145 @@ export default function RegistrarCobroDialog({
   // que falta — menos meses, o cuota más baja. La cajera elige.
   const [destino, setDestino] = useState<'cuota' | 'capital'>('cuota');
   const [recalculo, setRecalculo] = useState<'plazo' | 'cuota'>('plazo');
+  // El cronograma vivo: sin esto el diálogo no puede DECIR qué va a pasar, y
+  // la cajera elige entre dos cosas muy distintas a ciegas.
+  const [plan, setPlan] = useState<{
+    cuota: number;
+    pendientes: { numero: number; vence: string; falta: number }[];
+  } | null>(null);
+
+  useEffect(() => {
+    if (!cobro.tiene_plan) return;
+    let vivo = true;
+    void (async () => {
+      const { data: pl } = await supabase
+        .from('installment_plans')
+        .select('id, monthly_amount')
+        .eq('reservation_id', cobro.reservation_id)
+        .eq('status', 'activo')
+        .maybeSingle();
+      if (!vivo || !pl) return;
+      const { data: cs } = await supabase
+        .from('installments')
+        .select('number, due_date, amount, amount_paid, status')
+        .eq('plan_id', (pl as { id: string }).id)
+        .in('status', ['pendiente', 'parcial'])
+        .order('number');
+      if (!vivo) return;
+      setPlan({
+        cuota: Number((pl as { monthly_amount: number }).monthly_amount),
+        pendientes: (cs ?? []).map((c) => {
+          const r = c as { number: number; due_date: string; amount: number; amount_paid: number };
+          return {
+            numero: Number(r.number),
+            vence: r.due_date,
+            falta: Number(r.amount) - Number(r.amount_paid),
+          };
+        }),
+      });
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [supabase, cobro.reservation_id, cobro.tiene_plan]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Qué va a pasar con este pago, en plata y en meses. Replica exactamente lo
+  // que hace admin_register_cuota_payment: si el diálogo prometiera otra cosa
+  // que la base, sería peor que no prometer nada.
+  const efecto = useMemo(() => {
+    const bruto = Number(amount) || 0;
+    if (bruto <= 0) return null;
+    const bs = moneda === 'USD' ? Math.round(bruto * (Number(cambio) || 0) * 100) / 100 : bruto;
+    if (bs <= 0) return null;
+
+    const saldoAntes = Number(cobro.saldo);
+    const saldoDespues = Math.max(0, Math.round((saldoAntes - bs) * 100) / 100);
+    const excede = bs > saldoAntes + 0.01;
+
+    if (!cobro.tiene_plan || !plan) {
+      return { bs, saldoAntes, saldoDespues, excede, modo: 'abono' as const };
+    }
+
+    const pendienteAntes =
+      Math.round(plan.pendientes.reduce((t, c) => t + c.falta, 0) * 100) / 100;
+
+    if (destino === 'cuota') {
+      // Cascada desde la cuota más vieja, igual que la base.
+      let resto = bs;
+      const cubiertas: number[] = [];
+      let parcial: { numero: number; queda: number } | null = null;
+      for (const c of plan.pendientes) {
+        if (resto <= 0) break;
+        if (resto >= c.falta - 0.01) {
+          cubiertas.push(c.numero);
+          resto = Math.round((resto - c.falta) * 100) / 100;
+        } else {
+          parcial = { numero: c.numero, queda: Math.round((c.falta - resto) * 100) / 100 };
+          resto = 0;
+        }
+      }
+      const quedan = plan.pendientes.length - cubiertas.length;
+      const proxima = plan.pendientes.find((c) => !cubiertas.includes(c.numero)) ?? null;
+      return {
+        bs,
+        saldoAntes,
+        saldoDespues,
+        excede,
+        modo: 'cuota' as const,
+        cubiertas,
+        parcial,
+        quedan,
+        proxima,
+        cuota: plan.cuota,
+        sobra: resto > 0.01 ? resto : 0,
+      };
+    }
+
+    // Abono a capital: baja la deuda y rearma lo que falta.
+    const pendienteDespues = Math.round((pendienteAntes - bs) * 100) / 100;
+    if (pendienteDespues <= 0.01) {
+      return { bs, saldoAntes, saldoDespues, excede, modo: 'capital' as const, cancela: true };
+    }
+    const hoy = new Date().toISOString().slice(0, 10);
+    const futuras = plan.pendientes.filter((c) => c.vence >= hoy).length || 1;
+    const mesesAntes = plan.pendientes.length;
+    if (recalculo === 'plazo') {
+      const meses = Math.max(1, Math.ceil(pendienteDespues / plan.cuota));
+      return {
+        bs,
+        saldoAntes,
+        saldoDespues,
+        excede,
+        modo: 'capital' as const,
+        cancela: false,
+        recalc: 'plazo' as const,
+        mesesAntes,
+        mesesDespues: meses,
+        cuotaAntes: plan.cuota,
+        cuotaDespues: plan.cuota,
+        pendienteAntes,
+        pendienteDespues,
+      };
+    }
+    const nueva = Math.ceil((pendienteDespues / futuras) * 100) / 100;
+    return {
+      bs,
+      saldoAntes,
+      saldoDespues,
+      excede,
+      modo: 'capital' as const,
+      cancela: false,
+      recalc: 'cuota' as const,
+      mesesAntes,
+      mesesDespues: futuras,
+      cuotaAntes: plan.cuota,
+      cuotaDespues: nueva,
+      pendienteAntes,
+      pendienteDespues,
+    };
+  }, [amount, moneda, cambio, cobro.saldo, cobro.tiene_plan, plan, destino, recalculo]);
 
   async function register() {
     setError(null);
@@ -218,7 +355,8 @@ export default function RegistrarCobroDialog({
               <span>
                 <strong>Su cuota del mes</strong>
                 <span className="block text-xs text-stone-500">
-                  Se aplica desde la cuota más vieja hacia adelante.
+                  El pago normal del plan: cubre las cuotas vencidas y las que siguen. La cuota
+                  mensual queda igual.
                 </span>
               </span>
             </label>
@@ -230,14 +368,17 @@ export default function RegistrarCobroDialog({
                 className="mt-1"
               />
               <span>
-                <strong>Abono a capital</strong>
+                <strong>Abono a capital (amortizar)</strong>
                 <span className="block text-xs text-stone-500">
-                  Adelanta plata: baja la deuda y el plan se rearma.
+                  Plata EXTRA además de su cuota: baja la deuda y el plan se rearma.
                 </span>
               </span>
             </label>
             {destino === 'capital' ? (
               <div className="ml-6 space-y-1.5 border-l-2 border-stone-200 pl-3">
+                <p className="text-[11px] text-stone-500">
+                  Adelantar capital baja la deuda hoy; el comprador elige cómo aprovecharlo:
+                </p>
                 <p className="text-xs font-semibold text-stone-600">Con el abono, el comprador:</p>
                 <label className="flex cursor-pointer items-center gap-2 text-sm">
                   <input
@@ -257,6 +398,113 @@ export default function RegistrarCobroDialog({
                 </label>
               </div>
             ) : null}
+          </div>
+        ) : null}
+
+        {/* EL EFECTO, en plata: qué pasa con el saldo y con el cronograma si
+            se registra este cobro tal como está. Sin esto la cajera elige
+            entre «cuota» y «capital» sin ver la diferencia. */}
+        {efecto ? (
+          <div
+            className={`rounded-lg border p-3 text-sm ${
+              efecto.excede
+                ? 'border-red-200 bg-red-50 text-red-800'
+                : 'border-brand/30 bg-green-50/60 text-stone-700'
+            }`}
+          >
+            {efecto.excede ? (
+              <p>
+                <strong>Este cobro supera el saldo.</strong> El saldo es{' '}
+                {formatMoney(efecto.saldoAntes, 'BOB')} y estás cobrando{' '}
+                {formatMoney(efecto.bs, 'BOB')}. Bajá el monto: el sistema no acepta cobrar de más.
+              </p>
+            ) : (
+              <>
+                <p className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="text-xs text-stone-500">Saldo del lote</span>
+                  <strong className="tabular-nums">{formatMoney(efecto.saldoAntes, 'BOB')}</strong>
+                  <span className="text-stone-400">→</span>
+                  <strong className="text-base tabular-nums text-brand">
+                    {formatMoney(efecto.saldoDespues, 'BOB')}
+                  </strong>
+                  {moneda === 'USD' ? (
+                    <span className="text-xs text-stone-500">
+                      (entran {formatMoney(efecto.bs, 'BOB')})
+                    </span>
+                  ) : null}
+                </p>
+
+                {efecto.modo === 'abono' ? (
+                  <p className="mt-1 text-xs text-stone-600">
+                    Abono libre: no hay cronograma que tocar, solo baja el saldo.
+                  </p>
+                ) : null}
+
+                {efecto.modo === 'cuota' ? (
+                  <p className="mt-1 text-xs text-stone-600">
+                    {efecto.cubiertas && efecto.cubiertas.length > 0
+                      ? `Paga ${efecto.cubiertas.length} cuota(s) completa(s) (N° ${efecto.cubiertas.join(', N° ')}). `
+                      : ''}
+                    {efecto.parcial
+                      ? `Deja la cuota N° ${efecto.parcial.numero} a medias: le faltarían ${formatMoney(efecto.parcial.queda, 'BOB')}. `
+                      : ''}
+                    {efecto.quedan !== undefined
+                      ? `Quedan ${efecto.quedan} cuota(s) de ${formatMoney(Number(efecto.cuota), 'BOB')}`
+                      : ''}
+                    {efecto.proxima ? `, la próxima vence ${efecto.proxima.vence}` : ''}.
+                    {efecto.sobra && efecto.sobra > 0
+                      ? ` Sobran ${formatMoney(efecto.sobra, 'BOB')} sin aplicar: el plan ya no tiene más cuotas.`
+                      : ''}{' '}
+                    <span className="text-stone-500">
+                      La cuota mensual NO cambia: este pago es el del mes, no adelanta capital.
+                    </span>
+                  </p>
+                ) : null}
+
+                {efecto.modo === 'capital' && efecto.cancela ? (
+                  <p className="mt-1 text-xs font-semibold text-brand">
+                    Con este abono el plan queda CANCELADO: no le queda ninguna cuota.
+                  </p>
+                ) : null}
+
+                {efecto.modo === 'capital' && !efecto.cancela ? (
+                  <div className="mt-1.5 space-y-1 text-xs text-stone-600">
+                    <p>
+                      Deuda del plan{' '}
+                      <strong className="tabular-nums">
+                        {formatMoney(Number(efecto.pendienteAntes), 'BOB')}
+                      </strong>{' '}
+                      → <strong className="tabular-nums">
+                        {formatMoney(Number(efecto.pendienteDespues), 'BOB')}
+                      </strong>
+                    </p>
+                    {efecto.recalc === 'plazo' ? (
+                      <p>
+                        Sigue pagando{' '}
+                        <strong>{formatMoney(Number(efecto.cuotaDespues), 'BOB')}</strong> al mes,
+                        pero le quedan{' '}
+                        <strong>{efecto.mesesDespues} cuota(s)</strong> en vez de{' '}
+                        {efecto.mesesAntes}:{' '}
+                        <strong className="text-brand">
+                          termina {Number(efecto.mesesAntes) - Number(efecto.mesesDespues)} mes(es)
+                          antes
+                        </strong>
+                        .
+                      </p>
+                    ) : (
+                      <p>
+                        Mantiene sus <strong>{efecto.mesesDespues} cuota(s)</strong>, pero la cuota
+                        baja de {formatMoney(Number(efecto.cuotaAntes), 'BOB')} a{' '}
+                        <strong className="text-brand">
+                          {formatMoney(Number(efecto.cuotaDespues), 'BOB')}
+                        </strong>{' '}
+                        al mes.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+              </>
+            )}
           </div>
         ) : null}
         <div className="grid grid-cols-2 gap-3">
