@@ -1356,6 +1356,17 @@ function SellOfflineDialog({
   const [conPlan, setConPlan] = useState(true);
   const [meses, setMeses] = useState('12');
   const [cuota, setCuota] = useState('');
+  // Las condiciones que le tocan a ESTE lote por su precio: cuánta inicial se
+  // exige, cuánto interés se cobra y hasta cuántos meses. Se traen de la
+  // clasificación para que nadie las invente en el mostrador.
+  const [cond, setCond] = useState<{
+    nombre: string;
+    inicial_pct: number;
+    inicial_sugerida: number;
+    interes_mensual_pct: number;
+    max_meses: number;
+  } | null>(null);
+  const [interes, setInteres] = useState('0');
   const [primerVenc, setPrimerVenc] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() + 1);
@@ -1370,6 +1381,32 @@ function SellOfflineDialog({
       vivo = false;
     };
   }, [supabase, lot.project_id]);
+
+  // El precio manda: al cambiarlo puede cambiar la clasificación del lote.
+  const precioEfectivo = precio.trim() === '' ? (defaultPrice ?? 0) : Number(precio);
+  useEffect(() => {
+    let vivo = true;
+    void supabase
+      .rpc('condiciones_financiamiento', {
+        p_project_id: lot.project_id,
+        p_price: precioEfectivo || 0,
+      })
+      .then(({ data }) => {
+        if (!vivo) return;
+        const c = data as {
+          nombre: string;
+          inicial_pct: number;
+          inicial_sugerida: number;
+          interes_mensual_pct: number;
+          max_meses: number;
+        } | null;
+        setCond(c);
+        if (c) setInteres(String(c.interes_mensual_pct));
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [supabase, lot.project_id, precioEfectivo]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1412,8 +1449,14 @@ function SellOfflineDialog({
         setError('El plazo va de 1 a 480 meses.');
         return;
       }
-      if (!(cuotaNum > 0)) {
-        setError('Escribe la cuota mensual.');
+      if (!(Number(interes) > 0) && !(cuotaNum > 0)) {
+        setError('Escribe la cuota mensual (o poné un interés y la calculo yo).');
+        return;
+      }
+      if (cond && mesesNum > cond.max_meses) {
+        setError(
+          `${cond.nombre} admite hasta ${cond.max_meses} meses. Cambiá el plazo o la clasificación.`,
+        );
         return;
       }
     }
@@ -1440,6 +1483,7 @@ function SellOfflineDialog({
       p_plan_months: llevaPlan ? mesesNum : null,
       p_plan_monthly: llevaPlan ? cuotaNum : null,
       p_plan_first_due: llevaPlan ? primerVenc : null,
+      p_plan_interes_mensual: llevaPlan ? Number(interes) || 0 : null,
     });
     setBusy(false);
     if (err) {
@@ -1567,7 +1611,38 @@ function SellOfflineDialog({
             </label>
             {conPlan ? (
               <>
-                <div className="grid grid-cols-3 gap-3">
+                {cond ? (
+                  <p className="rounded-lg bg-white/70 p-2.5 text-xs text-stone-600">
+                    Este lote entra en <strong>{cond.nombre}</strong>: inicial sugerida{' '}
+                    <button
+                      type="button"
+                      className="font-semibold text-brand underline"
+                      onClick={() => setAmount(String(cond.inicial_sugerida))}
+                    >
+                      {formatMoney(Number(cond.inicial_sugerida), 'BOB')}
+                    </button>{' '}
+                    ({cond.inicial_pct}%), interés {cond.interes_mensual_pct}% mensual, hasta{' '}
+                    {cond.max_meses} meses.
+                  </p>
+                ) : (
+                  <p className="rounded-lg bg-amber-50 p-2.5 text-xs text-amber-900">
+                    Ningún rango de precio cubre este lote: las condiciones se pactan a mano.
+                    Definí la clasificación en Cobranza → Financiamiento.
+                  </p>
+                )}
+                <div className="grid grid-cols-4 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs text-stone-500">Interés mensual (%)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={20}
+                      step="0.1"
+                      value={interes}
+                      onChange={(e) => setInteres(e.target.value)}
+                      className={inputClass}
+                    />
+                  </div>
                   <div>
                     <label className="mb-1 block text-xs text-stone-500">Plazo (meses)</label>
                     <input
@@ -1580,14 +1655,17 @@ function SellOfflineDialog({
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs text-stone-500">Cuota mensual (Bs)</label>
+                    <label className="mb-1 block text-xs text-stone-500">
+                      {Number(interes) > 0 ? 'Cuota (la calculo)' : 'Cuota mensual (Bs)'}
+                    </label>
                     <input
                       type="number"
                       min={0}
                       step="0.01"
                       value={cuota}
                       onChange={(e) => setCuota(e.target.value)}
-                      className={inputClass}
+                      disabled={Number(interes) > 0}
+                      className={`${inputClass} disabled:bg-stone-100 disabled:text-stone-400`}
                     />
                   </div>
                   <div>
@@ -1601,29 +1679,50 @@ function SellOfflineDialog({
                   </div>
                 </div>
                 {(() => {
-                  const precioBase =
-                    (precio.trim() === '' ? defaultPrice ?? 0 : Number(precio)) || 0;
+                  const precioBase = precioEfectivo || 0;
                   const inicialBs =
                     (Number(amount) || 0) * (moneda === 'USD' ? Number(cambio) || 0 : 1);
                   const financiar = Math.max(0, precioBase - inicialBs);
                   const m = Number(meses) || 0;
-                  const sugerida = m > 0 ? Math.ceil((financiar / m) * 100) / 100 : 0;
+                  const i = (Number(interes) || 0) / 100;
+                  // La misma cuenta que hace la base: francés si hay interés.
+                  const c =
+                    m > 0 && financiar > 0
+                      ? i > 0
+                        ? Math.round(((financiar * i) / (1 - Math.pow(1 + i, -m))) * 100) / 100
+                        : Math.ceil((financiar / m) * 100) / 100
+                      : 0;
+                  const totalInt = Math.round((c * m - financiar) * 100) / 100;
                   return (
                     <p className="text-xs text-stone-600">
                       Queda por financiar{' '}
                       <strong className="tabular-nums">{formatMoney(financiar, 'BOB')}</strong>.
-                      {m > 0 ? (
+                      {m > 0 && c > 0 ? (
                         <>
                           {' '}
-                          En {m} cuotas serían{' '}
-                          <button
-                            type="button"
-                            className="font-semibold text-brand underline"
-                            onClick={() => setCuota(String(sugerida))}
-                          >
-                            {formatMoney(sugerida, 'BOB')} al mes
-                          </button>
-                          .
+                          En {m} cuotas de{' '}
+                          {Number(interes) > 0 ? (
+                            <strong className="tabular-nums">{formatMoney(c, 'BOB')}</strong>
+                          ) : (
+                            <button
+                              type="button"
+                              className="font-semibold text-brand underline"
+                              onClick={() => setCuota(String(c))}
+                            >
+                              {formatMoney(c, 'BOB')}
+                            </button>
+                          )}{' '}
+                          al mes.
+                          {totalInt > 0 ? (
+                            <>
+                              {' '}
+                              Paga{' '}
+                              <strong className="tabular-nums">
+                                {formatMoney(totalInt, 'BOB')}
+                              </strong>{' '}
+                              de interés en total ({formatMoney(c * m, 'BOB')} en todo el plan).
+                            </>
+                          ) : null}
                         </>
                       ) : null}
                     </p>
