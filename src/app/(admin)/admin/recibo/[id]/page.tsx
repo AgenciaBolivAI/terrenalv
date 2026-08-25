@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import { getAdminContext } from '@/features/admin/lib/get-admin-context';
 import { PrintButton } from '@/features/admin/contabilidad/PrintButton';
+import { EnviarReciboWhatsapp } from '@/features/admin/contabilidad/EnviarReciboWhatsapp';
 import { Recibo } from '@/features/reservations/components/Recibo';
 import { cargarRecibo } from '@/features/reservations/recibo';
 
@@ -37,7 +38,26 @@ export default async function ReciboPage({ params }: { params: Promise<{ id: str
         >
           ← Volver
         </a>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Mandárselo es lo primero que uno quiere hacer parado en esta
+              pantalla, así que va antes que imprimir. */}
+          <EnviarReciboWhatsapp
+            telefono={r.buyer_phone}
+            nombre={r.buyer_full_name}
+            trackingCode={r.tracking_code}
+            paymentId={r.id}
+            concepto={
+              r.purpose === 'cuota'
+                ? 'cuota'
+                : r.purpose === 'abono'
+                  ? 'abono'
+                  : r.purpose === 'comision'
+                    ? 'comisión'
+                    : 'seña'
+            }
+            monto={r.amount}
+            moneda={r.currency}
+          />
           <a
             href={enlaceComprador}
             target="_blank"
