@@ -89,3 +89,6 @@ export const IconLayers = (p: IconProps) =>
 
 export const IconStore = (p: IconProps) =>
   base(p, <><path d="M4 4h16l1.5 4.5a3 3 0 0 1-2.9 3.5 3 3 0 0 1-3-2.5 3 3 0 0 1-3.1 2.5 3 3 0 0 1-3-2.5 3 3 0 0 1-3.1 2.5A3 3 0 0 1 2.5 8.5Z" /><path d="M5 12v8h14v-8" /><path d="M10 20v-5h4v5" /></>);
+
+export const IconExchange = (p: IconProps) =>
+  base(p, <><path d="M4 8h13l-3-3" /><path d="M20 16H7l3 3" /></>);

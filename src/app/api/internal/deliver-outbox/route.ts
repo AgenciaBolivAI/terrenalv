@@ -282,6 +282,89 @@ export async function POST(req: NextRequest) {
   for (const row of rows) {
     const attempts = row.attempts + 1;
 
+    // ---- WhatsApp (Meta Cloud API) --------------------------------------
+    // Mismo outbox que el correo, mismos reintentos. Sin credenciales el
+    // mensaje NO se marca enviado: queda pendiente diciendo qué falta, porque
+    // un "enviado" mentiroso es peor que un pendiente honesto.
+    if (row.channel === 'whatsapp') {
+      const token = process.env.WHATSAPP_TOKEN;
+      const phoneId = process.env.WHATSAPP_PHONE_ID;
+      const template = process.env.WHATSAPP_RECIBO_TEMPLATE;
+      if (!token || !phoneId || !template) {
+        await admin
+          .from('notification_outbox')
+          .update({
+            attempts: row.attempts,
+            last_error:
+              'WhatsApp sin configurar: faltan WHATSAPP_TOKEN, WHATSAPP_PHONE_ID o WHATSAPP_RECIBO_TEMPLATE.',
+          })
+          .eq('id', row.id);
+        failed += 1;
+        continue;
+      }
+      try {
+        const p = row.payload as Record<string, unknown>;
+        const code = typeof p.tracking_code === 'string' ? p.tracking_code : '';
+        const payId = typeof p.payment_id === 'string' ? p.payment_id : '';
+        const url = `${base}/reserva/${encodeURIComponent(code)}/recibo/${payId}`;
+        // Bolivia: 8 dígitos + código de país.
+        const to = `591${row.recipient.replace(/\D/g, '').slice(-8)}`;
+        const res = await fetch(`https://graph.facebook.com/v21.0/${phoneId}/messages`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp',
+            to,
+            type: 'template',
+            template: {
+              name: template,
+              language: { code: 'es' },
+              components: [
+                {
+                  type: 'body',
+                  parameters: [
+                    { type: 'text', text: String(p.comprador ?? '') },
+                    { type: 'text', text: String(p.tipo ?? 'pago') },
+                    { type: 'text', text: String(p.monto_bob ?? '') },
+                    { type: 'text', text: url },
+                  ],
+                },
+              ],
+            },
+          }),
+        });
+        if (!res.ok) {
+          const body = await res.text();
+          throw new Error(`WhatsApp ${res.status}: ${body.slice(0, 300)}`);
+        }
+        await admin
+          .from('notification_outbox')
+          .update({
+            status: 'enviado',
+            sent_at: new Date().toISOString(),
+            attempts,
+            last_error: null,
+          })
+          .eq('id', row.id);
+        sent += 1;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message.slice(0, 500) : 'Error desconocido';
+        await admin
+          .from('notification_outbox')
+          .update({
+            attempts,
+            status: attempts >= 3 ? 'fallido' : 'pendiente',
+            last_error: msg,
+          })
+          .eq('id', row.id);
+        failed += 1;
+      }
+      continue;
+    }
+
     if (row.channel !== 'email') {
       await admin
         .from('notification_outbox')

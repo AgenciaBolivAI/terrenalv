@@ -24,6 +24,7 @@ import {
   IconSettings,
   IconUsers,
   IconStore,
+  IconExchange,
 } from '@/features/admin/ui/icons';
 import { AdminProvider } from './AdminContext';
 import type { TeamRole } from '@/lib/db-types';
@@ -46,6 +47,7 @@ const NAV: NavItem[] = [
   { href: '/admin/ventas', label: 'Ventas', icon: IconCheck },
   { href: '/admin/clientes', label: 'Clientes', icon: IconUsers },
   { href: '/admin/mercado', label: 'Mercado', icon: IconStore },
+  { href: '/admin/traspasos', label: 'Traspasos', icon: IconExchange },
   { href: '/admin/lotes', label: 'Lotes', icon: IconGrid },
   { href: '/admin/notificaciones', label: 'Notificaciones', icon: IconBell },
   { href: '/admin/contabilidad', label: 'Contabilidad', icon: IconLedger, roles: ['admin', 'contabilidad'] },

@@ -18,6 +18,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { FichaClienteDialog } from '@/features/admin/clientes/FichaClienteDialog';
 import { formatMoney, waLink } from '@/lib/format';
 import { Badge, EmptyState, Kpi, Spinner, inputClass } from '@/features/admin/ui/bits';
 import { IconSearch, IconWhatsapp } from '@/features/admin/ui/icons';
@@ -118,6 +119,8 @@ export default function PlanesClient({
   const [filtro, setFiltro] = useState<Filtro>('activos');
 
   const [selected, setSelected] = useState<string | null>(null);
+  // El nombre del comprador abre su ficha sin salir de Planes.
+  const [ficha, setFicha] = useState<{ ci: string; nombre: string } | null>(null);
   const [cuotas, setCuotas] = useState<Installment[] | null>(null);
   const selectedRef = useRef<string | null>(null);
   selectedRef.current = selected;
@@ -473,7 +476,17 @@ export default function PlanesClient({
                             ) : null}
                           </td>
                           <td className="px-3 py-2">
-                            <p className="font-medium text-stone-900">{r.buyer_full_name}</p>
+                            <button
+                              type="button"
+                              className="text-left font-medium text-stone-900 hover:text-brand hover:underline"
+                              title="Ver el perfil de este cliente"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setFicha({ ci: r.buyer_ci, nombre: r.buyer_full_name });
+                              }}
+                            >
+                              {r.buyer_full_name}
+                            </button>
                             <p className="text-xs text-stone-400">CI {r.buyer_ci}</p>
                           </td>
                           <td className="px-3 py-2 whitespace-nowrap text-stone-600">
@@ -700,6 +713,10 @@ export default function PlanesClient({
           </section>
         </>
       )}
+
+      {ficha ? (
+        <FichaClienteDialog ci={ficha.ci} nombre={ficha.nombre} onClose={() => setFicha(null)} />
+      ) : null}
     </div>
   );
 }

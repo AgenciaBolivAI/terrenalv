@@ -33,6 +33,7 @@ import { Dialog } from '@/features/admin/ui/dialog';
 import { useToast } from '@/features/admin/ui/toast';
 import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
 import RegistrarCobroDialog from '@/features/admin/contabilidad/RegistrarCobro';
+import { FichaClienteDialog } from '@/features/admin/clientes/FichaClienteDialog';
 import type { CobroTarget } from '@/features/admin/contabilidad/types';
 import { ScopeBar, scopeLabel, type ProjectScope } from '@/features/admin/ui/scope';
 import type { AdminProject } from '@/features/admin/lib/project-types';
@@ -240,6 +241,9 @@ export default function VentasClient({
   const [editar, setEditar] = useState<Venta | null>(null);
   const [anular, setAnular] = useState<Venta | null>(null);
   const [traspasar, setTraspasar] = useState<Venta | null>(null);
+  // El nombre del comprador es una puerta, no un texto: abre su ficha sin
+  // perder la pantalla de Ventas.
+  const [ficha, setFicha] = useState<{ ci: string; nombre: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('ventas');
@@ -628,7 +632,17 @@ export default function VentasClient({
                             ) : null}
                           </td>
                           <td className="px-3 py-2">
-                            <p className="font-medium text-stone-900">{r.buyer_full_name}</p>
+                            <button
+                              type="button"
+                              className="text-left font-medium text-stone-900 hover:text-brand hover:underline"
+                              title="Ver el perfil de este cliente"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setFicha({ ci: r.buyer_ci, nombre: r.buyer_full_name });
+                              }}
+                            >
+                              {r.buyer_full_name}
+                            </button>
                             <p className="text-xs text-stone-400">CI {r.buyer_ci}</p>
                           </td>
                           <td className="px-3 py-2 whitespace-nowrap text-stone-600">
@@ -673,13 +687,16 @@ export default function VentasClient({
                                       Comprador
                                     </p>
                                     <p className="mt-1 text-sm font-medium text-stone-900">
-                                      <Link
-                                        href={`/admin/clientes?ci=${encodeURIComponent(r.buyer_ci)}`}
+                                      <button
+                                        type="button"
                                         className="hover:text-brand hover:underline"
-                                        title="Ver el perfil completo del cliente"
+                                        title="Ver el perfil de este cliente"
+                                        onClick={() =>
+                                          setFicha({ ci: r.buyer_ci, nombre: r.buyer_full_name })
+                                        }
                                       >
                                         {r.buyer_full_name}
-                                      </Link>
+                                      </button>
                                     </p>
                                     <p className="text-xs text-stone-500">
                                       CI {r.buyer_ci} · {r.buyer_phone}
@@ -996,6 +1013,14 @@ export default function VentasClient({
             setEditar(null);
             void fetchAll();
           }}
+        />
+      ) : null}
+
+      {ficha ? (
+        <FichaClienteDialog
+          ci={ficha.ci}
+          nombre={ficha.nombre}
+          onClose={() => setFicha(null)}
         />
       ) : null}
 
@@ -1394,14 +1419,71 @@ function TraspasarVentaDialog({
   return (
     <Dialog open onClose={onClose} title={`Traspasar — ${venta.tracking_code}`}>
       <div className="space-y-3">
-        <p className="rounded-lg bg-stone-50 p-3 text-sm text-stone-600">
-          {venta.buyer_full_name} cede su compra (Mz {venta.manzana ?? '—'}, Lote{' '}
-          {venta.lote ?? '—'}). El comprador nuevo recibe{' '}
-          <strong>{formatMoney(Number(venta.pagado_total), 'BOB')}</strong> ya pagados y un saldo
-          de <strong>{formatMoney(Number(venta.saldo), 'BOB')}</strong>.
-          {venta.con_plan
-            ? ' El plan de cuotas vigente se cancela: las condiciones se pactan de nuevo.'
-            : ''}
+        {/* Qué se está traspasando, con todos los números a la vista: quien
+            firma esto tiene que ver el lote, la plata y qué pasa con el plan
+            sin abrir otra pantalla. */}
+        <div className="rounded-lg border border-stone-200 bg-white p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-800 uppercase">
+              {Number(venta.saldo) > 0 ? 'Traspaso — compra en curso' : 'Traspaso — lote pagado'}
+            </span>
+            <span className="text-sm font-semibold text-stone-900">
+              Mz {venta.manzana ?? '—'}, Lote {venta.lote ?? '—'}
+            </span>
+            <span className="text-xs text-stone-400">{venta.proyecto}</span>
+            <span className="ml-auto font-mono text-xs text-stone-400">{venta.tracking_code}</span>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            <div>
+              <p className="text-xs text-stone-500">Precio del lote</p>
+              <p className="font-semibold tabular-nums">
+                {formatMoney(Number(venta.price_agreed), 'BOB')}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-stone-500">Ya pagado</p>
+              <p className="font-semibold tabular-nums text-brand">
+                {formatMoney(Number(venta.pagado_total), 'BOB')}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-stone-500">Saldo que se cede</p>
+              <p
+                className={`font-semibold tabular-nums ${
+                  Number(venta.saldo) > 0 ? 'text-red-600' : 'text-stone-900'
+                }`}
+              >
+                {formatMoney(Number(venta.saldo), 'BOB')}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-stone-500">Plan de cuotas</p>
+              <p className="font-semibold">{venta.con_plan ? 'Vigente' : 'Sin plan'}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-1.5 rounded-lg bg-stone-50 p-3 text-sm text-stone-600">
+          <p>
+            <strong>Cede:</strong> {venta.buyer_full_name} · CI {venta.buyer_ci} ·{' '}
+            {venta.buyer_phone}
+          </p>
+          <p>
+            El comprador nuevo recibe{' '}
+            <strong>{formatMoney(Number(venta.pagado_total), 'BOB')}</strong> ya pagados a su favor
+            y asume <strong>{formatMoney(Number(venta.saldo), 'BOB')}</strong> con Terrenalv.
+          </p>
+          <p className="text-xs">
+            La venta anterior se cierra conservando sus recibos a nombre de quien pagó, y su
+            contrato queda anulado apuntando al nuevo. El contrato del comprador nuevo se genera
+            solo, listo para firmar.
+            {venta.con_plan
+              ? ' El plan vigente se cancela con sus cuotas: las condiciones se pactan de nuevo.'
+              : ''}
+          </p>
+        </div>
+        <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+          Comprador nuevo
         </p>
         <input
           value={nombre}
