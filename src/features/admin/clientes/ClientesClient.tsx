@@ -27,6 +27,8 @@ import {
 import { Dialog } from '@/features/admin/ui/dialog';
 import { useToast } from '@/features/admin/ui/toast';
 import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
+import RegistrarCobroDialog from '@/features/admin/contabilidad/RegistrarCobro';
+import type { CobroTarget } from '@/features/admin/contabilidad/types';
 import { IconWhatsapp } from '@/features/admin/ui/icons';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
 import { num as fnum, type Cell as XCell } from '@/features/admin/export';
@@ -82,6 +84,53 @@ interface Actividad {
   comprada_en_mercado: boolean;
   precio_mercado: number | null;
   vendida_en_mercado: boolean;
+  project_id: string;
+  lot_id: string | null;
+  area_m2: number | null;
+  frontage_m: number | null;
+  depth_m: number | null;
+  es_esquina: boolean | null;
+  lot_status: string | null;
+  precio_lista: number | null;
+  cobrado_aqui: number | null;
+  abonado_migrado: number | null;
+  deuda_migrada: number | null;
+  sena_pagada: number | null;
+  sena_forma: string | null;
+  traspaso_de_tracking: string | null;
+  traspaso_de_comprador: string | null;
+  cedida_a_comprador: string | null;
+  buyer_full_name: string;
+  buyer_phone: string;
+}
+
+interface PlanResumen {
+  plan_id: string;
+  estado: string;
+  total_price: number;
+  down_payment: number;
+  financed_amount: number;
+  months: number;
+  monthly_amount: number;
+  first_due_date: string;
+  cuotas_totales: number;
+  cuotas_pagadas: number;
+  cuotas_vencidas: number;
+  pagado: number;
+  saldo: number;
+  monto_vencido: number;
+  proxima_cuota: string | null;
+  dias_atraso: number | null;
+  avance_pct: number;
+}
+
+interface Cuota {
+  id: string;
+  number: number;
+  due_date: string;
+  amount: number;
+  amount_paid: number;
+  status: string;
 }
 
 interface AvisoCliente {
@@ -168,6 +217,7 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
   const [pagos, setPagos] = useState<Pago[] | null>(null);
   const [mercado, setMercado] = useState<AvisoCliente[] | null>(null);
   const [editar, setEditar] = useState<Cliente | null>(null);
+  const [ficha, setFicha] = useState<Actividad | null>(null);
   const abiertoRef = useRef<string | null>(null);
   abiertoRef.current = abierto;
   const detailRef = useRef<HTMLTableRowElement | null>(null);
@@ -539,7 +589,12 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
                               ) : (
                                 <ul className="mt-2 divide-y divide-stone-100 rounded-lg border border-stone-200 bg-white">
                                   {actividad.map((a) => (
-                                    <li key={a.reservation_id} className="px-3 py-2 text-sm">
+                                    <li
+                                      key={a.reservation_id}
+                                      className="cursor-pointer px-3 py-2 text-sm transition-colors hover:bg-green-50/60"
+                                      onClick={() => setFicha(a)}
+                                      title="Abrir la ficha del lote"
+                                    >
                                       <div className="flex flex-wrap items-center gap-2">
                                         <Badge
                                           className={ESTADO_BADGE[a.estado] ?? 'bg-stone-100 text-stone-600'}
@@ -554,6 +609,7 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
                                           <Link
                                             href={`/admin/ventas?open=${a.reservation_id}`}
                                             className="ml-auto font-mono text-xs font-semibold text-brand hover:underline"
+                                            onClick={(e) => e.stopPropagation()}
                                           >
                                             {a.tracking_code}
                                           </Link>
@@ -759,6 +815,20 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
         </p>
       </section>
 
+      {ficha ? (
+        <FichaLoteDialog
+          a={ficha}
+          pagos={(pagos ?? []).filter((p) => p.tracking_code === ficha.tracking_code)}
+          aviso={(mercado ?? []).find((m) => m.tracking_code === ficha.tracking_code) ?? null}
+          onClose={() => setFicha(null)}
+          onChanged={() => {
+            void fetchAll();
+            if (abiertoRef.current) void abrirPerfil(abiertoRef.current);
+            setFicha(null);
+          }}
+        />
+      ) : null}
+
       {editar ? (
         <EditarClienteDialog
           cliente={editar}
@@ -900,6 +970,409 @@ function EditarClienteDialog({
           {busy ? 'Guardando…' : 'Guardar'}
         </button>
       </div>
+    </Dialog>
+  );
+}
+
+/* ========================================================================== */
+
+/**
+ * La ficha del lote: TODO lo de esta compra en un solo lugar, con sus mandos.
+ *
+ * El lote físico (superficie, frente × fondo, esquina), la plata con su
+ * desglose, el plan cuota por cuota, sus pagos con recibo, su paso por el
+ * mercado y su cadena de traspaso — y desde acá mismo se cobra, se abre la
+ * venta o el plan, y se escribe al comprador. Es la misma regla de los KPI:
+ * ningún número sin camino a lo que cuenta.
+ */
+function FichaLoteDialog({
+  a,
+  pagos,
+  aviso,
+  onClose,
+  onChanged,
+}: {
+  a: Actividad;
+  pagos: Pago[];
+  aviso: AvisoCliente | null;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const supabase = useMemo(() => createClient(), []);
+  const [plan, setPlan] = useState<PlanResumen | null>(null);
+  const [cuotas, setCuotas] = useState<Cuota[] | null>(null);
+  const [cargado, setCargado] = useState(false);
+  const [cobrar, setCobrar] = useState<CobroTarget | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    void (async () => {
+      const { data: pl } = await supabase
+        .from('v_planes')
+        .select('*')
+        .eq('reservation_id', a.reservation_id)
+        .order('estado', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (!vivo) return;
+      const planRow = (pl as PlanResumen | null) ?? null;
+      setPlan(planRow);
+      if (planRow) {
+        const { data: cs } = await supabase
+          .from('installments')
+          .select('id, number, due_date, amount, amount_paid, status')
+          .eq('plan_id', planRow.plan_id)
+          .order('number');
+        if (!vivo) return;
+        setCuotas((cs ?? []) as Cuota[]);
+      }
+      setCargado(true);
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [supabase, a.reservation_id]);
+
+  const esVenta = a.estado === 'confirmada';
+  const hoy = new Date().toISOString().slice(0, 10);
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      wide
+      title={`Mz ${a.manzana ?? '—'}, Lote ${a.lote ?? '—'} — ${a.proyecto}`}
+    >
+      <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
+        {/* -------- resumen: qué es y en qué estado está -------- */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge className={ESTADO_BADGE[a.estado] ?? 'bg-stone-100 text-stone-600'}>
+            {ESTADO_LABEL[a.estado] ?? a.estado}
+          </Badge>
+          <span className="font-mono text-xs text-stone-500">{a.tracking_code}</span>
+          <span className="text-xs text-stone-400">
+            {a.origen_label} · {dateLabel(a.fecha_confirmada ?? a.created_at)}
+          </span>
+          {aviso && !aviso.fee_payment_id && aviso.status === 'activa' ? (
+            <Badge className="bg-green-100 text-green-800">En el mercado</Badge>
+          ) : null}
+        </div>
+
+        {/* -------- el lote físico -------- */}
+        <div className="grid grid-cols-2 gap-3 rounded-lg border border-stone-200 bg-white p-3 text-sm sm:grid-cols-4">
+          <div>
+            <p className="text-xs text-stone-500">Superficie</p>
+            <p className="font-semibold tabular-nums">
+              {a.area_m2 !== null ? `${Number(a.area_m2).toFixed(0)} m²` : '—'}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-stone-500">Frente × fondo</p>
+            <p className="font-semibold tabular-nums">
+              {a.frontage_m !== null && a.depth_m !== null
+                ? `${Number(a.frontage_m)} × ${Number(a.depth_m)} m`
+                : '—'}
+              {a.es_esquina ? ' · esquina' : ''}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-stone-500">Precio de lista</p>
+            <p className="font-semibold tabular-nums">
+              {a.precio_lista !== null ? formatMoney(Number(a.precio_lista), 'BOB') : '—'}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-stone-500">Precio pactado</p>
+            <p className="font-semibold tabular-nums">
+              {formatMoney(Number(a.price_agreed), 'BOB')}
+            </p>
+          </div>
+        </div>
+
+        {/* -------- la plata -------- */}
+        {esVenta ? (
+          <div className="rounded-lg border border-stone-200 bg-white p-3">
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div>
+                <p className="text-xs text-stone-500">Pagado</p>
+                <p className="text-lg font-bold tabular-nums text-brand">
+                  {formatMoney(Number(a.pagado_total ?? 0), 'BOB')}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-stone-500">Saldo</p>
+                <p
+                  className={`text-lg font-bold tabular-nums ${
+                    Number(a.saldo ?? 0) > 0 ? 'text-red-600' : 'text-stone-900'
+                  }`}
+                >
+                  {formatMoney(Number(a.saldo ?? 0), 'BOB')}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-stone-500">Avance</p>
+                <p className="text-lg font-bold tabular-nums">
+                  {Number(a.pagado_total ?? 0) + Number(a.saldo ?? 0) > 0
+                    ? `${Math.round(
+                        (Number(a.pagado_total ?? 0) /
+                          (Number(a.pagado_total ?? 0) + Number(a.saldo ?? 0))) *
+                          100,
+                      )}%`
+                    : '—'}
+                </p>
+              </div>
+            </div>
+            <p className="mt-2 text-center text-xs text-stone-500">
+              {Number(a.abonado_migrado ?? 0) > 0
+                ? `${formatMoney(Number(a.abonado_migrado), 'BOB')} ${
+                    a.recibida_por_traspaso ? 'del comprador anterior' : 'en el sistema anterior'
+                  } + ${formatMoney(Number(a.cobrado_aqui ?? 0), 'BOB')} acá. `
+                : ''}
+              {Number(a.sena_pagada ?? 0) > 0
+                ? `Seña de ${formatMoney(Number(a.sena_pagada), 'BOB')}${
+                    a.sena_forma ? ` por ${a.sena_forma}` : ''
+                  } (aparte del precio).`
+                : ''}
+              {a.deuda_migrada !== null
+                ? ` El saldo corre contra la deuda reportada de ${formatMoney(Number(a.deuda_migrada), 'BOB')}.`
+                : ''}
+            </p>
+          </div>
+        ) : null}
+
+        {/* -------- traspaso y mercado -------- */}
+        {a.recibida_por_traspaso || a.cedida_por_traspaso || aviso ? (
+          <div className="space-y-1.5 rounded-lg border border-stone-200 bg-stone-50 p-3 text-xs text-stone-600">
+            {a.recibida_por_traspaso ? (
+              <p>
+                Recibida por traspaso de <strong>{a.traspaso_de_comprador ?? '—'}</strong> (
+                {a.traspaso_de_tracking ?? '—'})
+                {a.comprada_en_mercado
+                  ? ` — comprada en el mercado por ${formatMoney(Number(a.precio_mercado ?? 0), 'BOB')}`
+                  : ''}
+                .
+              </p>
+            ) : null}
+            {a.cedida_por_traspaso ? (
+              <p>
+                Cedida a <strong>{a.cedida_a_comprador ?? '—'}</strong> ({a.cedida_a_tracking ?? '—'})
+                {a.vendida_en_mercado ? ' — vendida por el mercado' : ''}.
+              </p>
+            ) : null}
+            {aviso ? (
+              aviso.fee_payment_id ? (
+                <p>
+                  Vendida por el mercado a <strong>{aviso.vendido_a ?? '—'}</strong> en{' '}
+                  {formatMoney(Number(aviso.sale_price_bob ?? 0), 'BOB')} — comisión{' '}
+                  {formatMoney(Number(aviso.fee_bob ?? 0), 'BOB')} ({Number(aviso.fee_pct)}%) ·{' '}
+                  <a
+                    href={`/admin/recibo/${aviso.fee_payment_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold text-brand hover:underline"
+                  >
+                    recibo
+                  </a>
+                </p>
+              ) : (
+                <p>
+                  En el mercado ({aviso.status}): pide{' '}
+                  {formatMoney(Number(aviso.asking_price_bob), 'BOB')} · {aviso.consultas}{' '}
+                  consulta(s) · comisión pactada {Number(aviso.fee_pct)}%.
+                </p>
+              )
+            ) : null}
+          </div>
+        ) : null}
+
+        {/* -------- el plan, cuota por cuota -------- */}
+        {esVenta ? (
+          !cargado ? (
+            <Spinner label="Cargando plan…" />
+          ) : plan ? (
+            <div className="rounded-lg border border-stone-200 bg-white p-3">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                <p className="font-semibold text-stone-900">
+                  Plan {plan.estado === 'activo' ? 'activo' : plan.estado}:{' '}
+                  {formatMoney(Number(plan.monthly_amount), 'BOB')}/mes × {plan.months}
+                </p>
+                <p className="text-xs text-stone-500">
+                  {plan.cuotas_pagadas}/{plan.cuotas_totales} pagadas · avance{' '}
+                  {Number(plan.avance_pct)}%
+                </p>
+                {Number(plan.cuotas_vencidas) > 0 ? (
+                  <Badge className="bg-red-100 text-red-700">
+                    {plan.cuotas_vencidas} vencida(s) · {formatMoney(Number(plan.monto_vencido), 'BOB')}
+                    {plan.dias_atraso ? ` · ${plan.dias_atraso} días` : ''}
+                  </Badge>
+                ) : plan.proxima_cuota ? (
+                  <span className="text-xs text-stone-500">
+                    próxima vence {dateLabel(plan.proxima_cuota)}
+                  </span>
+                ) : null}
+                <Link
+                  href={`/admin/planes?open=${plan.plan_id}`}
+                  className="ml-auto text-xs font-semibold text-brand hover:underline"
+                >
+                  Abrir en Planes
+                </Link>
+              </div>
+              {cuotas && cuotas.length > 0 ? (
+                <div className="mt-2 max-h-44 overflow-y-auto rounded border border-stone-100">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-stone-50">
+                      <tr className="text-left text-stone-500">
+                        <th className="px-2 py-1 font-semibold">#</th>
+                        <th className="px-2 py-1 font-semibold">Vence</th>
+                        <th className="px-2 py-1 text-right font-semibold">Cuota</th>
+                        <th className="px-2 py-1 text-right font-semibold">Pagado</th>
+                        <th className="px-2 py-1 font-semibold">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cuotas.map((c) => {
+                        const vencida =
+                          c.status !== 'pagada' && c.due_date < hoy && Number(c.amount_paid) < Number(c.amount);
+                        return (
+                          <tr key={c.id} className="border-t border-stone-100">
+                            <td className="px-2 py-1 tabular-nums">{c.number}</td>
+                            <td className="px-2 py-1">{dateLabel(c.due_date)}</td>
+                            <td className="px-2 py-1 text-right tabular-nums">
+                              {formatMoney(Number(c.amount), 'BOB')}
+                            </td>
+                            <td className="px-2 py-1 text-right tabular-nums">
+                              {Number(c.amount_paid) > 0 ? formatMoney(Number(c.amount_paid), 'BOB') : '—'}
+                            </td>
+                            <td className="px-2 py-1">
+                              <Badge
+                                className={
+                                  c.status === 'pagada'
+                                    ? 'bg-green-100 text-green-700'
+                                    : vencida
+                                      ? 'bg-red-100 text-red-700'
+                                      : 'bg-stone-100 text-stone-600'
+                                }
+                              >
+                                {c.status === 'pagada' ? 'pagada' : vencida ? 'vencida' : c.status}
+                              </Badge>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-xs text-stone-500">
+              Sin plan de cuotas: paga por abonos libres. Si va a ir en cuotas, el plan se crea
+              desde Contabilidad → Por cobrar.
+            </p>
+          )
+        ) : null}
+
+        {/* -------- pagos de ESTE lote -------- */}
+        {pagos.length > 0 ? (
+          <div>
+            <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+              Pagos de este lote
+            </p>
+            <ul className="mt-1 divide-y divide-stone-100 rounded-lg border border-stone-200 bg-white">
+              {pagos.map((pg) => (
+                <li key={pg.payment_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 text-sm">
+                  <span className="text-xs text-stone-500">{dateLabel(pg.fecha ?? pg.created_at)}</span>
+                  <Badge className="bg-stone-100 text-stone-600">{pg.tipo}</Badge>
+                  <span className="text-xs text-stone-400">{pg.forma}</span>
+                  {pg.estado !== 'aprobado' ? (
+                    <Badge className={PAGO_BADGE[pg.estado] ?? 'bg-amber-100 text-amber-800'}>
+                      {pg.estado}
+                    </Badge>
+                  ) : null}
+                  <span
+                    className={`ml-auto font-semibold tabular-nums ${
+                      pg.estado === 'aprobado' ? 'text-stone-900' : 'text-stone-400 line-through'
+                    }`}
+                  >
+                    {formatMoney(Number(pg.amount), pg.currency)}
+                  </span>
+                  {pg.tiene_recibo ? (
+                    <a
+                      href={`/admin/recibo/${pg.payment_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-semibold text-brand hover:underline"
+                    >
+                      Recibo
+                    </a>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+
+      {/* -------- los mandos -------- */}
+      <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-stone-100 pt-3">
+        <a
+          href={waLink(
+            a.buyer_phone,
+            `Hola ${a.buyer_full_name.split(' ')[0] ?? ''}, le escribimos de Terrenalv por su lote Mz ${a.manzana ?? ''}, Lote ${a.lote ?? ''} (${a.tracking_code}).`,
+          )}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={btnSecondary}
+        >
+          WhatsApp
+        </a>
+        {aviso && !aviso.fee_payment_id ? (
+          <Link href="/admin/mercado" className={btnSecondary}>
+            Ver en el mercado
+          </Link>
+        ) : null}
+        {esVenta ? (
+          <Link href={`/admin/ventas?open=${a.reservation_id}`} className={btnSecondary}>
+            Abrir en Ventas
+          </Link>
+        ) : null}
+        {esVenta && Number(a.saldo ?? 0) > 0 ? (
+          <button
+            type="button"
+            className={btnPrimary}
+            onClick={() =>
+              setCobrar({
+                reservation_id: a.reservation_id,
+                project_id: a.project_id,
+                tracking_code: a.tracking_code,
+                buyer_full_name: a.buyer_full_name,
+                buyer_phone: a.buyer_phone,
+                saldo: Number(a.saldo ?? 0),
+                currency: 'BOB',
+                monto_sugerido: plan && plan.estado === 'activo' ? Number(plan.monthly_amount) : null,
+                tiene_plan: Boolean(plan && plan.estado === 'activo'),
+              })
+            }
+          >
+            Registrar cobro
+          </button>
+        ) : (
+          <button type="button" className={btnPrimary} onClick={onClose}>
+            Cerrar
+          </button>
+        )}
+      </div>
+
+      {cobrar ? (
+        <RegistrarCobroDialog
+          cobro={cobrar}
+          onClose={() => setCobrar(null)}
+          onPaid={() => {
+            setCobrar(null);
+            onChanged();
+          }}
+        />
+      ) : null}
     </Dialog>
   );
 }
