@@ -33,6 +33,7 @@ import { IconWhatsapp } from '@/features/admin/ui/icons';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
 import { num as fnum, type Cell as XCell } from '@/features/admin/export';
 import { dateLabel } from '@/features/admin/contabilidad/types';
+import { etiquetaDeMovimiento } from './etiquetas';
 
 interface Cliente {
   ci_norm: string;
@@ -623,11 +624,15 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
                                       title="Abrir la ficha del lote"
                                     >
                                       <div className="flex flex-wrap items-center gap-2">
-                                        <Badge
-                                          className={ESTADO_BADGE[a.estado] ?? 'bg-stone-100 text-stone-600'}
-                                        >
-                                          {ESTADO_LABEL[a.estado] ?? a.estado}
-                                        </Badge>
+                                        {/* La MISMA etiqueta que usa el
+                                            historial: un lote recibido por
+                                            traspaso no se «compró», y decirlo
+                                            distinto en cada pantalla confunde
+                                            a quien atiende. */}
+                                        {(() => {
+                                          const et = etiquetaDeMovimiento(a);
+                                          return <Badge className={et.clase}>{et.texto}</Badge>;
+                                        })()}
                                         <span className="text-stone-800">
                                           Mz {a.manzana ?? '—'}, Lote {a.lote ?? '—'}
                                         </span>
@@ -1083,9 +1088,10 @@ function FichaLoteDialog({
       <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
         {/* -------- resumen: qué es y en qué estado está -------- */}
         <div className="flex flex-wrap items-center gap-2">
-          <Badge className={ESTADO_BADGE[a.estado] ?? 'bg-stone-100 text-stone-600'}>
-            {ESTADO_LABEL[a.estado] ?? a.estado}
-          </Badge>
+          {(() => {
+            const et = etiquetaDeMovimiento(a);
+            return <Badge className={et.clase}>{et.texto}</Badge>;
+          })()}
           <span className="font-mono text-xs text-stone-500">{a.tracking_code}</span>
           <span className="text-xs text-stone-400">
             {a.origen_label} · {dateLabel(a.fecha_confirmada ?? a.created_at)}

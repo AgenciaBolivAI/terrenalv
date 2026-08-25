@@ -19,6 +19,7 @@ import { formatMoney, waLink } from '@/lib/format';
 import { Badge, EmptyState, Spinner, btnSecondary } from '@/features/admin/ui/bits';
 import { IconWhatsapp } from '@/features/admin/ui/icons';
 import { dateLabel } from '@/features/admin/contabilidad/types';
+import { etiquetaDeMovimiento } from './etiquetas';
 
 interface Resumen {
   ci_norm: string;
@@ -102,24 +103,6 @@ const BADGE: Record<string, string> = {
   expirada: 'bg-stone-200 text-stone-600',
   cancelada: 'bg-stone-200 text-stone-600',
 };
-
-/** Qué fue este movimiento, en las palabras del mostrador. */
-function etiqueta(m: Movimiento): { texto: string; clase: string } {
-  if (m.cedida_por_traspaso) {
-    return m.vendida_en_mercado
-      ? { texto: 'Vendido por el mercado', clase: 'bg-violet-100 text-violet-800' }
-      : { texto: 'Cedido por traspaso', clase: 'bg-violet-100 text-violet-800' };
-  }
-  if (m.estado === 'confirmada' && m.recibida_por_traspaso) {
-    return m.comprada_en_mercado
-      ? { texto: 'Comprado en el mercado', clase: 'bg-green-100 text-green-700' }
-      : { texto: 'Recibido por traspaso', clase: 'bg-green-100 text-green-700' };
-  }
-  if (m.estado === 'confirmada') return { texto: 'Comprado', clase: BADGE.confirmada };
-  if (m.estado === 'expirada') return { texto: 'Reserva vencida', clase: BADGE.expirada };
-  if (m.estado === 'cancelada') return { texto: 'Cancelado', clase: BADGE.cancelada };
-  return { texto: 'Reservado', clase: BADGE.pendiente_pago };
-}
 
 export function HistorialCliente({ ci }: { ci: string }) {
   const supabase = useMemo(() => createClient(), []);
@@ -304,7 +287,7 @@ export function HistorialCliente({ ci }: { ci: string }) {
         ) : (
           <ul className="divide-y divide-stone-100">
             {movs.map((m) => {
-              const et = etiqueta(m);
+              const et = etiquetaDeMovimiento(m);
               const suyos = pagos.filter((p) => p.venta_id === m.reservation_id);
               const abierta = abierto === m.reservation_id;
               return (

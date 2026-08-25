@@ -34,6 +34,8 @@ import { useToast } from '@/features/admin/ui/toast';
 import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
 import RegistrarCobroDialog from '@/features/admin/contabilidad/RegistrarCobro';
 import { HistorialCliente } from '@/features/admin/clientes/HistorialCliente';
+import { ElegirLoteDialog, type LoteElegible } from './ElegirLote';
+import { SellOfflineDialog } from './VenderLoteDialogs';
 import type { CobroTarget } from '@/features/admin/contabilidad/types';
 import { ScopeBar, scopeLabel, type ProjectScope } from '@/features/admin/ui/scope';
 import type { AdminProject } from '@/features/admin/lib/project-types';
@@ -253,6 +255,10 @@ export default function VentasClient({
   // lista de todas las ventas y se ve SOLO a esa persona — todo lo que compró,
   // reservó, cedió o recibió, con sus pagos y recibos. Volver es un clic.
   const [cliente, setCliente] = useState<{ ci: string; nombre: string } | null>(null);
+  // Vender en oficina DESDE Ventas: es la pantalla donde está parada la
+  // vendedora cuando entra un comprador, no la de Lotes.
+  const [eligiendo, setEligiendo] = useState(false);
+  const [vendiendo, setVendiendo] = useState<LoteElegible | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('ventas');
@@ -492,6 +498,13 @@ export default function VentasClient({
           <h1 className="text-lg font-bold text-stone-900">Ventas</h1>
           <p className="text-xs text-stone-500">{projectName} · lotes vendidos y su saldo</p>
         </div>
+        <button
+          type="button"
+          className={`${btnPrimary} ml-auto`}
+          onClick={() => setEligiendo(true)}
+        >
+          Vender en oficina
+        </button>
       </div>
 
       <ScopeBar projects={projects} scope={scope} onScope={setScope} />
@@ -1056,6 +1069,32 @@ export default function VentasClient({
           onClose={() => setEditar(null)}
           onSaved={() => {
             setEditar(null);
+            void fetchAll();
+          }}
+        />
+      ) : null}
+
+      {eligiendo ? (
+        <ElegirLoteDialog
+          projectId={scope ?? projectId}
+          titulo="Vender en oficina — elegí el lote"
+          onClose={() => setEligiendo(false)}
+          onElegido={(l) => {
+            setEligiendo(false);
+            setVendiendo(l);
+          }}
+        />
+      ) : null}
+
+      {vendiendo ? (
+        <SellOfflineDialog
+          lot={vendiendo}
+          mzCode={vendiendo.manzana}
+          defaultPrice={vendiendo.precio}
+          currency="BOB"
+          onClose={() => setVendiendo(null)}
+          onSold={() => {
+            setVendiendo(null);
             void fetchAll();
           }}
         />

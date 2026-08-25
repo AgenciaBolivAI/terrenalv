@@ -18,6 +18,9 @@ import {
 } from '@/features/admin/lib/whatsapp';
 import { TEAM_NOTIFICATION_EVENT } from '@/features/admin/shell/NotificationBell';
 import { Badge, EmptyState, Spinner, inputClass } from '@/features/admin/ui/bits';
+import { ElegirLoteDialog, type LoteElegible } from '@/features/admin/ventas/ElegirLote';
+import { ReserveDialog } from '@/features/admin/ventas/VenderLoteDialogs';
+import { btnPrimary } from '@/features/admin/ui/bits';
 import { IconSearch, IconWhatsapp } from '@/features/admin/ui/icons';
 import { useToast } from '@/features/admin/ui/toast';
 import ReservationDetail from './ReservationDetail';
@@ -76,6 +79,11 @@ export default function ReservationsClient({ projectId, role, initialTab, openId
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [waTemplates, setWaTemplates] = useState<WhatsappTemplates>(DEFAULT_WA_TEMPLATES);
+  // Arrancar una reserva DESDE acá. Antes había que ir a Lotes, buscar el
+  // lote y reservar desde ahí: en el mostrador el orden real es al revés —
+  // primero llega la persona, después se busca el lote.
+  const [eligiendo, setEligiendo] = useState(false);
+  const [reservando, setReservando] = useState<LoteElegible | null>(null);
   const pendingOpenRef = useRef<string | null>(openId);
 
   const rowsRef = useRef<QueueRow[]>([]);
@@ -316,7 +324,12 @@ export default function ReservationsClient({ projectId, role, initialTab, openId
   return (
     <div className="mx-auto max-w-6xl">
       <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-lg font-bold text-stone-900">Reservas</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-lg font-bold text-stone-900">Reservas</h1>
+          <button type="button" className={btnPrimary} onClick={() => setEligiendo(true)}>
+            Nueva reserva
+          </button>
+        </div>
         <div className="relative sm:w-72">
           <IconSearch className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-stone-400" />
           <input
@@ -464,6 +477,32 @@ export default function ReservationsClient({ projectId, role, initialTab, openId
           onClose={closeDetail}
           onNavigate={navigate}
           onActed={(advance) => void handleActed(advance)}
+        />
+      ) : null}
+
+      {eligiendo ? (
+        <ElegirLoteDialog
+          projectId={projectId}
+          titulo="Reservar un lote — elegí cuál"
+          onClose={() => setEligiendo(false)}
+          onElegido={(l) => {
+            setEligiendo(false);
+            setReservando(l);
+          }}
+        />
+      ) : null}
+
+      {reservando ? (
+        <ReserveDialog
+          lot={reservando}
+          mzCode={reservando.manzana}
+          currency="BOB"
+          onClose={() => setReservando(null)}
+          onReserved={() => {
+            setReservando(null);
+            void fetchList();
+            void fetchCounts();
+          }}
         />
       ) : null}
     </div>
