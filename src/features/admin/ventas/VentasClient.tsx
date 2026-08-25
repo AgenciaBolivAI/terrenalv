@@ -113,7 +113,12 @@ type Origen =
  */
 interface PagoHist {
   payment_id: string;
-  purpose: 'reserva' | 'cuota' | 'abono';
+  purpose: 'reserva' | 'cuota' | 'abono' | 'comision';
+  /** Quién hizo el pago: en un lote traspasado puede ser el comprador anterior. */
+  buyer_full_name: string;
+  tracking_code: string;
+  /** true si el pago es de un eslabón anterior de la cadena (otro comprador). */
+  de_comprador_anterior: boolean;
   tipo: string;
   forma: string;
   amount: number;
@@ -153,6 +158,9 @@ const TIPO_BADGE: Record<PagoHist['purpose'], string> = {
   reserva: 'bg-sky-100 text-sky-800',
   cuota: 'bg-stone-200 text-stone-700',
   abono: 'bg-stone-100 text-stone-600',
+  // La comisión del mercado no es plata del lote: color propio para que nadie
+  // la sume con lo que paga el terreno.
+  comision: 'bg-violet-100 text-violet-800',
 };
 
 // En la tabla el origen entra en una columna angosta, así que va abreviado; el
@@ -305,10 +313,12 @@ export default function VentasClient({
   const refrescarPagos = useCallback(
     async (rid: string) => {
       if (selectedRef.current !== rid) return;
+      // La CADENA, no la reserva: un lote traspasado arrastra los pagos de
+      // su comprador anterior, y esa plata es historia de este lote.
       const { data } = await supabase
-        .from('v_historial_pagos')
+        .from('v_historial_pagos_cadena')
         .select('*')
-        .eq('reservation_id', rid)
+        .eq('venta_id', rid)
         .order('created_at', { ascending: false });
       setPagos((data ?? []) as unknown as PagoHist[]);
     },
@@ -324,9 +334,9 @@ export default function VentasClient({
       setSelected(rid);
       setPagos(null);
       const { data } = await supabase
-        .from('v_historial_pagos')
+        .from('v_historial_pagos_cadena')
         .select('*')
-        .eq('reservation_id', rid)
+        .eq('venta_id', rid)
         .order('created_at', { ascending: false });
       // Si mientras cargaba el usuario abrió otra fila, esta respuesta ya no
       // es la del detalle visible y se descarta.
@@ -853,7 +863,7 @@ export default function VentasClient({
 
                                 <div>
                                   <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
-                                    Historial de pagos en este sistema
+                                    Historial de pagos de este lote
                                   </p>
                                   {pagos === null || resumen === null ? (
                                     <div className="mt-3">
@@ -865,6 +875,8 @@ export default function VentasClient({
                                       {r.migrada ? ' (los del sistema anterior no se migraron pago por pago)' : ''}
                                       .
                                     </p>
+                                  ) : false ? (
+                                    <p />
                                   ) : (
                                     <>
                                       <div className="mt-2 rounded-lg border border-stone-200 bg-white px-3 py-2">
@@ -917,8 +929,18 @@ export default function VentasClient({
                                                 >
                                                   {dateLabel(p.fecha ?? laPazDateOf(p.created_at))}
                                                 </span>
-                                                <Badge className={TIPO_BADGE[p.purpose]}>{p.tipo}</Badge>
+                                                <Badge className={TIPO_BADGE[p.purpose] ?? 'bg-stone-100 text-stone-600'}>
+                                                  {p.tipo}
+                                                </Badge>
                                                 <span className="text-xs text-stone-400">{p.forma}</span>
+                                                {p.de_comprador_anterior ? (
+                                                  <span
+                                                    className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800"
+                                                    title={`Pago de ${p.buyer_full_name} bajo el contrato ${p.tracking_code}, antes del traspaso. Su recibo sigue a su nombre.`}
+                                                  >
+                                                    {p.buyer_full_name.split(' ')[0]} (antes)
+                                                  </span>
+                                                ) : null}
                                                 <Badge className={ESTADO_BADGE[p.estado]}>
                                                   {PAYMENT_STATUS_LABEL[p.estado]}
                                                 </Badge>

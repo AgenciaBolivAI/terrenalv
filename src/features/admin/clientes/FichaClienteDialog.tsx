@@ -44,6 +44,8 @@ interface ClienteResumen {
   avisos_activos: number;
   vendidos_mercado: number;
   vendido_mercado_bob: number;
+  nombres_distintos: number;
+  nombres_vistos: string;
 }
 
 interface ActividadResumen {
@@ -171,6 +173,14 @@ export function FichaClienteDialog({
               </Badge>
             ) : null}
           </div>
+
+          {Number(cliente.nombres_distintos) > 1 ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              Este carnet aparece con <strong>nombres distintos</strong> ({cliente.nombres_vistos}).
+              Un perfil es una persona: si son dos, alguien tecleó el mismo CI en las dos ventas —
+              corregí el carnet en la venta equivocada y los perfiles se separan solos.
+            </p>
+          ) : null}
 
           {/* La plata, de un vistazo */}
           <div className="grid grid-cols-2 gap-3 rounded-lg border border-stone-200 bg-white p-3 text-center sm:grid-cols-4">

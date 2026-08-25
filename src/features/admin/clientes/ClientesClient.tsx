@@ -60,6 +60,9 @@ interface Cliente {
   avisos_activos: number;
   vendidos_mercado: number;
   vendido_mercado_bob: number;
+  /** Nombres distintos bajo el mismo carnet: >1 huele a perfiles fusionados. */
+  nombres_distintos: number;
+  nombres_vistos: string;
 }
 
 interface Actividad {
@@ -122,6 +125,22 @@ interface PlanResumen {
   proxima_cuota: string | null;
   dias_atraso: number | null;
   avance_pct: number;
+}
+
+interface PagoCadena {
+  payment_id: string;
+  tipo: string;
+  forma: string;
+  amount: number;
+  currency: 'BOB' | 'USD';
+  amount_bob: number;
+  estado: string;
+  fecha: string | null;
+  created_at: string;
+  tiene_recibo: boolean;
+  buyer_full_name: string;
+  tracking_code: string;
+  de_comprador_anterior: boolean;
 }
 
 interface Cuota {
@@ -551,6 +570,14 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
                             >
                               Editar perfil
                             </button>
+                            {Number(r.nombres_distintos) > 1 ? (
+                              <span
+                                className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-800"
+                                title={`Este carnet aparece con nombres distintos: ${r.nombres_vistos}. Puede que sean DOS personas con el mismo CI mal tecleado — un perfil es una persona. Corregí el CI en la venta equivocada desde Ventas.`}
+                              >
+                                ¿Dos personas en un perfil?
+                              </span>
+                            ) : null}
                             {(r.traspasos_cedidos > 0 || r.traspasos_recibidos > 0) && (
                               <span className="text-xs text-stone-500">
                                 {r.traspasos_recibidos > 0
@@ -808,6 +835,9 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
           </div>
         )}
         <p className="border-t border-stone-100 px-4 py-2 text-xs text-stone-400">
+          Un perfil es UNA persona, agrupada por su carnet. Si el mismo CI aparece con nombres
+          distintos, la fila lo avisa: son dos personas fusionadas por un CI mal tecleado y hay
+          que corregirlo en la venta equivocada.{' '}
           Pagado suma todo lo aprobado de la persona — incluidas señas de reservas que después
           vencieron (esa plata entró igual) y lo abonado en el sistema anterior. Saldo y mora, de
           sus ventas vivas. Las comisiones del mercado van aparte: son un servicio, no pagan
@@ -818,7 +848,6 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
       {ficha ? (
         <FichaLoteDialog
           a={ficha}
-          pagos={(pagos ?? []).filter((p) => p.tracking_code === ficha.tracking_code)}
           aviso={(mercado ?? []).find((m) => m.tracking_code === ficha.tracking_code) ?? null}
           onClose={() => setFicha(null)}
           onChanged={() => {
@@ -987,13 +1016,11 @@ function EditarClienteDialog({
  */
 function FichaLoteDialog({
   a,
-  pagos,
   aviso,
   onClose,
   onChanged,
 }: {
   a: Actividad;
-  pagos: Pago[];
   aviso: AvisoCliente | null;
   onClose: () => void;
   onChanged: () => void;
@@ -1001,12 +1028,22 @@ function FichaLoteDialog({
   const supabase = useMemo(() => createClient(), []);
   const [plan, setPlan] = useState<PlanResumen | null>(null);
   const [cuotas, setCuotas] = useState<Cuota[] | null>(null);
+  const [pagos, setPagos] = useState<PagoCadena[]>([]);
   const [cargado, setCargado] = useState(false);
   const [cobrar, setCobrar] = useState<CobroTarget | null>(null);
 
   useEffect(() => {
     let vivo = true;
     void (async () => {
+      // Los pagos de ESTE lote, cadena incluida: si el lote vino por traspaso,
+      // lo que pagó el comprador anterior también es su historia.
+      const { data: pg } = await supabase
+        .from('v_historial_pagos_cadena')
+        .select('*')
+        .eq('venta_id', a.reservation_id)
+        .order('created_at', { ascending: false });
+      if (vivo) setPagos((pg ?? []) as unknown as PagoCadena[]);
+
       const { data: pl } = await supabase
         .from('v_planes')
         .select('*')
@@ -1284,6 +1321,14 @@ function FichaLoteDialog({
                   <span className="text-xs text-stone-500">{dateLabel(pg.fecha ?? pg.created_at)}</span>
                   <Badge className="bg-stone-100 text-stone-600">{pg.tipo}</Badge>
                   <span className="text-xs text-stone-400">{pg.forma}</span>
+                  {pg.de_comprador_anterior ? (
+                    <span
+                      className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800"
+                      title={`Pago de ${pg.buyer_full_name} (${pg.tracking_code}), antes del traspaso.`}
+                    >
+                      {pg.buyer_full_name.split(' ')[0]} (antes)
+                    </span>
+                  ) : null}
                   {pg.estado !== 'aprobado' ? (
                     <Badge className={PAGO_BADGE[pg.estado] ?? 'bg-amber-100 text-amber-800'}>
                       {pg.estado}

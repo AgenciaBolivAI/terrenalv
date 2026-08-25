@@ -26,6 +26,11 @@ const H = { apikey: K, Authorization: `Bearer ${K}`, 'Content-Type': 'applicatio
 const APLICAR = process.argv.includes('--aplicar');
 
 /** Compradores de ejemplo. Nombres claramente inventados, a propósito. */
+// UN COMPRADOR POR VENTA. Antes eran seis nombres repartidos con módulo entre
+// las seis urbanizaciones, así que la misma persona terminaba dueña de cuatro
+// lotes en cuatro proyectos y la pantalla de Clientes mostraba puros
+// multi-compradores. Hay uno por cada venta sembrada (6 proyectos × 3), y el
+// caso «varios lotes» se siembra a propósito más abajo, no por accidente.
 const COMPRADORES = [
   { nombre: 'María Fernanda Quiroga', ci: '8123456', tel: '70011001' },
   { nombre: 'Carlos Villarroel Peña', ci: '8123457', tel: '70011002' },
@@ -33,7 +38,30 @@ const COMPRADORES = [
   { nombre: 'Jorge Antonio Salazar', ci: '8123459', tel: '70011004' },
   { nombre: 'Rosa Elena Chávez', ci: '8123460', tel: '70011005' },
   { nombre: 'Luis Alberto Terceros', ci: '8123461', tel: '70011006' },
+  { nombre: 'Sergio Daniel Peredo', ci: '8341201', tel: '70120101' },
+  { nombre: 'Gabriela Ortiz Camacho', ci: '8341202', tel: '70120102' },
+  { nombre: 'Iván Rodrigo Zeballos', ci: '8341203', tel: '70120103' },
+  { nombre: 'Carla Beatriz Montaño', ci: '8341204', tel: '70120104' },
+  { nombre: 'Freddy Wilson Aramayo', ci: '8341205', tel: '70120105' },
+  { nombre: 'Silvia Roxana Ledezma', ci: '8341206', tel: '70120106' },
+  { nombre: 'Ramiro Ernesto Vaca', ci: '8341207', tel: '70120107' },
+  { nombre: 'Nayra Alejandra Choque', ci: '8341208', tel: '70120108' },
+  { nombre: 'Óscar Fernando Rojas', ci: '8341209', tel: '70120109' },
+  { nombre: 'Daniela Paz Arandia', ci: '8341210', tel: '70120110' },
+  { nombre: 'Hugo Marcelo Suárez', ci: '8341211', tel: '70120111' },
+  { nombre: 'Elena Mariela Coca', ci: '8341212', tel: '70120112' },
 ];
+
+/** El comprador de la venta n de la urbanización idx: uno distinto cada vez. */
+function compradorDe(idx: number, n: number) {
+  const i = idx * 3 + n;
+  if (i >= COMPRADORES.length) {
+    throw new Error(
+      `Faltan compradores de ejemplo: hacen falta ${i + 1} y hay ${COMPRADORES.length}.`,
+    );
+  }
+  return COMPRADORES[i];
+}
 
 interface Proyecto {
   id: string;
@@ -171,9 +199,18 @@ async function sembrarProyecto(p: Proyecto, idx: number) {
     new Date(hoy.getTime() - dias * 86400000).toISOString().slice(0, 10);
 
   const casos = [
-    { c: COMPRADORES[(idx * 2) % COMPRADORES.length], origen: 'oficina_directa', dias: 40, forma: 'efectivo', plan: true, atraso: false },
-    { c: COMPRADORES[(idx * 2 + 1) % COMPRADORES.length], origen: 'oficina_reserva', dias: 90, forma: 'manual_qr', plan: true, atraso: true },
-    { c: COMPRADORES[(idx * 2 + 2) % COMPRADORES.length], origen: 'oficina_directa', dias: 10, forma: 'efectivo', plan: false, atraso: false },
+    { c: compradorDe(idx, 0), origen: 'oficina_directa', dias: 40, forma: 'efectivo', plan: true, atraso: false },
+    { c: compradorDe(idx, 1), origen: 'oficina_reserva', dias: 90, forma: 'manual_qr', plan: true, atraso: true },
+    // Un solo comprador con dos lotes, y a propósito: en la vida real existen,
+    // y el filtro «Varios lotes» de Clientes necesita un caso que mostrar.
+    {
+      c: idx === 1 ? compradorDe(0, 2) : compradorDe(idx, 2),
+      origen: 'oficina_directa',
+      dias: 10,
+      forma: 'efectivo',
+      plan: false,
+      atraso: false,
+    },
   ];
 
   let n = 0;
