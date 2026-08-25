@@ -121,6 +121,7 @@ interface PagoHist {
   tracking_code: string;
   /** true si el pago es de un eslabón anterior de la cadena (otro comprador). */
   de_comprador_anterior: boolean;
+  buyer_phone: string | null;
   tipo: string;
   forma: string;
   amount: number;
@@ -997,6 +998,26 @@ export default function VentasClient({
                                                     className="text-xs font-semibold text-brand hover:underline"
                                                   >
                                                     Recibo
+                                                  </a>
+                                                ) : null}
+                                                {/* Mandarle ESTE recibo, sea de hoy o del mes
+                                                    pasado, sin buscar el enlace a mano. */}
+                                                {p.tiene_recibo && p.buyer_phone ? (
+                                                  <a
+                                                    href={waLink(
+                                                      p.buyer_phone,
+                                                      `Hola ${p.buyer_full_name.split(' ')[0] ?? ''}, aquí está tu recibo de ${p.tipo.toLowerCase()} por ${formatMoney(Number(p.amount), p.currency)}: ${
+                                                        typeof window === 'undefined'
+                                                          ? ''
+                                                          : window.location.origin
+                                                      }/reserva/${encodeURIComponent(p.tracking_code)}/recibo/${p.payment_id}`,
+                                                    )}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    title="Mandarle este recibo por WhatsApp"
+                                                    className="inline-flex items-center gap-1 rounded-lg bg-green-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-green-700"
+                                                  >
+                                                    <IconWhatsapp className="h-3.5 w-3.5" /> Enviar
                                                   </a>
                                                 ) : null}
                                               </div>
