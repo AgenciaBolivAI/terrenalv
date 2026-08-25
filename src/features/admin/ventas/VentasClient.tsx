@@ -723,6 +723,14 @@ export default function VentasClient({
                                       >
                                         Editar datos
                                       </button>
+                                      <a
+                                        href={`/admin/contrato/${r.reservation_id}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={btnSecondary}
+                                      >
+                                        Contrato
+                                      </a>
                                       <button
                                         type="button"
                                         className={btnSecondary}
@@ -1270,6 +1278,7 @@ function TraspasarVentaDialog({
     codigo: string;
     comision: number;
     reciboId: string | null;
+    reservationId: string | null;
   } | null>(null);
   // Venta publicada en el mercado: el precio pactado y por donde entra la
   // comision. Prefijado con lo que pedia el aviso; la oficina lo corrige al
@@ -1315,6 +1324,7 @@ function TraspasarVentaDialog({
     }
     const r = data as {
       tracking_code?: string;
+      reservation_id?: string;
       comision_bob?: number;
       comision_payment_id?: string;
     } | null;
@@ -1323,6 +1333,7 @@ function TraspasarVentaDialog({
       codigo: r?.tracking_code ?? '',
       comision: Number(r?.comision_bob ?? 0),
       reciboId: r?.comision_payment_id ?? null,
+      reservationId: r?.reservation_id ?? null,
     });
   }
 
@@ -1356,11 +1367,22 @@ function TraspasarVentaDialog({
             </p>
           ) : null}
           <p className="text-xs text-stone-500">
-            La venta anterior quedó cerrada con sus recibos intactos. Si el comprador nuevo va en
-            cuotas, creale su plan desde Contabilidad → Por cobrar.
+            La venta anterior quedó cerrada con sus recibos intactos y su contrato marcado
+            anulado. El contrato del comprador nuevo ya está listo para imprimir y firmar. Si va
+            en cuotas, creale su plan desde Contabilidad → Por cobrar.
           </p>
         </div>
-        <div className="mt-4 flex justify-end">
+        <div className="mt-4 flex justify-end gap-2">
+          {hecho.reservationId ? (
+            <a
+              href={`/admin/contrato/${hecho.reservationId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={btnSecondary}
+            >
+              Imprimir contrato nuevo
+            </a>
+          ) : null}
           <button type="button" className={btnPrimary} onClick={onDone}>
             Listo
           </button>

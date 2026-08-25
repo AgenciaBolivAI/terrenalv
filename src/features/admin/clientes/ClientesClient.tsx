@@ -1331,6 +1331,16 @@ function FichaLoteDialog({
             Ver en el mercado
           </Link>
         ) : null}
+        {esVenta || a.estado === 'cancelada' ? (
+          <a
+            href={`/admin/contrato/${a.reservation_id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={btnSecondary}
+          >
+            Contrato
+          </a>
+        ) : null}
         {esVenta ? (
           <Link href={`/admin/ventas?open=${a.reservation_id}`} className={btnSecondary}>
             Abrir en Ventas

@@ -43,6 +43,15 @@ export default async function ReciboCompradorPage({
 
       <p className="mt-4 text-center text-xs text-stone-500 print:hidden">
         Guardá este recibo. Podés volver a abrirlo cuando quieras desde tu enlace de seguimiento.
+        <span className="mx-2">·</span>
+        <a
+          href="https://bolivai.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline hover:text-stone-600"
+        >
+          Made by BolivAI
+        </a>
       </p>
     </main>
   );

@@ -62,6 +62,11 @@ export default function RegistrarCobroDialog({
   const { cuentas } = useTesoreria();
   const [cuentaId, setCuentaId] = useState('');
   const [note, setNote] = useState('');
+  // Con plan, pagar una cuota y ABONAR A CAPITAL son cosas distintas: la
+  // cuota imputa al cronograma; el abono a capital baja la deuda y rearma lo
+  // que falta — menos meses, o cuota más baja. La cajera elige.
+  const [destino, setDestino] = useState<'cuota' | 'capital'>('cuota');
+  const [recalculo, setRecalculo] = useState<'plazo' | 'cuota'>('plazo');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -88,6 +93,8 @@ export default function RegistrarCobroDialog({
       p_treasury_account_id: cuentaId || null,
       p_currency: moneda,
       p_exchange_rate: moneda === 'USD' ? tc : null,
+      p_destino: cobro.tiene_plan ? destino : null,
+      p_recalculo: cobro.tiene_plan && destino === 'capital' ? recalculo : null,
     });
     setBusy(false);
     if (err) {
@@ -100,8 +107,20 @@ export default function RegistrarCobroDialog({
       aplicado?: number;
       sobrante?: number;
       cuotas_afectadas?: number;
+      plan_recalculado?: { modo?: string; meses?: number; cuota?: number } | null;
     } | null;
-    if (r?.tipo === 'abono') {
+    const rec = r?.plan_recalculado as
+      | { modo?: string; meses?: number; cuota?: number }
+      | null
+      | undefined;
+    if (rec) {
+      push(
+        rec.modo === 'cancelado'
+          ? '¡Abono a capital! El plan quedó cancelado: no queda saldo.'
+          : `Abono a capital: quedan ${rec.meses} cuotas de ${formatMoney(Number(rec.cuota), 'BOB')}.`,
+        'success',
+      );
+    } else if (r?.tipo === 'abono') {
       push('Abono registrado.', 'success');
     } else {
       const extra =
@@ -181,9 +200,65 @@ export default function RegistrarCobroDialog({
         <p className="rounded-lg bg-stone-50 p-3 text-sm text-stone-600">
           Saldo actual <strong>{formatMoney(cobro.saldo, cobro.currency)}</strong>.{' '}
           {cobro.tiene_plan
-            ? 'El pago se aplica desde la cuota más vieja hacia adelante.'
+            ? 'Elegí abajo si este pago va a las cuotas o al capital.'
             : 'Esta venta no tiene plan de cuotas: el pago entra como abono y baja el saldo.'}
         </p>
+        {cobro.tiene_plan ? (
+          <div className="space-y-2 rounded-lg border border-stone-200 p-3">
+            <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+              ¿Qué está pagando?
+            </p>
+            <label className="flex cursor-pointer items-start gap-2 text-sm">
+              <input
+                type="radio"
+                checked={destino === 'cuota'}
+                onChange={() => setDestino('cuota')}
+                className="mt-1"
+              />
+              <span>
+                <strong>Su cuota del mes</strong>
+                <span className="block text-xs text-stone-500">
+                  Se aplica desde la cuota más vieja hacia adelante.
+                </span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2 text-sm">
+              <input
+                type="radio"
+                checked={destino === 'capital'}
+                onChange={() => setDestino('capital')}
+                className="mt-1"
+              />
+              <span>
+                <strong>Abono a capital</strong>
+                <span className="block text-xs text-stone-500">
+                  Adelanta plata: baja la deuda y el plan se rearma.
+                </span>
+              </span>
+            </label>
+            {destino === 'capital' ? (
+              <div className="ml-6 space-y-1.5 border-l-2 border-stone-200 pl-3">
+                <p className="text-xs font-semibold text-stone-600">Con el abono, el comprador:</p>
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    checked={recalculo === 'plazo'}
+                    onChange={() => setRecalculo('plazo')}
+                  />
+                  <span>Termina antes — misma cuota, menos meses</span>
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    checked={recalculo === 'cuota'}
+                    onChange={() => setRecalculo('cuota')}
+                  />
+                  <span>Paga menos por mes — mismo plazo, cuota más baja</span>
+                </label>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs text-stone-500">Monto</label>

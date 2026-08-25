@@ -175,6 +175,15 @@ export interface ReservationStatusPayload {
     proof_submitted_at: string | null;
   } | null;
   payment_instructions: PaymentInstructionsSetting | null;
+  /** Pagos aprobados con recibo, para volver a abrirlos desde el enlace. */
+  recibos: {
+    payment_id: string;
+    fecha: string;
+    tipo: string;
+    amount: number;
+    currency: 'USD' | 'BOB';
+    amount_bob: number;
+  }[];
 }
 
 export interface CreateReservationPayload {

@@ -44,7 +44,13 @@ export function Recibo({ r, emitidoPor }: { r: ReciboData; emitidoPor?: string }
           </p>
         </div>
         <div className="text-right">
-          <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">Recibo</p>
+          <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+            {r.purpose === 'reserva'
+              ? 'Recibo de reserva'
+              : r.purpose === 'comision'
+                ? 'Recibo \u2014 mercado de traspasos'
+                : 'Recibo de venta'}
+          </p>
           <p className="font-mono text-sm font-bold text-stone-900">{r.reference_code}</p>
           <p className="mt-1 text-xs text-stone-500">{laPaz(r.verified_at ?? r.created_at)}</p>
         </div>

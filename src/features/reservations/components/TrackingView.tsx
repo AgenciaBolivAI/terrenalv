@@ -18,6 +18,7 @@ import { PaymentSection } from './PaymentSection';
 import { ProofUploader } from './ProofUploader';
 import { CancelReservation } from './CancelReservation';
 import { MiPublicacion } from '@/features/market/MiPublicacion';
+import { MiPlanDePago } from '@/features/payments/MiPlanDePago';
 
 const MAP_URL = '/prados-del-sur/mapa';
 
@@ -213,6 +214,42 @@ export function TrackingView({
             </p>
           </section>
           <SummaryFromStatus data={data} />
+
+          {/* Cuánto lleva pagado, cuánto le falta y cuándo vence lo próximo:
+              la pregunta que la oficina contesta veinte veces por día. */}
+          <MiPlanDePago code={data.tracking_code} />
+
+          {/* Sus papeles: el contrato y cada recibo, sin pedirlos a oficina. */}
+          <div className="rounded-2xl border border-stone-200 bg-white p-4">
+            <p className="text-sm font-bold text-stone-900">Mis documentos</p>
+            <Link
+              href={`/reserva/${encodeURIComponent(data.tracking_code)}/contrato`}
+              className="mt-2 block w-full rounded-xl border border-brand px-4 py-3 text-center text-sm font-bold text-brand active:bg-green-50"
+            >
+              Ver mi contrato
+            </Link>
+            {(data.recibos ?? []).length > 0 ? (
+              <ul className="mt-3 divide-y divide-stone-100 border-t border-stone-100">
+                {(data.recibos ?? []).map((rc) => (
+                  <li key={rc.payment_id}>
+                    <Link
+                      href={`/reserva/${encodeURIComponent(data.tracking_code)}/recibo/${rc.payment_id}`}
+                      className="flex items-center justify-between gap-2 py-2 text-sm"
+                    >
+                      <span className="text-stone-600">
+                        {rc.tipo} · {rc.fecha}
+                      </span>
+                      <span className="font-semibold tabular-nums text-stone-900">
+                        {formatMoney(rc.amount, rc.currency)}
+                      </span>
+                      <span className="text-xs font-bold text-brand">Recibo →</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+
           <MiPublicacion code={data.tracking_code} />
           <div className="rounded-2xl border border-stone-200 bg-white p-4 text-center">
             <p className="text-sm text-stone-600">Guarda tu código:</p>

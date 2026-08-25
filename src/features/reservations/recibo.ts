@@ -97,22 +97,28 @@ export async function cargarRecibo(
   // pantalla de Ventas — y el comprador se lleva el papel.
   const { data: venta } = await supabase
     .from('v_ventas')
-    .select('cobrado_aqui, saldo')
+    .select('pagado_total, saldo')
     .eq('reservation_id', pay.reservation_id)
     .maybeSingle();
 
   let pagadoTotal: number;
   let saldo: number;
   if (venta) {
-    pagadoTotal = Number((venta as { cobrado_aqui: number }).cobrado_aqui);
+    // pagado_total: lo del sistema anterior MÁS lo cobrado acá — la misma
+    // cifra que la pantalla de Ventas. Antes decía solo lo de acá y a un
+    // migrado el recibo le negaba la mitad de su historia.
+    pagadoTotal = Number((venta as { pagado_total: number }).pagado_total);
     saldo = Number((venta as { saldo: number }).saldo);
   } else {
-    // Reserva aún no confirmada (o cancelada): cuenta simple en Bs.
+    // Reserva aún no confirmada (o cancelada, p.ej. la vieja de un
+    // traspaso): solo cuota y abono pagan lote — ni la seña ni la comisión
+    // del mercado inflan el «pagado» de un recibo histórico.
     const { data: todos } = await supabase
       .from('payments')
       .select('amount_bob')
       .eq('reservation_id', pay.reservation_id)
-      .eq('status', 'aprobado');
+      .eq('status', 'aprobado')
+      .in('purpose', ['cuota', 'abono']);
     pagadoTotal = (todos ?? []).reduce((s, p) => s + Number(p.amount_bob ?? 0), 0);
     saldo = Math.max(0, Number(res.price_agreed) - pagadoTotal);
   }

@@ -22,6 +22,7 @@ import { Badge, EmptyState, Spinner, btnPrimary, btnSecondary, inputClass } from
 import { Dialog } from '@/features/admin/ui/dialog';
 import { IconChevronLeft } from '@/features/admin/ui/icons';
 import { useToast } from '@/features/admin/ui/toast';
+import { CuentaSelect, useTesoreria } from '@/features/admin/contabilidad/Tesoreria';
 import CategoryPrices from './CategoryPrices';
 
 interface Manzana {
@@ -56,6 +57,7 @@ interface MzSummary {
 
 interface LotRow {
   id: string;
+  project_id: string;
   manzana_id: string;
   number: string;
   status: LotStatus;
@@ -135,7 +137,7 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
   const [reserveLot, setReserveLot] = useState<LotRow | null>(null);
 
   const LOT_COLUMNS =
-    'id, manzana_id, number, status, category_id, frontage_m, depth_m, area_m2, price_override, active_reservation_id, needs_review, state';
+    'id, project_id, manzana_id, number, status, category_id, frontage_m, depth_m, area_m2, price_override, active_reservation_id, needs_review, state';
 
   /** Tracking codes for whatever lots are currently loaded. */
   const loadResCodes = useCallback(
@@ -1340,6 +1342,34 @@ function SellOfflineDialog({
   const [forma, setForma] = useState<'efectivo' | 'manual_qr' | 'banco_ganadero' | 'bnb'>(
     'efectivo',
   );
+  // La clasificacion de la venta desde el arranque: contado o credito, en que
+  // moneda entro la plata y a que cuenta — lo mismo que pregunta el cobro.
+  const [modalidad, setModalidad] = useState<'contado' | 'credito'>('contado');
+  const [moneda, setMoneda] = useState<'BOB' | 'USD'>('BOB');
+  const [cambio, setCambio] = useState('');
+  const [precio, setPrecio] = useState(defaultPrice != null ? String(defaultPrice) : '');
+  const { cuentas } = useTesoreria();
+  const [cuentaId, setCuentaId] = useState('');
+  // El plan de pago se decide ACA, en el mostrador: plazo, cuota y primer
+  // vencimiento. Antes la venta a credito nacia sin cronograma y habia que ir
+  // a Contabilidad a crearlo — y si nadie iba, la cobranza no existia.
+  const [conPlan, setConPlan] = useState(true);
+  const [meses, setMeses] = useState('12');
+  const [cuota, setCuota] = useState('');
+  const [primerVenc, setPrimerVenc] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1);
+    return d.toISOString().slice(0, 10);
+  });
+  useEffect(() => {
+    let vivo = true;
+    void supabase.rpc('get_exchange_rate', { p_project_id: lot.project_id }).then(({ data }) => {
+      if (vivo && data != null) setCambio(String(data));
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [supabase, lot.project_id]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1364,6 +1394,29 @@ function SellOfflineDialog({
       setError('Monto inválido.');
       return;
     }
+    const precioNum = precio.trim() === '' ? null : Number(precio);
+    if (precioNum !== null && !(precioNum > 0)) {
+      setError('El precio pactado debe ser mayor a cero.');
+      return;
+    }
+    const tc = Number(cambio);
+    if (moneda === 'USD' && !(tc >= 1 && tc <= 100)) {
+      setError('Revisa el tipo de cambio: Bs por $us (ej. 6.96).');
+      return;
+    }
+    const llevaPlan = modalidad === 'credito' && conPlan;
+    const mesesNum = Number(meses);
+    const cuotaNum = Number(cuota);
+    if (llevaPlan) {
+      if (!(mesesNum >= 1 && mesesNum <= 480)) {
+        setError('El plazo va de 1 a 480 meses.');
+        return;
+      }
+      if (!(cuotaNum > 0)) {
+        setError('Escribe la cuota mensual.');
+        return;
+      }
+    }
     setBusy(true);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) {
       setError('Escribe el correo del comprador: por ahí le llega su venta y sus recibos.');
@@ -1379,14 +1432,27 @@ function SellOfflineDialog({
       p_provider: forma,
       p_amount: monto,
       p_note: note.trim() || null,
+      p_modalidad: modalidad,
+      p_currency: moneda,
+      p_exchange_rate: moneda === 'USD' ? tc : null,
+      p_treasury_account_id: cuentaId || null,
+      p_price: precioNum,
+      p_plan_months: llevaPlan ? mesesNum : null,
+      p_plan_monthly: llevaPlan ? cuotaNum : null,
+      p_plan_first_due: llevaPlan ? primerVenc : null,
     });
     setBusy(false);
     if (err) {
       setError(adminErrorCopy(err.message));
       return;
     }
-    const code = (data as { tracking_code?: string } | null)?.tracking_code;
-    push(`Lote vendido en oficina${code ? ` — código ${code}` : ''}.`, 'success');
+    const r = data as { tracking_code?: string; plan_id?: string | null } | null;
+    push(
+      `Lote vendido en oficina${r?.tracking_code ? ` — código ${r.tracking_code}` : ''}${
+        r?.plan_id ? ` · plan de ${mesesNum} cuotas creado` : ''
+      }.`,
+      'success',
+    );
     onSold();
   }
 
@@ -1400,6 +1466,56 @@ function SellOfflineDialog({
           <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Celular" inputMode="tel" className={inputClass} />
         </div>
         <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Correo del comprador" inputMode="email" className={inputClass} />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Modalidad</label>
+            <select
+              value={modalidad}
+              onChange={(e) => setModalidad(e.target.value as typeof modalidad)}
+              className={inputClass}
+            >
+              <option value="contado">Contado — paga el lote entero</option>
+              <option value="credito">Crédito — entrega cuota inicial</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Moneda del pago</label>
+            <select
+              value={moneda}
+              onChange={(e) => setMoneda(e.target.value as typeof moneda)}
+              className={inputClass}
+            >
+              <option value="BOB">Bolivianos (Bs)</option>
+              <option value="USD">Dólares ($us)</option>
+            </select>
+          </div>
+        </div>
+        {moneda === 'USD' ? (
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Tipo de cambio del día (Bs por $us)</label>
+            <input
+              type="number"
+              min={1}
+              step="0.01"
+              value={cambio}
+              onChange={(e) => setCambio(e.target.value)}
+              className={inputClass}
+            />
+          </div>
+        ) : null}
+        <div>
+          <label className="mb-1 block text-xs text-stone-500">
+            Precio pactado (Bs) — vacío usa el de lista
+          </label>
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            value={precio}
+            onChange={(e) => setPrecio(e.target.value)}
+            className={inputClass}
+          />
+        </div>
         <div>
           <label className="mb-1 block text-xs text-stone-500">Forma de pago</label>
           <select
@@ -1419,10 +1535,109 @@ function SellOfflineDialog({
         </div>
         <div>
           <label className="mb-1 block text-xs text-stone-500">
-            Monto cobrado ({currency === 'BOB' ? 'Bs' : '$us'}) — vacío usa el precio del lote
+            {modalidad === 'contado'
+              ? `Monto cobrado (${moneda === 'BOB' ? 'Bs' : '$us'}) — vacío usa el precio`
+              : `Cuota inicial cobrada (${moneda === 'BOB' ? 'Bs' : '$us'})`}
           </label>
           <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className={inputClass} />
+          {modalidad === 'credito' ? (
+            <p className="mt-1 text-[11px] text-stone-400">
+              El saldo queda por cobrar; el plan de cuotas se crea después desde Contabilidad.
+            </p>
+          ) : null}
         </div>
+        <CuentaSelect
+          cuentas={cuentas}
+          value={cuentaId}
+          onChange={setCuentaId}
+          label="Depositado en"
+          monto={Number(amount) || 0}
+          signo={1}
+        />
+        {modalidad === 'credito' ? (
+          <div className="space-y-3 rounded-lg border border-brand/30 bg-green-50/50 p-3">
+            <label className="flex items-center gap-2 text-sm font-semibold text-stone-800">
+              <input
+                type="checkbox"
+                checked={conPlan}
+                onChange={(e) => setConPlan(e.target.checked)}
+                className="h-4 w-4"
+              />
+              Armar el plan de cuotas ahora
+            </label>
+            {conPlan ? (
+              <>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs text-stone-500">Plazo (meses)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={480}
+                      value={meses}
+                      onChange={(e) => setMeses(e.target.value)}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-stone-500">Cuota mensual (Bs)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={cuota}
+                      onChange={(e) => setCuota(e.target.value)}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-stone-500">Primer vencimiento</label>
+                    <input
+                      type="date"
+                      value={primerVenc}
+                      onChange={(e) => setPrimerVenc(e.target.value)}
+                      className={inputClass}
+                    />
+                  </div>
+                </div>
+                {(() => {
+                  const precioBase =
+                    (precio.trim() === '' ? defaultPrice ?? 0 : Number(precio)) || 0;
+                  const inicialBs =
+                    (Number(amount) || 0) * (moneda === 'USD' ? Number(cambio) || 0 : 1);
+                  const financiar = Math.max(0, precioBase - inicialBs);
+                  const m = Number(meses) || 0;
+                  const sugerida = m > 0 ? Math.ceil((financiar / m) * 100) / 100 : 0;
+                  return (
+                    <p className="text-xs text-stone-600">
+                      Queda por financiar{' '}
+                      <strong className="tabular-nums">{formatMoney(financiar, 'BOB')}</strong>.
+                      {m > 0 ? (
+                        <>
+                          {' '}
+                          En {m} cuotas serían{' '}
+                          <button
+                            type="button"
+                            className="font-semibold text-brand underline"
+                            onClick={() => setCuota(String(sugerida))}
+                          >
+                            {formatMoney(sugerida, 'BOB')} al mes
+                          </button>
+                          .
+                        </>
+                      ) : null}
+                    </p>
+                  );
+                })()}
+              </>
+            ) : (
+              <p className="text-xs text-stone-500">
+                Sin plan: el saldo queda por cobrar y el comprador abona cuando puede. El plan se
+                puede crear después desde Contabilidad.
+              </p>
+            )}
+          </div>
+        ) : null}
         <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Nota (ej. pago en efectivo en oficina)" rows={2} className={inputClass} />
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
       </div>

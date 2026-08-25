@@ -186,6 +186,10 @@ function SectionHead({
   );
 }
 
+// Webmail del equipo (cPanel). El enlace lo entrega el cliente; hasta
+// entonces queda null y el pie no muestra nada — no se inventan URLs.
+const WEBMAIL_URL: string | null = null;
+
 export default async function Home() {
   // Independent sources: a slow or missing Instagram feed must not hold up the
   // live figures, and neither one failing can take the other down.
@@ -768,6 +772,16 @@ export default async function Home() {
               </a>
             </p>
             <p className="mt-1">
+              {WEBMAIL_URL ? (
+                <a
+                  className="underline hover:text-white"
+                  href={WEBMAIL_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Correo del equipo
+                </a>
+              ) : null}
               <Link className="underline hover:text-white" href="/reserva">
                 Consultar mi reserva
               </Link>

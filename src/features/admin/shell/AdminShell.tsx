@@ -53,7 +53,7 @@ const NAV: NavItem[] = [
   // registra el cobro, acá se ve el cronograma que ese cobro va tachando. El
   // icono es el ciclo de IconRotate — una cuota que vuelve cada mes — y no se
   // repite en ninguna otra entrada de la barra.
-  { href: '/admin/planes', label: 'Planes', icon: IconRotate, roles: ['admin', 'contabilidad'] },
+  { href: '/admin/planes', label: 'Planes de pago', icon: IconRotate, roles: ['admin', 'contabilidad'] },
   { href: '/admin/analitica', label: 'Analítica', icon: IconChart, roles: ['admin', 'contabilidad'] },
   { href: '/admin/mapa', label: 'Mapa', icon: IconMap, roles: ['admin'] },
   { href: '/admin/proyectos', label: 'Urbanizaciones', icon: IconLayers, roles: ['admin'] },

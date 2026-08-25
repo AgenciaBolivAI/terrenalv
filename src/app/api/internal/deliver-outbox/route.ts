@@ -13,6 +13,7 @@ import BuyerReservaConfirmada from '../../../../../emails/BuyerReservaConfirmada
 import BuyerComprobanteRechazado from '../../../../../emails/BuyerComprobanteRechazado';
 import BuyerReservaExpirada from '../../../../../emails/BuyerReservaExpirada';
 import GenericNotification from '../../../../../emails/GenericNotification';
+import BuyerRecibo from '../../../../../emails/BuyerRecibo';
 
 export const runtime = 'nodejs';
 
@@ -169,6 +170,27 @@ async function buildEmail(
           baseUrl: base,
         }),
       };
+    case 'buyer_recibo': {
+      const payId = typeof p.payment_id === 'string' ? p.payment_id : null;
+      return {
+        subject: `Tu recibo — ${(p.tipo as string) ?? 'pago'} ${code}`,
+        react: createElement(BuyerRecibo, {
+          tracking_code: code,
+          tipo: (p.tipo as string) ?? 'Venta',
+          referencia: (p.referencia as string) ?? null,
+          monto: (p.monto as number) ?? null,
+          moneda: (p.moneda as string) ?? 'BOB',
+          monto_bob: (p.monto_bob as number) ?? null,
+          manzana: (p.manzana as string) ?? null,
+          lote: (p.lote as string) ?? null,
+          reciboUrl:
+            code !== '\u2014' && payId
+              ? `${base}/reserva/${encodeURIComponent(code)}/recibo/${payId}`
+              : null,
+          baseUrl: base,
+        }),
+      };
+    }
     case 'buyer_reserva_expirada':
       return {
         subject: `Tu reserva ${code} expiró — Prados del Sur`,

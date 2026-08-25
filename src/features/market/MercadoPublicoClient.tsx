@@ -24,6 +24,7 @@ interface Aviso {
   note: string | null;
   publicada: string;
   fee_pct: number;
+  tipo: 'traspaso' | 'venta';
 }
 
 export function MercadoPublicoClient() {
@@ -82,9 +83,20 @@ export function MercadoPublicoClient() {
               key={a.listing_id}
               className="flex flex-col rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"
             >
-              <p className="text-xs font-semibold tracking-wide text-brand uppercase">
-                {a.proyecto}
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold tracking-wide text-brand uppercase">
+                  {a.proyecto}
+                </p>
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase ${
+                    a.tipo === 'traspaso'
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-green-100 text-green-800'
+                  }`}
+                >
+                  {a.tipo === 'traspaso' ? 'Traspaso — en pagos' : 'Venta — lote pagado'}
+                </span>
+              </div>
               <h2 className="mt-1 text-lg font-extrabold text-stone-900">
                 Manzana {a.manzana ?? '—'} · Lote {a.lote ?? '—'}
               </h2>
@@ -94,15 +106,23 @@ export function MercadoPublicoClient() {
 
               <dl className="mt-3 space-y-1.5 text-sm">
                 <div className="flex justify-between">
-                  <dt className="text-stone-500">Pide el vendedor</dt>
-                  <dd className="font-bold tabular-nums text-stone-900">
+                  <dt className="text-stone-500">Le pagas al vendedor</dt>
+                  <dd className="font-semibold tabular-nums text-stone-900">
                     {formatMoney(Number(a.asking_price_bob), 'BOB')}
                   </dd>
                 </div>
-                <div className="flex justify-between">
-                  <dt className="text-stone-500">Saldo a asumir con Terrenalv</dt>
-                  <dd className="font-semibold tabular-nums text-stone-700">
-                    {formatMoney(Number(a.saldo_a_asumir), 'BOB')}
+                {a.tipo === 'traspaso' ? (
+                  <div className="flex justify-between">
+                    <dt className="text-stone-500">Saldo que asumes con Terrenalv</dt>
+                    <dd className="font-semibold tabular-nums text-stone-700">
+                      {formatMoney(Number(a.saldo_a_asumir), 'BOB')}
+                    </dd>
+                  </div>
+                ) : null}
+                <div className="flex justify-between border-t border-stone-100 pt-1.5">
+                  <dt className="font-semibold text-stone-700">Costo total para ti</dt>
+                  <dd className="font-bold tabular-nums text-brand">
+                    {formatMoney(Number(a.asking_price_bob) + Number(a.saldo_a_asumir), 'BOB')}
                   </dd>
                 </div>
                 <div className="flex justify-between">
@@ -112,6 +132,11 @@ export function MercadoPublicoClient() {
                   </dd>
                 </div>
               </dl>
+              <p className="mt-2 text-xs text-stone-500">
+                {a.tipo === 'traspaso'
+                  ? 'La compra está en curso: recibes lo ya pagado a tu favor y sigues pagando el saldo a Terrenalv.'
+                  : 'El lote está pagado por completo: el traspaso te deja como nuevo titular, sin deuda.'}
+              </p>
 
               {a.note ? <p className="mt-3 text-sm text-stone-600">«{a.note}»</p> : null}
 
@@ -136,10 +161,15 @@ export function MercadoPublicoClient() {
           <li>Dejas tu nombre y celular en el lote que te interesa.</li>
           <li>El vendedor y la oficina se contactan contigo y acuerdan el precio.</li>
           <li>
-            El traspaso se firma en la oficina de Terrenalv: tú asumes el saldo del lote y lo ya
-            pagado queda a tu favor.
+            El traspaso se firma en la oficina de Terrenalv, con contrato nuevo a tu nombre.
           </li>
         </ol>
+        <p className="mt-3 text-xs text-stone-600">
+          <strong>Traspaso — en pagos:</strong> la compra está en curso; le pagas al vendedor lo
+          suyo, lo ya pagado queda a tu favor y asumes el saldo con Terrenalv.{' '}
+          <strong>Venta — lote pagado:</strong> el lote está cancelado por completo; le compras al
+          dueño y no asumes ninguna deuda.
+        </p>
         <p className="mt-3 text-xs text-stone-500">
           La venta por el mercado paga a Terrenalv una comisión sobre el precio de venta (la cubre
           el vendedor). Un traspaso directo — sin publicar acá — no paga comisión. Terrenalv es
