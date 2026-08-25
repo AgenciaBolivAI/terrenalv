@@ -403,6 +403,47 @@ export default function ReservationDetail({ row, role, waTemplates, onClose, onN
               ) : null}
             </div>
 
+            {/* Recibo — aparece en cuanto el pago está aprobado, que es
+                justo cuando el comprador lo pide. Antes sólo se llegaba desde
+                Contabilidad, o sea cambiando de sección y buscando al cliente
+                a mano. */}
+            {payment?.status === 'aprobado' ? (
+              <div className="rounded-xl border border-brand-light/40 bg-green-50/60 p-3">
+                <p className="text-xs font-semibold tracking-wide text-stone-600 uppercase">
+                  Recibo
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <a
+                    href={`/admin/recibo/${payment.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={btnSecondary}
+                  >
+                    Ver / imprimir
+                  </a>
+                  <a
+                    href={waLink(
+                      row.buyer_phone,
+                      `Hola ${row.buyer_full_name}, aquí está el recibo de tu pago ` +
+                        `de ${formatMoney(payment.amount_bob, 'BOB')} por el lote ` +
+                        `${row.lot?.number ?? '—'} de la manzana ${row.lot?.manzana?.code ?? '—'}: ` +
+                        `${typeof window === 'undefined' ? '' : window.location.origin}` +
+                        `/reserva/${row.tracking_code}/recibo/${payment.id}`,
+                    )}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={btnPrimary}
+                  >
+                    Enviar por WhatsApp
+                  </a>
+                </div>
+                <p className="mt-2 text-[11px] text-stone-500">
+                  El enlace abre el recibo con el código de la reserva, así que el comprador lo
+                  ve sin necesidad de cuenta — y sólo el suyo.
+                </p>
+              </div>
+            ) : null}
+
             {/* Approve / Reject */}
             {reviewable ? (
               <div className="grid grid-cols-2 gap-2">

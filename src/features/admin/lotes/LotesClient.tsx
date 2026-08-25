@@ -1334,6 +1334,12 @@ function SellOfflineDialog({
   const [email, setEmail] = useState('');
   const [amount, setAmount] = useState(defaultPrice != null ? String(defaultPrice) : '');
   const [note, setNote] = useState('');
+  // Cómo pagó: antes iba 'manual_qr' escrito a mano en la base, y este flujo
+  // crea el pago YA APROBADO — entraba al libro con la vía equivocada sin que
+  // nadie lo revisara.
+  const [forma, setForma] = useState<'efectivo' | 'manual_qr' | 'banco_ganadero' | 'bnb'>(
+    'efectivo',
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1359,12 +1365,18 @@ function SellOfflineDialog({
       return;
     }
     setBusy(true);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) {
+      setError('Escribe el correo del comprador: por ahí le llega su venta y sus recibos.');
+      return;
+    }
+
     const { data, error: err } = await supabase.rpc('mark_sold_offline', {
       p_lot_id: lot.id,
       p_full_name: name.trim(),
       p_ci: ci.trim(),
       p_phone: phone.trim(),
-      p_email: email.trim() || null,
+      p_email: email.trim(),
+      p_provider: forma,
       p_amount: monto,
       p_note: note.trim() || null,
     });
@@ -1387,7 +1399,24 @@ function SellOfflineDialog({
           <input value={ci} onChange={(e) => setCi(e.target.value)} placeholder="Carnet (CI)" className={inputClass} />
           <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Celular" inputMode="tel" className={inputClass} />
         </div>
-        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Correo (opcional)" inputMode="email" className={inputClass} />
+        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Correo del comprador" inputMode="email" className={inputClass} />
+        <div>
+          <label className="mb-1 block text-xs text-stone-500">Forma de pago</label>
+          <select
+            value={forma}
+            onChange={(e) => setForma(e.target.value as typeof forma)}
+            className={inputClass}
+          >
+            <option value="efectivo">Efectivo</option>
+            <option value="manual_qr">QR / transferencia</option>
+            <option value="banco_ganadero">Banco Ganadero</option>
+            <option value="bnb">BNB</option>
+          </select>
+          <p className="mt-1 text-[11px] text-stone-400">
+            Queda registrada desde el arranque: el efectivo hay que arquearlo, el QR tiene que
+            aparecer en el extracto.
+          </p>
+        </div>
         <div>
           <label className="mb-1 block text-xs text-stone-500">
             Monto cobrado ({currency === 'BOB' ? 'Bs' : '$us'}) — vacío usa el precio del lote
@@ -1438,6 +1467,12 @@ function ReserveDialog({
   const [email, setEmail] = useState('');
   const [hours, setHours] = useState('');
   const [note, setNote] = useState('');
+  // Cómo pagó. Antes iba escrito 'manual_qr' en la base para TODA venta de
+  // oficina, así que el efectivo aparecía como plata que debía estar en el
+  // extracto del banco. Se pregunta acá, que es cuando se sabe.
+  const [forma, setForma] = useState<'efectivo' | 'manual_qr' | 'banco_ganadero' | 'bnb'>(
+    'efectivo',
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1455,6 +1490,13 @@ function ReserveDialog({
       setError('Celular boliviano inválido (8 dígitos, empieza con 6 o 7).');
       return;
     }
+    // El correo deja de ser opcional: es por donde le llega al comprador la
+    // confirmación y el enlace a su reserva, y sin él la única vía de contacto
+    // es el celular que alguien tecleó a mano.
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) {
+      setError('Escribe el correo del comprador: por ahí le llega su reserva y sus recibos.');
+      return;
+    }
     const h = hours.trim() === '' ? null : Number(hours);
     if (h !== null && (!Number.isInteger(h) || h < 1 || h > 720)) {
       setError('El plazo debe ser un número entero de 1 a 720 horas.');
@@ -1467,9 +1509,10 @@ function ReserveDialog({
       p_full_name: name.trim(),
       p_ci: ci.trim(),
       p_phone: phone.trim(),
-      p_email: email.trim() || null,
+      p_email: email.trim(),
       p_hours: h,
       p_note: note.trim() || null,
+      p_provider: forma,
     });
     setBusy(false);
     if (err) {
@@ -1516,10 +1559,28 @@ function ReserveDialog({
         <input
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="Correo (opcional)"
+          placeholder="Correo del comprador"
           inputMode="email"
           className={inputClass}
         />
+        <div>
+          <label className="mb-1 block text-xs text-stone-500">Forma de pago</label>
+          <select
+            value={forma}
+            onChange={(e) => setForma(e.target.value as typeof forma)}
+            className={inputClass}
+          >
+            <option value="efectivo">Efectivo</option>
+            <option value="manual_qr">QR / transferencia</option>
+            <option value="banco_ganadero">Banco Ganadero</option>
+            <option value="bnb">BNB</option>
+          </select>
+          <p className="mt-1 text-[11px] text-stone-400">
+            Queda registrada desde el arranque: el efectivo hay que arquearlo, el QR tiene que
+            aparecer en el extracto.
+          </p>
+        </div>
+
         <div>
           <label className="mb-1 block text-xs text-stone-500">
             Plazo en horas — vacío usa el del proyecto (48 h)
