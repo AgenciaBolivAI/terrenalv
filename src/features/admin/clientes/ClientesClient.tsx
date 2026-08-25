@@ -15,7 +15,18 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { formatMoney, waLink } from '@/lib/format';
-import { Badge, EmptyState, Kpi, Spinner, btnSecondary, inputClass } from '@/features/admin/ui/bits';
+import {
+  Badge,
+  EmptyState,
+  Kpi,
+  Spinner,
+  btnPrimary,
+  btnSecondary,
+  inputClass,
+} from '@/features/admin/ui/bits';
+import { Dialog } from '@/features/admin/ui/dialog';
+import { useToast } from '@/features/admin/ui/toast';
+import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
 import { IconWhatsapp } from '@/features/admin/ui/icons';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
 import { num as fnum, type Cell as XCell } from '@/features/admin/export';
@@ -42,6 +53,11 @@ interface Cliente {
   monto_vencido: number;
   primera_actividad: string;
   ultima_actividad: string | null;
+  comisiones_pagadas: number;
+  avisos_mercado: number;
+  avisos_activos: number;
+  vendidos_mercado: number;
+  vendido_mercado_bob: number;
 }
 
 interface Actividad {
@@ -63,6 +79,29 @@ interface Actividad {
   pagado_total: number | null;
   saldo: number | null;
   con_plan: boolean | null;
+  comprada_en_mercado: boolean;
+  precio_mercado: number | null;
+  vendida_en_mercado: boolean;
+}
+
+interface AvisoCliente {
+  listing_id: string;
+  status: 'activa' | 'pausada' | 'cerrada';
+  asking_price_bob: number;
+  note: string | null;
+  publicada: string;
+  closed_reason: string | null;
+  sale_price_bob: number | null;
+  fee_pct: number;
+  fee_bob: number | null;
+  fee_payment_id: string | null;
+  tracking_code: string;
+  proyecto: string;
+  manzana: string | null;
+  lote: string | null;
+  consultas: number;
+  vendido_a: string | null;
+  vendido_a_tracking: string | null;
 }
 
 interface Pago {
@@ -105,7 +144,7 @@ const PAGO_BADGE: Record<string, string> = {
   cancelado: 'bg-stone-200 text-stone-600',
 };
 
-type Filtro = 'todos' | 'con_saldo' | 'en_mora' | 'con_reservas' | 'varios_lotes';
+type Filtro = 'todos' | 'con_saldo' | 'en_mora' | 'con_reservas' | 'varios_lotes' | 'en_mercado';
 
 const CHIPS: { id: Filtro; label: string }[] = [
   { id: 'todos', label: 'Todos' },
@@ -113,6 +152,7 @@ const CHIPS: { id: Filtro; label: string }[] = [
   { id: 'en_mora', label: 'En mora' },
   { id: 'con_reservas', label: 'Con reservas en curso' },
   { id: 'varios_lotes', label: 'Varios lotes' },
+  { id: 'en_mercado', label: 'En el mercado' },
 ];
 
 export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) {
@@ -122,9 +162,12 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
   const [query, setQuery] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('todos');
 
+  const { push } = useToast();
   const [abierto, setAbierto] = useState<string | null>(null);
   const [actividad, setActividad] = useState<Actividad[] | null>(null);
   const [pagos, setPagos] = useState<Pago[] | null>(null);
+  const [mercado, setMercado] = useState<AvisoCliente[] | null>(null);
+  const [editar, setEditar] = useState<Cliente | null>(null);
   const abiertoRef = useRef<string | null>(null);
   abiertoRef.current = abierto;
   const detailRef = useRef<HTMLTableRowElement | null>(null);
@@ -161,7 +204,8 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
       setAbierto(ci);
       setActividad(null);
       setPagos(null);
-      const [a, p] = await Promise.all([
+      setMercado(null);
+      const [a, p, m] = await Promise.all([
         supabase
           .from('v_cliente_actividad')
           .select('*')
@@ -172,10 +216,16 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
           .select('*')
           .eq('ci_norm', ci)
           .order('created_at', { ascending: false }),
+        supabase
+          .from('v_cliente_mercado')
+          .select('*')
+          .eq('ci_norm', ci)
+          .order('publicada', { ascending: false }),
       ]);
       if (abiertoRef.current !== ci) return;
       setActividad((a.data ?? []) as Actividad[]);
       setPagos((p.data ?? []) as unknown as Pago[]);
+      setMercado((m.data ?? []) as AvisoCliente[]);
     },
     [supabase],
   );
@@ -218,6 +268,11 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
       if (filtro === 'en_mora' && !(Number(r.cuotas_vencidas) > 0)) return false;
       if (filtro === 'con_reservas' && !(Number(r.lotes_reservados) > 0)) return false;
       if (filtro === 'varios_lotes' && !(Number(r.lotes_comprados) > 1)) return false;
+      if (
+        filtro === 'en_mercado' &&
+        !(Number(r.avisos_activos) > 0 || Number(r.vendidos_mercado) > 0)
+      )
+        return false;
       if (!q) return true;
       return (
         r.buyer_full_name.toLowerCase().includes(q) ||
@@ -439,6 +494,13 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
                             >
                               <IconWhatsapp className="h-4 w-4" /> WhatsApp
                             </a>
+                            <button
+                              type="button"
+                              className={btnSecondary}
+                              onClick={() => setEditar(r)}
+                            >
+                              Editar perfil
+                            </button>
                             {(r.traspasos_cedidos > 0 || r.traspasos_recibidos > 0) && (
                               <span className="text-xs text-stone-500">
                                 {r.traspasos_recibidos > 0
@@ -449,6 +511,18 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
                                   : ''}
                               </span>
                             )}
+                            {Number(r.avisos_activos) > 0 ? (
+                              <Badge className="bg-green-100 text-green-800">
+                                {r.avisos_activos} aviso(s) en el mercado
+                              </Badge>
+                            ) : null}
+                            {Number(r.vendidos_mercado) > 0 ? (
+                              <span className="text-xs text-stone-500">
+                                Vendió {r.vendidos_mercado} lote(s) por el mercado por{' '}
+                                {formatMoney(Number(r.vendido_mercado_bob), 'BOB')} · comisiones
+                                pagadas {formatMoney(Number(r.comisiones_pagadas), 'BOB')}.
+                              </span>
+                            ) : null}
                           </div>
 
                           <div className="grid gap-4 lg:grid-cols-2">
@@ -506,9 +580,21 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
                                           </>
                                         ) : null}
                                         {a.cedida_por_traspaso
-                                          ? ` · cedida (${a.cedida_a_tracking ?? '—'})`
+                                          ? ` · ${
+                                              a.vendida_en_mercado
+                                                ? 'vendida por el mercado'
+                                                : 'cedida'
+                                            } (${a.cedida_a_tracking ?? '—'})`
                                           : ''}
-                                        {a.recibida_por_traspaso ? ' · recibida por traspaso' : ''}
+                                        {a.recibida_por_traspaso
+                                          ? a.comprada_en_mercado
+                                            ? ` · comprada en el mercado${
+                                                a.precio_mercado !== null
+                                                  ? ` por ${formatMoney(Number(a.precio_mercado), 'BOB')}`
+                                                  : ''
+                                              }`
+                                            : ' · recibida por traspaso'
+                                          : ''}
                                       </p>
                                     </li>
                                   ))}
@@ -578,6 +664,75 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
                             </div>
                           </div>
 
+                          {mercado !== null && mercado.length > 0 ? (
+                            <div className="mt-4">
+                              <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+                                Su actividad en el mercado de traspasos
+                              </p>
+                              <ul className="mt-2 divide-y divide-stone-100 rounded-lg border border-stone-200 bg-white">
+                                {mercado.map((av) => (
+                                  <li key={av.listing_id} className="px-3 py-2 text-sm">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <Badge
+                                        className={
+                                          av.fee_payment_id
+                                            ? 'bg-green-100 text-green-800'
+                                            : av.status === 'activa'
+                                              ? 'bg-green-100 text-green-700'
+                                              : av.status === 'pausada'
+                                                ? 'bg-amber-100 text-amber-800'
+                                                : 'bg-stone-200 text-stone-600'
+                                        }
+                                      >
+                                        {av.fee_payment_id
+                                          ? 'Vendido por el mercado'
+                                          : av.status === 'activa'
+                                            ? 'En la vidriera'
+                                            : av.status === 'pausada'
+                                              ? 'Pausado'
+                                              : 'Cerrado'}
+                                      </Badge>
+                                      <span className="text-stone-800">
+                                        Mz {av.manzana ?? '—'}, Lote {av.lote ?? '—'}
+                                      </span>
+                                      <span className="text-xs text-stone-400">{av.proyecto}</span>
+                                      <span className="ml-auto text-xs text-stone-500">
+                                        publicado {dateLabel(av.publicada)}
+                                      </span>
+                                    </div>
+                                    <p className="mt-0.5 text-xs text-stone-500">
+                                      {av.fee_payment_id ? (
+                                        <>
+                                          Vendido a <strong>{av.vendido_a ?? '—'}</strong> en{' '}
+                                          {formatMoney(Number(av.sale_price_bob ?? 0), 'BOB')} —
+                                          comisión del {Number(av.fee_pct)}%:{' '}
+                                          {formatMoney(Number(av.fee_bob ?? 0), 'BOB')} ·{' '}
+                                          <a
+                                            href={`/admin/recibo/${av.fee_payment_id}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="font-semibold text-brand hover:underline"
+                                          >
+                                            recibo
+                                          </a>
+                                        </>
+                                      ) : (
+                                        <>
+                                          Pide {formatMoney(Number(av.asking_price_bob), 'BOB')} ·{' '}
+                                          {av.consultas} consulta(s) · comisión pactada{' '}
+                                          {Number(av.fee_pct)}%
+                                          {av.status === 'cerrada' && av.closed_reason
+                                            ? ` · ${av.closed_reason}`
+                                            : ''}
+                                        </>
+                                      )}
+                                    </p>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+
                           <div className="mt-3">
                             <button
                               type="button"
@@ -599,9 +754,152 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
         <p className="border-t border-stone-100 px-4 py-2 text-xs text-stone-400">
           Pagado suma todo lo aprobado de la persona — incluidas señas de reservas que después
           vencieron (esa plata entró igual) y lo abonado en el sistema anterior. Saldo y mora, de
-          sus ventas vivas.
+          sus ventas vivas. Las comisiones del mercado van aparte: son un servicio, no pagan
+          terreno.
         </p>
       </section>
+
+      {editar ? (
+        <EditarClienteDialog
+          cliente={editar}
+          onClose={() => setEditar(null)}
+          onSaved={(ciNuevo) => {
+            setEditar(null);
+            setAbierto(null);
+            setScrollTo(ciNuevo);
+            void fetchAll();
+          }}
+        />
+      ) : null}
     </div>
+  );
+}
+
+/* ========================================================================== */
+
+/**
+ * Editar al cliente como PERSONA: el cambio alcanza a TODAS sus reservas y
+ * ventas de una vez (el comprador vive desnormalizado en cada reserva y este
+ * diálogo es quien lo mantiene coherente).
+ *
+ * Cambiar el CI cambia la llave del cliente; si el carnet nuevo ya es de otro
+ * perfil, ambos se FUSIONAN en uno — es lo correcto cuando la misma persona
+ * quedó partida en dos por un carnet mal tipeado, y el aviso lo dice antes.
+ */
+function EditarClienteDialog({
+  cliente,
+  onClose,
+  onSaved,
+}: {
+  cliente: Cliente;
+  onClose: () => void;
+  onSaved: (ciNuevo: string) => void;
+}) {
+  const supabase = useMemo(() => createClient(), []);
+  const { push } = useToast();
+  const [nombre, setNombre] = useState(cliente.buyer_full_name);
+  const [ci, setCi] = useState(cliente.buyer_ci);
+  const [tel, setTel] = useState(cliente.buyer_phone ?? '');
+  const [correo, setCorreo] = useState(cliente.buyer_email ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function guardar() {
+    setError(null);
+    if (nombre.trim().length < 3) {
+      setError('El nombre no puede quedar vacío.');
+      return;
+    }
+    if (ci.trim() === '') {
+      setError('El CI no puede quedar vacío: es la llave del cliente.');
+      return;
+    }
+    setBusy(true);
+    const { data, error: err } = await supabase.rpc('admin_editar_cliente', {
+      p_ci_norm: cliente.ci_norm,
+      p_full_name: nombre.trim(),
+      p_ci: ci.trim(),
+      p_phone: tel.trim() || null,
+      p_email: correo.trim(),
+    });
+    setBusy(false);
+    if (err) {
+      setError(adminErrorCopy(err.message));
+      return;
+    }
+    const r = data as {
+      reservas_actualizadas?: number;
+      ci_norm?: string;
+      fusionado?: boolean;
+    } | null;
+    push(
+      r?.fusionado
+        ? `Perfil guardado y fusionado con el cliente que ya tenía ese CI (${r?.reservas_actualizadas ?? 0} reservas).`
+        : `Perfil actualizado en ${r?.reservas_actualizadas ?? 0} reserva(s).`,
+      'success',
+    );
+    onSaved(r?.ci_norm ?? cliente.ci_norm);
+  }
+
+  return (
+    <Dialog open onClose={onClose} title={`Editar cliente — ${cliente.buyer_full_name}`}>
+      <div className="space-y-3">
+        <p className="rounded-lg bg-stone-50 p-3 text-xs text-stone-600">
+          Lo que cambies acá vale para <strong>todas</strong> sus reservas y ventas (
+          {cliente.reservas_totales}): los recibos futuros, el WhatsApp y las búsquedas usan estos
+          datos.
+        </p>
+        <input
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          placeholder="Nombre completo"
+          className={inputClass}
+        />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">CI</label>
+            <input value={ci} onChange={(e) => setCi(e.target.value)} className={inputClass} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Celular</label>
+            <input
+              value={tel}
+              onChange={(e) => setTel(e.target.value)}
+              inputMode="tel"
+              className={inputClass}
+            />
+          </div>
+        </div>
+        <input
+          value={correo}
+          onChange={(e) => setCorreo(e.target.value)}
+          placeholder="Correo (vacío = sin correo)"
+          inputMode="email"
+          className={inputClass}
+        />
+        {ci.trim() !== '' && ci.trim() !== cliente.buyer_ci ? (
+          <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900">
+            Estás cambiando el CI, que es la llave del cliente. Si el carnet nuevo ya pertenece a
+            otro perfil, los dos se <strong>fusionan</strong> en uno solo — útil si la misma
+            persona quedó partida en dos por un carnet mal tipeado.
+          </p>
+        ) : null}
+        {cliente.buyer_ci.startsWith('MIGRADO') ? (
+          <p className="rounded-lg bg-stone-50 p-3 text-xs text-stone-500">
+            El CI dice «{cliente.buyer_ci}» porque la fuente no traía documento y no se inventó
+            ninguno. Completalo con el contrato delante.
+          </p>
+        ) : null}
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <button type="button" className={btnSecondary} onClick={onClose}>
+          Volver
+        </button>
+        <button type="button" className={btnPrimary} disabled={busy} onClick={() => void guardar()}>
+          {busy ? 'Guardando…' : 'Guardar'}
+        </button>
+      </div>
+    </Dialog>
   );
 }
