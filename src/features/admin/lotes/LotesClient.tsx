@@ -12,7 +12,7 @@ import {
   type RowSelectionState,
 } from '@tanstack/react-table';
 import { createClient } from '@/lib/supabase/client';
-import { parseFinancingPlan, type FinancingPlan } from '@/lib/financing';
+import { cuotaDelPlan, parseFinancingPlan, type FinancingPlan } from '@/lib/financing';
 import { formatMoney } from '@/lib/format';
 import type { LotStatus, PricingCategory, TeamRole } from '@/lib/db-types';
 import { ciSchema, phoneSchema } from '@/lib/validation';
@@ -1345,6 +1345,8 @@ function SellOfflineDialog({
   // La clasificacion de la venta desde el arranque: contado o credito, en que
   // moneda entro la plata y a que cuenta — lo mismo que pregunta el cobro.
   const [modalidad, setModalidad] = useState<'contado' | 'credito'>('contado');
+  // ¿La cajera tecleó el monto a mano? Entonces no se lo pisamos nunca más.
+  const [montoTocado, setMontoTocado] = useState(false);
   const [moneda, setMoneda] = useState<'BOB' | 'USD'>('BOB');
   const [cambio, setCambio] = useState('');
   const [precio, setPrecio] = useState(defaultPrice != null ? String(defaultPrice) : '');
@@ -1384,6 +1386,36 @@ function SellOfflineDialog({
 
   // El precio manda: al cambiarlo puede cambiar la clasificación del lote.
   const precioEfectivo = precio.trim() === '' ? (defaultPrice ?? 0) : Number(precio);
+
+  // AL CONTADO se cobra el lote entero; A CRÉDITO se cobra la cuota inicial de
+  // su clasificación. Antes el campo se quedaba con el precio completo al
+  // pasar a crédito, así que «queda por financiar» daba Bs 0 y no había cuota
+  // que calcular — el formulario se contradecía solo.
+  useEffect(() => {
+    if (montoTocado) return;
+    if (modalidad === 'contado') {
+      setAmount(defaultPrice != null ? String(defaultPrice) : '');
+    } else if (cond) {
+      setAmount(String(cond.inicial_sugerida));
+    }
+  }, [modalidad, cond, defaultPrice, montoTocado]);
+
+  /**
+   * El plan que saldría con lo tecleado ahora mismo: cuánto se financia, la
+   * cuota, cuánto interés y el total. La MISMA cuenta que hace la base
+   * (sistema francés si hay interés), calculada acá para que el formulario
+   * muestre la cifra en vez de prometer que ya la calculará alguien.
+   */
+  const plan = useMemo(() => {
+    const inicialBs = (Number(amount) || 0) * (moneda === 'USD' ? Number(cambio) || 0 : 1);
+    const financiar = Math.max(0, (precioEfectivo || 0) - inicialBs);
+    const m = Number(meses) || 0;
+    // La fórmula vive en un solo lugar (src/lib/financing) y está probada
+    // contra las cifras que devuelve la base.
+    const c = cuotaDelPlan(financiar, Number(interes) || 0, m);
+    const total = Math.round(c * m * 100) / 100;
+    return { inicialBs, financiar, meses: m, cuota: c, total, interesTotal: Math.round((total - financiar) * 100) / 100 };
+  }, [amount, moneda, cambio, precioEfectivo, meses, interes]);
   useEffect(() => {
     let vivo = true;
     void supabase
@@ -1450,7 +1482,11 @@ function SellOfflineDialog({
         return;
       }
       if (!(Number(interes) > 0) && !(cuotaNum > 0)) {
-        setError('Escribe la cuota mensual (o poné un interés y la calculo yo).');
+        setError('Escribe la cuota mensual, o poné un interés y se calcula sola.');
+        return;
+      }
+      if (Number(interes) > 0 && !(plan.cuota > 0)) {
+        setError('Revisá el precio, la inicial y el plazo: no queda nada que financiar.');
         return;
       }
       if (cond && mesesNum > cond.max_meses) {
@@ -1583,7 +1619,17 @@ function SellOfflineDialog({
               ? `Monto cobrado (${moneda === 'BOB' ? 'Bs' : '$us'}) — vacío usa el precio`
               : `Cuota inicial cobrada (${moneda === 'BOB' ? 'Bs' : '$us'})`}
           </label>
-          <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className={inputClass} />
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            value={amount}
+            onChange={(e) => {
+              setMontoTocado(true);
+              setAmount(e.target.value);
+            }}
+            className={inputClass}
+          />
           {modalidad === 'credito' ? (
             <p className="mt-1 text-[11px] text-stone-400">
               El saldo queda por cobrar; el plan de cuotas se crea después desde Contabilidad.
@@ -1656,16 +1702,26 @@ function SellOfflineDialog({
                   </div>
                   <div>
                     <label className="mb-1 block text-xs text-stone-500">
-                      {Number(interes) > 0 ? 'Cuota (la calculo)' : 'Cuota mensual (Bs)'}
+                      Cuota mensual (Bs)
+                      {Number(interes) > 0 ? (
+                        <span className="text-stone-400"> · calculada</span>
+                      ) : null}
                     </label>
                     <input
                       type="number"
                       min={0}
                       step="0.01"
-                      value={cuota}
+                      value={Number(interes) > 0 ? (plan.cuota || '') : cuota}
                       onChange={(e) => setCuota(e.target.value)}
-                      disabled={Number(interes) > 0}
-                      className={`${inputClass} disabled:bg-stone-100 disabled:text-stone-400`}
+                      readOnly={Number(interes) > 0}
+                      title={
+                        Number(interes) > 0
+                          ? `Con ${interes}% mensual sobre ${formatMoney(plan.financiar, 'BOB')} en ${plan.meses} meses`
+                          : undefined
+                      }
+                      className={`${inputClass} ${
+                        Number(interes) > 0 ? 'bg-stone-100 font-semibold text-stone-800' : ''
+                      }`}
                     />
                   </div>
                   <div>
@@ -1678,56 +1734,51 @@ function SellOfflineDialog({
                     />
                   </div>
                 </div>
-                {(() => {
-                  const precioBase = precioEfectivo || 0;
-                  const inicialBs =
-                    (Number(amount) || 0) * (moneda === 'USD' ? Number(cambio) || 0 : 1);
-                  const financiar = Math.max(0, precioBase - inicialBs);
-                  const m = Number(meses) || 0;
-                  const i = (Number(interes) || 0) / 100;
-                  // La misma cuenta que hace la base: francés si hay interés.
-                  const c =
-                    m > 0 && financiar > 0
-                      ? i > 0
-                        ? Math.round(((financiar * i) / (1 - Math.pow(1 + i, -m))) * 100) / 100
-                        : Math.ceil((financiar / m) * 100) / 100
-                      : 0;
-                  const totalInt = Math.round((c * m - financiar) * 100) / 100;
-                  return (
-                    <p className="text-xs text-stone-600">
-                      Queda por financiar{' '}
-                      <strong className="tabular-nums">{formatMoney(financiar, 'BOB')}</strong>.
-                      {m > 0 && c > 0 ? (
-                        <>
-                          {' '}
-                          En {m} cuotas de{' '}
-                          {Number(interes) > 0 ? (
-                            <strong className="tabular-nums">{formatMoney(c, 'BOB')}</strong>
-                          ) : (
-                            <button
-                              type="button"
-                              className="font-semibold text-brand underline"
-                              onClick={() => setCuota(String(c))}
-                            >
-                              {formatMoney(c, 'BOB')}
-                            </button>
-                          )}{' '}
-                          al mes.
-                          {totalInt > 0 ? (
-                            <>
-                              {' '}
-                              Paga{' '}
-                              <strong className="tabular-nums">
-                                {formatMoney(totalInt, 'BOB')}
-                              </strong>{' '}
-                              de interés en total ({formatMoney(c * m, 'BOB')} en todo el plan).
-                            </>
-                          ) : null}
-                        </>
-                      ) : null}
-                    </p>
-                  );
-                })()}
+                {plan.financiar <= 0 ? (
+                  <p className="rounded-lg bg-amber-50 p-2.5 text-xs text-amber-900">
+                    La cuota inicial cubre el lote entero: no queda nada que financiar. Bajá la
+                    inicial{cond ? ` (la sugerida es ${formatMoney(Number(cond.inicial_sugerida), 'BOB')})` : ''}{' '}
+                    o registrá la venta al contado.
+                  </p>
+                ) : null}
+                {plan.cuota > 0 ? (
+                  <div className="rounded-lg bg-white/70 p-2.5 text-xs text-stone-700">
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
+                      <span>
+                        Financia{' '}
+                        <strong className="tabular-nums">
+                          {formatMoney(plan.financiar, 'BOB')}
+                        </strong>
+                      </span>
+                      <span>
+                        Cuota{' '}
+                        <strong className="tabular-nums">
+                          {formatMoney(plan.cuota, 'BOB')}
+                        </strong>
+                        /mes
+                      </span>
+                      <span>
+                        Interés total{' '}
+                        <strong className="tabular-nums">
+                          {formatMoney(plan.interesTotal, 'BOB')}
+                        </strong>
+                      </span>
+                      <span>
+                        Paga en total{' '}
+                        <strong className="tabular-nums">{formatMoney(plan.total, 'BOB')}</strong>
+                      </span>
+                    </div>
+                    {Number(interes) === 0 && cuota.trim() === '' ? (
+                      <button
+                        type="button"
+                        className="mt-1 font-semibold text-brand underline"
+                        onClick={() => setCuota(String(plan.cuota))}
+                      >
+                        Usar {formatMoney(plan.cuota, 'BOB')} como cuota
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
               </>
             ) : (
               <p className="text-xs text-stone-500">

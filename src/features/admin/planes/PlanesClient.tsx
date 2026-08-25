@@ -54,6 +54,8 @@ interface Plan {
   monthly_amount: number;
   /** Null en los planes sin interés, que son la mayoría. */
   annual_interest_pct: number | null;
+  /** Interés MENSUAL sobre saldo — el que se pacta acá. */
+  monthly_interest_pct: number | null;
   first_due_date: string;
   currency: Currency;
   cuotas_totales: number;
@@ -562,11 +564,10 @@ export default function PlanesClient({
                                         valor={formatMoney(Number(r.monthly_amount), r.currency)}
                                       />
                                       <Dato
-                                        label="Interés anual"
+                                        label="Interés mensual"
                                         valor={
-                                          r.annual_interest_pct !== null &&
-                                          Number(r.annual_interest_pct) > 0
-                                            ? `${fnum(Number(r.annual_interest_pct), 2)} %`
+                                          Number(r.monthly_interest_pct) > 0
+                                            ? `${fnum(Number(r.monthly_interest_pct), 2)} % sobre saldo`
                                             : 'Sin interés'
                                         }
                                       />

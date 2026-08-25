@@ -107,7 +107,7 @@ export function LotSummaryCard(props: LotSummaryProps) {
           {plan.disclosesTerm
             ? `Saldo a financiar ${formatMoney(plan.financed, currency)} en ${plan.months} cuotas${
                 plan.annualInterestPct > 0
-                  ? `, interés ${formatPct(plan.annualInterestPct)} anual`
+                  ? `, interés ${formatPct(plan.annualInterestPct)} mensual`
                   : ''
               }.`
             : 'El plazo se acuerda con tu asesor: tú propones tu forma de pago.'}

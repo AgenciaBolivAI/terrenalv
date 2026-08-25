@@ -108,7 +108,7 @@ export default function CategoryPrices({
               ? ` · cuota mensual desde ${formatMoney(financing.min_monthly, currency)}`
               : ` · ${financing.months} cuotas${
                   financing.annual_interest_pct > 0
-                    ? ` al ${formatPct(financing.annual_interest_pct)} anual`
+                    ? ` al ${formatPct(financing.annual_interest_pct)} mensual`
                     : ''
                 }`}
           </span>
@@ -131,7 +131,7 @@ export default function CategoryPrices({
             <>
               <p className="mb-3 text-xs text-stone-500">
                 Al cambiar el precio de una categoría, todos los lotes que la tengan asignada se
-                actualizan al instante (salvo los que tengan precio manual).
+                actualizan al instante (salvo los que tengan precio mmensual).
               </p>
               <ul className="space-y-2">
                 {categories.map((c) => {

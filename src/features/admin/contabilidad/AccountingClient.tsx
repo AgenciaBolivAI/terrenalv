@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { formatMoney, waLink } from '@/lib/format';
+import { cuotaDelPlan } from '@/lib/financing';
 import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
 import { Badge, EmptyState, Kpi, Spinner, btnPrimary, btnSecondary, inputClass } from '@/features/admin/ui/bits';
 import { Dialog } from '@/features/admin/ui/dialog';
@@ -1726,8 +1727,11 @@ function CreatePlanDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const financed = Math.max(0, sale.price_agreed - (Number(down) || 0));
-  const suggested = Number(months) > 0 ? Math.ceil((financed / Number(months)) * 100) / 100 : 0;
+  const financed = Math.max(0, sale.saldo - (Number(down) || 0));
+  // La cuota la manda la fórmula, no el teclado: con interés, una cuota
+  // escrita a mano deja la última cuota absurda. Misma función que usa la
+  // venta y que replica a la base.
+  const suggested = cuotaDelPlan(financed, Number(interest) || 0, Number(months) || 0);
 
   async function create() {
     setError(null);
@@ -1748,8 +1752,9 @@ function CreatePlanDialog({
       p_monthly_amount: q,
       p_down_payment: Number(down) || 0,
       p_first_due_date: first,
-      p_annual_interest_pct: Number(interest) || 0,
+      p_annual_interest_pct: 0,
       p_note: note.trim() || null,
+      p_monthly_interest_pct: Number(interest) || 0,
     });
     setBusy(false);
     if (err) {
@@ -1765,7 +1770,33 @@ function CreatePlanDialog({
       <div className="space-y-3">
         <p className="rounded-lg bg-stone-50 p-3 text-sm text-stone-600">
           Lote {sale.manzana}-{sale.lote} · precio {formatMoney(sale.price_agreed, sale.currency)}.
-          Se financian <strong>{formatMoney(financed, sale.currency)}</strong>.
+          {/* Sobre el SALDO, no sobre el precio: lo que ya pagó —seña incluida—
+              no se vuelve a cronogramar. */}
+          {sale.saldo !== sale.price_agreed ? (
+            <>
+              {' '}
+              Debe <strong>{formatMoney(sale.saldo, sale.currency)}</strong>.
+            </>
+          ) : null}{' '}
+          Se financian <strong>{formatMoney(financed, sale.currency)}</strong>
+          {suggested > 0 && Number(months) > 0 ? (
+            <>
+              {' '}
+              en {months} cuotas de{' '}
+              <strong className="tabular-nums">{formatMoney(suggested, sale.currency)}</strong>
+              {Number(interest) > 0 ? (
+                <>
+                  {' '}
+                  ({formatMoney(
+                    Math.round((suggested * Number(months) - financed) * 100) / 100,
+                    sale.currency,
+                  )}{' '}
+                  de interés)
+                </>
+              ) : null}
+            </>
+          ) : null}
+          .
         </p>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -1778,23 +1809,35 @@ function CreatePlanDialog({
           </div>
           <div>
             <label className="mb-1 block text-xs text-stone-500">
-              Cuota mensual {suggested > 0 ? `(sug. ${suggested})` : ''}
+              Cuota mensual{Number(interest) > 0 ? ' · calculada' : ''}
             </label>
-            <input type="number" min={0} step="0.01" value={monthly} onChange={(e) => setMonthly(e.target.value)} placeholder={String(suggested)} className={inputClass} />
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={Number(interest) > 0 ? (suggested || '') : monthly}
+              onChange={(e) => setMonthly(e.target.value)}
+              readOnly={Number(interest) > 0}
+              placeholder={String(suggested)}
+              className={`${inputClass} ${
+                Number(interest) > 0 ? 'bg-stone-100 font-semibold text-stone-800' : ''
+              }`}
+            />
           </div>
           <div>
             <label className="mb-1 block text-xs text-stone-500">Primer vencimiento</label>
             <input type="date" value={first} onChange={(e) => setFirst(e.target.value)} className={inputClass} />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-stone-500">Interés anual %</label>
+            <label className="mb-1 block text-xs text-stone-500">Interés mensual %</label>
             <input type="number" min={0} step="0.01" value={interest} onChange={(e) => setInterest(e.target.value)} className={inputClass} />
           </div>
         </div>
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Nota (opcional)" className={inputClass} />
         <p className="text-xs text-stone-400">
-          Sin interés, las cuotas suman exactamente lo financiado y la última absorbe el redondeo.
-          Con interés, se generan {months || 0} cuotas del monto indicado.
+          El interés es <strong>mensual sobre saldo</strong>. Sin interés, las cuotas suman
+          exactamente lo financiado y la última absorbe el redondeo; con interés, la cuota se
+          calcula sola y cada una lleva su parte de capital y su parte de interés.
         </p>
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
       </div>

@@ -191,7 +191,7 @@ export function LotBottomSheet({
                       {financing.disclosesTerm
                         ? `${financing.months} cuotas${
                             financing.annualInterestPct > 0
-                              ? ` al ${formatPct(financing.annualInterestPct)} anual`
+                              ? ` al ${formatPct(financing.annualInterestPct)} mensual`
                               : ''
                           }`
                         : 'Cuota mensual desde'}

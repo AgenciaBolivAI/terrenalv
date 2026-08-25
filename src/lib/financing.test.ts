@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { computeFinancing, formatPct, formatTerm, parseFinancingPlan } from './financing';
+import {
+  computeFinancing,
+  cuotaDelPlan,
+  formatPct,
+  formatTerm,
+  mesesDelPlan,
+  parseFinancingPlan,
+} from './financing';
 
 const PLAN = {
   enabled: true,
@@ -75,12 +82,35 @@ describe('computeFinancing', () => {
     expect(r.monthly).toBe(166.67);
   });
 
-  it('amortizes when a rate is set', () => {
-    const withInterest = parseFinancingPlan({ ...PLAN, annual_interest_pct: 12, months: 12 })!;
+  it('amortizes when a rate is set — the rate is MONTHLY', () => {
+    // La tasa guardada es MENSUAL sobre saldo: 1 = 1% al mes. Antes esto se
+    // dividía entre 12 tratándola como anual, así que la vitrina publicaba
+    // una cuota que la oficina después contradecía.
+    const withInterest = parseFinancingPlan({ ...PLAN, annual_interest_pct: 1, months: 12 })!;
     const r = computeFinancing(10000, withInterest)!;
-    // 7.000 at 1 %/month over 12 months = 621,9415… → rounded up.
-    expect(r.monthly).toBe(621.95);
+    // 7.000 al 1 % mensual en 12 meses = 621,9415… → 621,94, redondeo normal.
+    // Con interés NO se redondea hacia arriba: la última cuota absorbe la
+    // diferencia, y así lo hace la base al generar el cronograma. Si la
+    // vitrina redondeara distinto, publicaría un centavo que el contrato no
+    // dice.
+    expect(r.monthly).toBe(621.94);
+    expect(r.monthly).toBe(cuotaDelPlan(7000, 1, 12));
     expect(r.totalPaid).toBeGreaterThan(10000);
+  });
+
+  it('el 2 % mensual de Terrenalv sobre un lote típico', () => {
+    // Mismo caso que la venta real: la vitrina y el plan firmado tienen que
+    // decir la misma cuota.
+    const dosPorCiento = parseFinancingPlan({
+      ...PLAN,
+      down_payment_type: 'fijo',
+      down_payment_value: 500,
+      annual_interest_pct: 2,
+      months: 120,
+    })!;
+    const r = computeFinancing(42800, dosPorCiento)!;
+    expect(r.financed).toBe(42300);
+    expect(r.monthly).toBe(cuotaDelPlan(42300, 2, 120));
   });
 
   it('never advertises installments that leave a balance owing', () => {
@@ -202,5 +232,56 @@ describe('a quoted minimum monthly suppresses the term', () => {
     expect(r.minMonthly).toBeNull();
     expect(r.disclosesTerm).toBe(true);
     expect(r.monthly).toBeLessThan(817);
+  });
+});
+
+// Las cifras de abajo NO son inventadas: salieron de correr el RPC real contra
+// la base (en transacciones abortadas) y anotar lo que devolvió. Si alguien
+// toca la fórmula de un lado y no del otro, esta prueba lo caza antes de que
+// un comprador vea una cuota en pantalla y otra en su contrato.
+describe('cuotaDelPlan — misma cuenta que la base', () => {
+  it('120 cuotas de Bs 42.300 al 2% mensual', () => {
+    expect(cuotaDelPlan(42300, 2, 120)).toBe(932.63);
+  });
+
+  it('24 cuotas de Bs 25.500 al 1,5% mensual', () => {
+    expect(cuotaDelPlan(25500, 1.5, 24)).toBe(1273.06);
+  });
+
+  it('12 cuotas de Bs 24.000 al 1,5% mensual', () => {
+    expect(cuotaDelPlan(24000, 1.5, 12)).toBe(2200.32);
+  });
+
+  it('sin interés divide y redondea al centavo hacia arriba', () => {
+    expect(cuotaDelPlan(42300, 0, 120)).toBe(352.5);
+    expect(cuotaDelPlan(5250, 0, 36)).toBe(145.84);
+  });
+
+  it('devuelve 0 cuando no hay nada que financiar', () => {
+    expect(cuotaDelPlan(0, 2, 120)).toBe(0);
+    expect(cuotaDelPlan(42300, 2, 0)).toBe(0);
+  });
+});
+
+describe('mesesDelPlan — abono a capital manteniendo la cuota', () => {
+  it('con interés acorta el plazo', () => {
+    // 121 y no 120 a propósito: la cuota 932,63 viene redondeada al centavo,
+    // así que tras 120 pagos quedan ~Bs 4,40 de capital y hace falta una
+    // cuota más (chiquita, la última siempre absorbe el resto). La base hace
+    // exactamente este mismo ceil — que las dos digan lo mismo importa más
+    // que ahorrar un mes de cola.
+    expect(mesesDelPlan(42300, 2, 932.63)).toBe(121);
+    // Con Bs 10.000 menos de capital, la misma cuota lo termina en 60 meses:
+    // la mitad del plazo por menos de un cuarto del capital, que es lo que
+    // hace el interés compuesto cuando se adelanta plata.
+    expect(mesesDelPlan(32300, 2, 932.63)).toBe(60);
+  });
+
+  it('sin interés es la división', () => {
+    expect(mesesDelPlan(18000, 0, 2000)).toBe(9);
+  });
+
+  it('avisa cuando la cuota no cubre ni el interés', () => {
+    expect(mesesDelPlan(100000, 2, 500)).toBe(0);
   });
 });

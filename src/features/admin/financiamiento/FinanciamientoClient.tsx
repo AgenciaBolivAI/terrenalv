@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { formatMoney } from '@/lib/format';
+import { cuotaDelPlan } from '@/lib/financing';
 import {
   Badge,
   EmptyState,
@@ -43,14 +44,6 @@ interface Tier {
 interface Proyecto {
   id: string;
   name: string;
-}
-
-/** La cuota del sistema francés: la misma fórmula que usa la base. */
-function cuotaFrancesa(capital: number, tasaMensualPct: number, meses: number): number {
-  if (meses <= 0 || capital <= 0) return 0;
-  const i = tasaMensualPct / 100;
-  if (i === 0) return Math.ceil((capital / meses) * 100) / 100;
-  return Math.round(((capital * i) / (1 - Math.pow(1 + i, -meses))) * 100) / 100;
 }
 
 export default function FinanciamientoClient({ projects }: { projects: Proyecto[] }) {
@@ -175,7 +168,7 @@ export default function FinanciamientoClient({ projects }: { projects: Proyecto[
                 const financiar =
                   (Number(precio) || 0) - Number(sim.inicial_sugerida ?? 0);
                 const meses = Number(sim.max_meses) || 1;
-                const c = cuotaFrancesa(financiar, Number(sim.interes_mensual_pct) || 0, meses);
+                const c = cuotaDelPlan(financiar, Number(sim.interes_mensual_pct) || 0, meses);
                 return financiar > 0 ? (
                   <>
                     {' '}
@@ -340,7 +333,7 @@ function EditarTierDialog({
       Number(f.down_payment_min) || 0,
     );
     const financiar = Math.max(0, precio - inicial);
-    const cuota = cuotaFrancesa(
+    const cuota = cuotaDelPlan(
       financiar,
       Number(f.monthly_interest_pct) || 0,
       Number(f.max_months) || 1,

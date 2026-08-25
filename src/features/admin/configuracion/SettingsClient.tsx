@@ -491,7 +491,7 @@ export default function SettingsClient() {
             </div>
           </Field>
 
-          <Field label="Interés anual (%)" hint="Uso interno: no se publica si hay cuota mínima">
+          <Field label="Interés mensual (%)" hint="Sobre saldo. 2 = 2% al mes, como se pacta acá">
             <input
               type="number"
               min={0}

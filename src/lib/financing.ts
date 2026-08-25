@@ -34,6 +34,11 @@ export interface FinancingPlan {
    */
   min_monthly?: number;
   months: number;
+  /**
+   * Interés MENSUAL sobre saldo, en porcentaje (2 = 2% al mes). El nombre
+   * conserva `annual` porque así se llama la llave guardada en settings desde
+   * el día uno; renombrarla obligaría a migrar el ajuste con la web viva.
+   */
   annual_interest_pct: number;
   note: string | null;
 }
@@ -191,12 +196,14 @@ export function computeFinancing(
 
   // A quoted minimum wins over any computed installment: the published figure
   // must be the one the seller actually honours.
-  const monthlyRate = plan.annual_interest_pct / 100 / 12;
-  const computed = ceil2(
-    monthlyRate > 0
-      ? (financed * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -plan.months))
-      : financed / plan.months,
-  );
+  // MENSUAL, no anual: así se pacta el crédito directo en Bolivia y así lo
+  // guarda el plan que se firma. Dividir entre 12 acá mostraba en la vitrina
+  // una cuota que la oficina después contradecía.
+  // La MISMA función que arma el plan que se firma. Antes la vitrina
+  // redondeaba hacia arriba y el plan redondeaba normal: Bs 932,64 en el mapa
+  // contra Bs 932,63 en el contrato. Un centavo, pero es el centavo que el
+  // comprador señala con el dedo en el mostrador.
+  const computed = cuotaDelPlan(financed, plan.annual_interest_pct, plan.months);
   const minMonthly = plan.min_monthly ?? null;
   const monthly = minMonthly ?? computed;
 
@@ -214,6 +221,48 @@ export function computeFinancing(
     totalPaid: round2(downPaymentInPrice + computed * plan.months),
     note: plan.note,
   };
+}
+
+/**
+ * La cuota de un plan de cuotas REAL, con interés MENSUAL sobre saldo.
+ *
+ * Réplica exacta de lo que hace `admin_create_installment_plan` en la base:
+ * sistema francés con `round` a dos decimales cuando hay interés, y división
+ * con `ceil` al centavo cuando no lo hay. Vive acá porque tres pantallas la
+ * necesitan —vender un lote, configurar el financiamiento y previsualizar un
+ * cobro— y tres copias de una fórmula terminan diciendo tres cifras: la
+ * persona ve una en pantalla y firma otra en el contrato.
+ *
+ * OJO: `computeFinancing` de arriba es OTRA cosa — es la vitrina pública y
+ * habla de interés ANUAL. Esta es la del plan que se firma.
+ */
+export function cuotaDelPlan(
+  capital: number,
+  monthlyRatePct: number,
+  months: number,
+): number {
+  if (!(capital > 0) || !(months > 0)) return 0;
+  const i = monthlyRatePct / 100;
+  if (!(i > 0)) return ceil2(capital / months);
+  return round2((capital * i) / (1 - Math.pow(1 + i, -months)));
+}
+
+/**
+ * Cuántos meses faltan si se mantiene la cuota y baja el capital — lo que pasa
+ * tras un abono a capital cuando el comprador elige «terminar antes».
+ * Misma cuenta que la base: ceil(ln(c/(c−P·i))/ln(1+i)), o ceil(P/c) sin interés.
+ */
+export function mesesDelPlan(
+  capital: number,
+  monthlyRatePct: number,
+  cuota: number,
+): number {
+  if (!(capital > 0) || !(cuota > 0)) return 0;
+  const i = monthlyRatePct / 100;
+  if (!(i > 0)) return Math.max(1, Math.ceil(capital / cuota));
+  // Si la cuota no cubre ni el interés del mes, la deuda no bajaría nunca.
+  if (cuota <= round2(capital * i)) return 0;
+  return Math.max(1, Math.ceil(Math.log(cuota / (cuota - capital * i)) / Math.log(1 + i)));
 }
 
 /** "10 años", "5 años y 6 meses", "36 meses" — 120 months should not read as 120. */
