@@ -285,3 +285,26 @@ describe('mesesDelPlan — abono a capital manteniendo la cuota', () => {
     expect(mesesDelPlan(100000, 2, 500)).toBe(0);
   });
 });
+
+// El lote exacto de la captura del mostrador: Bs 36.952,76 con la
+// clasificación de 15% y 2% mensual a 12 meses. Las cifras salieron de correr
+// la cuenta en la base; si la pantalla mostrara otra, esta prueba falla.
+describe('el lote de la captura — Bs 36.952,76 al 2% en 12 meses', () => {
+  const precio = 36952.76;
+  const inicial = 5542.91; // 15% de la clasificación
+  const financia = Math.round((precio - inicial) * 100) / 100;
+
+  it('financia lo que queda tras la inicial', () => {
+    expect(financia).toBe(31409.85);
+  });
+
+  it('la cuota es la que dice la base', () => {
+    expect(cuotaDelPlan(financia, 2, 12)).toBe(2970.1);
+  });
+
+  it('el interés total del plazo', () => {
+    const cuota = cuotaDelPlan(financia, 2, 12);
+    expect(Math.round(cuota * 12 * 100) / 100).toBe(35641.2);
+    expect(Math.round((cuota * 12 - financia) * 100) / 100).toBe(4231.35);
+  });
+});

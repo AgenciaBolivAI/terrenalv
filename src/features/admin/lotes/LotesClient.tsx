@@ -1723,6 +1723,14 @@ function SellOfflineDialog({
                         Number(interes) > 0 ? 'bg-stone-100 font-semibold text-stone-800' : ''
                       }`}
                     />
+                    {plan.cuota > 0 && plan.interesTotal > 0 ? (
+                      <p className="mt-1 text-[11px] leading-tight text-stone-600">
+                        + <strong className="tabular-nums text-amber-700">
+                          {formatMoney(plan.interesTotal, 'BOB')}
+                        </strong>{' '}
+                        de interés en {plan.meses} meses
+                      </p>
+                    ) : null}
                   </div>
                   <div>
                     <label className="mb-1 block text-xs text-stone-500">Primer vencimiento</label>
@@ -1742,36 +1750,51 @@ function SellOfflineDialog({
                   </p>
                 ) : null}
                 {plan.cuota > 0 ? (
-                  <div className="rounded-lg bg-white/70 p-2.5 text-xs text-stone-700">
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
-                      <span>
-                        Financia{' '}
-                        <strong className="tabular-nums">
+                  <div className="rounded-lg border border-stone-200 bg-white p-3">
+                    <p className="text-[10px] font-bold tracking-wider text-stone-400 uppercase">
+                      Así queda el plan
+                    </p>
+                    <div className="mt-1.5 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
+                      <div>
+                        <p className="text-[11px] text-stone-500">Financia</p>
+                        <p className="text-sm font-bold tabular-nums text-stone-800">
                           {formatMoney(plan.financiar, 'BOB')}
-                        </strong>
-                      </span>
-                      <span>
-                        Cuota{' '}
-                        <strong className="tabular-nums">
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] text-stone-500">Paga por mes</p>
+                        <p className="text-base font-black tabular-nums text-brand">
                           {formatMoney(plan.cuota, 'BOB')}
-                        </strong>
-                        /mes
-                      </span>
-                      <span>
-                        Interés total{' '}
-                        <strong className="tabular-nums">
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] text-stone-500">
+                          Interés ({interes}% × {plan.meses} m)
+                        </p>
+                        <p className="text-sm font-bold tabular-nums text-amber-700">
                           {formatMoney(plan.interesTotal, 'BOB')}
-                        </strong>
-                      </span>
-                      <span>
-                        Paga en total{' '}
-                        <strong className="tabular-nums">{formatMoney(plan.total, 'BOB')}</strong>
-                      </span>
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] text-stone-500">Termina pagando</p>
+                        <p className="text-sm font-bold tabular-nums text-stone-800">
+                          {formatMoney(plan.total, 'BOB')}
+                        </p>
+                      </div>
                     </div>
+                    <p className="mt-2 text-center text-[11px] text-stone-500">
+                      {plan.meses} cuotas de {formatMoney(plan.cuota, 'BOB')}
+                      {plan.interesTotal > 0
+                        ? ` — el lote cuesta ${formatMoney(precioEfectivo || 0, 'BOB')} y con el financiamiento termina pagando ${formatMoney(
+                            Math.round(((plan.inicialBs || 0) + plan.total) * 100) / 100,
+                            'BOB',
+                          )}.`
+                        : '.'}
+                    </p>
                     {Number(interes) === 0 && cuota.trim() === '' ? (
                       <button
                         type="button"
-                        className="mt-1 font-semibold text-brand underline"
+                        className="mt-1 w-full text-center text-xs font-semibold text-brand underline"
                         onClick={() => setCuota(String(plan.cuota))}
                       >
                         Usar {formatMoney(plan.cuota, 'BOB')} como cuota
