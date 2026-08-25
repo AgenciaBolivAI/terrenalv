@@ -20,11 +20,16 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { formatDateTime, formatMoney, waLink } from '@/lib/format';
-import { Badge, EmptyState, Kpi, Spinner, inputClass } from '@/features/admin/ui/bits';
+import { Badge, EmptyState, Kpi, Spinner, btnDanger, btnPrimary, btnSecondary, inputClass } from '@/features/admin/ui/bits';
 import { IconSearch, IconWhatsapp } from '@/features/admin/ui/icons';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
 import { num as fnum, type Cell as XCell } from '@/features/admin/export';
 import { dateLabel } from '@/features/admin/contabilidad/types';
+import { Dialog } from '@/features/admin/ui/dialog';
+import { useToast } from '@/features/admin/ui/toast';
+import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
+import RegistrarCobroDialog from '@/features/admin/contabilidad/RegistrarCobro';
+import type { CobroTarget } from '@/features/admin/contabilidad/types';
 import { ScopeBar, scopeLabel, type ProjectScope } from '@/features/admin/ui/scope';
 import type { AdminProject } from '@/features/admin/lib/project-types';
 
@@ -52,6 +57,9 @@ interface Venta {
   con_plan: boolean;
   ultimo_pago: string | null;
   compra_iniciada: boolean;
+  abonado_migrado: number;
+  /** Pagado en total: en el sistema anterior más lo cobrado acá. */
+  pagado_total: number;
 }
 
 /** Un pago aprobado de esa venta, para listar y abrir su recibo. */
@@ -83,7 +91,7 @@ const PROVIDER_LABEL: Record<string, string> = {
 /**
  * 'ventas' es el filtro por defecto: solo compras iniciadas. 'sin_inicial' es
  * el bucket contrario — confirmadas que nadie empezó a pagar. 'cobradas' no
- * tiene chip propio: solo se llega desde el KPI "Cobrado" y aparece como chip
+ * tiene chip propio: solo se llega desde el KPI "Pagado" y aparece como chip
  * descartable, igual que el filtro por forma de pago en el libro.
  */
 type Filtro = 'ventas' | 'todas' | 'saldo' | 'migradas' | 'plan' | 'sin_inicial' | 'cobradas';
@@ -116,6 +124,10 @@ export default function VentasClient({
   const projectName = scopeLabel(scope, projects);
 
   const [rows, setRows] = useState<Venta[]>([]);
+  // Acciones sobre una venta: cobrar, corregir sus datos, o anularla.
+  const [cobrar, setCobrar] = useState<CobroTarget | null>(null);
+  const [editar, setEditar] = useState<Venta | null>(null);
+  const [anular, setAnular] = useState<Venta | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('ventas');
@@ -221,7 +233,7 @@ export default function VentasClient({
     return {
       ventas: ventas.length,
       valor: ventas.reduce((s, r) => s + Number(r.price_agreed), 0),
-      cobrado: ventas.reduce((s, r) => s + Number(r.cobrado_aqui), 0),
+      pagado: ventas.reduce((s, r) => s + Number(r.pagado_total), 0),
       saldo: ventas.reduce((s, r) => s + Number(r.saldo), 0),
       conSaldo: ventas.filter((r) => Number(r.saldo) > 0).length,
       sinInicial: rows.length - ventas.length,
@@ -297,9 +309,9 @@ export default function VentasClient({
               onClick={() => verFiltrado('ventas')}
             />
             <Kpi
-              label="Cobrado"
-              value={formatMoney(totals.cobrado, 'BOB')}
-              hint="cuotas y abonos aprobados acá — ver"
+              label="Pagado"
+              value={formatMoney(totals.pagado, 'BOB')}
+              hint="en el sistema anterior y acá — ver"
               tone="good"
               onClick={() => verFiltrado('cobradas')}
             />
@@ -380,7 +392,7 @@ export default function VentasClient({
                   { header: 'Lote' },
                   { header: 'Fecha' },
                   { header: 'Precio', align: 'right' },
-                  { header: 'Cobrado', align: 'right' },
+                  { header: 'Pagado', align: 'right' },
                   { header: 'Saldo', align: 'right' },
                   { header: 'Estado' },
                   { header: 'Origen' },
@@ -395,7 +407,7 @@ export default function VentasClient({
                     r.lote ?? '',
                     dateLabel(r.fecha_venta),
                     fnum(Number(r.price_agreed)),
-                    fnum(Number(r.cobrado_aqui)),
+                    fnum(Number(r.pagado_total)),
                     fnum(Number(r.saldo)),
                     r.compra_iniciada ? 'Venta' : 'Confirmada sin inicial',
                     r.migrada ? 'Sistema anterior' : 'Sistema',
@@ -418,7 +430,7 @@ export default function VentasClient({
                       <th className="px-3 py-2 text-xs font-semibold text-stone-500">Lote</th>
                       <th className="px-3 py-2 text-xs font-semibold text-stone-500">Fecha</th>
                       <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Precio</th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Cobrado</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Pagado</th>
                       <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Saldo</th>
                       <th className="px-3 py-2 text-xs font-semibold text-stone-500">Último pago</th>
                     </tr>
@@ -457,7 +469,7 @@ export default function VentasClient({
                             {formatMoney(Number(r.price_agreed), 'BOB')}
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums text-stone-600">
-                            {formatMoney(Number(r.cobrado_aqui), 'BOB')}
+                            {formatMoney(Number(r.pagado_total), 'BOB')}
                           </td>
                           <td
                             className={`px-3 py-2 text-right font-semibold tabular-nums ${
@@ -485,17 +497,52 @@ export default function VentasClient({
                                       CI {r.buyer_ci} · {r.buyer_phone}
                                       {r.buyer_email ? ` · ${r.buyer_email}` : ''}
                                     </p>
-                                    <a
-                                      href={waLink(
-                                        r.buyer_phone,
-                                        `Hola ${r.buyer_full_name.split(' ')[0] ?? ''}, le escribimos de Terrenalv por su compra ${r.tracking_code} (Mz ${r.manzana ?? '—'}, Lote ${r.lote ?? '—'}).`,
-                                      )}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-green-700"
-                                    >
-                                      <IconWhatsapp className="h-4 w-4" /> WhatsApp
-                                    </a>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      <a
+                                        href={waLink(
+                                          r.buyer_phone,
+                                          `Hola ${r.buyer_full_name.split(' ')[0] ?? ''}, le escribimos de Terrenalv por su compra ${r.tracking_code} (Mz ${r.manzana ?? '—'}, Lote ${r.lote ?? '—'}).`,
+                                        )}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-green-700"
+                                      >
+                                        <IconWhatsapp className="h-4 w-4" /> WhatsApp
+                                      </a>
+                                      <button
+                                        type="button"
+                                        className={btnPrimary}
+                                        onClick={() =>
+                                          setCobrar({
+                                            reservation_id: r.reservation_id,
+                                            project_id: r.project_id,
+                                            tracking_code: r.tracking_code,
+                                            buyer_full_name: r.buyer_full_name,
+                                            buyer_phone: r.buyer_phone,
+                                            saldo: Number(r.saldo),
+                                            currency: 'BOB',
+                                            monto_sugerido: null,
+                                            tiene_plan: r.con_plan,
+                                          })
+                                        }
+                                      >
+                                        Registrar cobro
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className={btnSecondary}
+                                        onClick={() => setEditar(r)}
+                                      >
+                                        Editar datos
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className={btnSecondary}
+                                        onClick={() => setAnular(r)}
+                                      >
+                                        Anular venta
+                                      </button>
+                                    </div>
                                   </div>
                                   <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-stone-500">
                                     <span>
@@ -505,10 +552,17 @@ export default function VentasClient({
                                       </strong>
                                     </span>
                                     <span>
-                                      Cobrado acá{' '}
+                                      Pagado{' '}
                                       <strong className="tabular-nums text-stone-900">
-                                        {formatMoney(Number(r.cobrado_aqui), 'BOB')}
+                                        {formatMoney(Number(r.pagado_total), 'BOB')}
                                       </strong>
+                                      {r.migrada && Number(r.abonado_migrado) > 0 ? (
+                                        <span className="text-xs text-stone-400">
+                                          {' '}
+                                          ({formatMoney(Number(r.abonado_migrado), 'BOB')} antes +{' '}
+                                          {formatMoney(Number(r.cobrado_aqui), 'BOB')} acá)
+                                        </span>
+                                      ) : null}
                                     </span>
                                     <span>
                                       Saldo{' '}
@@ -594,13 +648,264 @@ export default function VentasClient({
               </div>
             )}
             <p className="border-t border-stone-100 px-4 py-2 text-xs text-stone-400">
-              Cobrado suma cuotas y abonos aprobados acá; la seña de la reserva se ve en el detalle
-              pero no descuenta el saldo. En las ventas migradas el saldo parte de la deuda
-              reportada por el sistema anterior.
+              Pagado suma lo que el comprador pagó en el sistema anterior más las cuotas y abonos
+              aprobados acá. En las ventas migradas el saldo parte de la deuda reportada por el
+              sistema anterior; en las nativas, del precio menos lo pagado.
             </p>
           </section>
         </>
       )}
+
+      {cobrar ? (
+        <RegistrarCobroDialog
+          cobro={cobrar}
+          onClose={() => setCobrar(null)}
+          onPaid={() => void fetchAll()}
+        />
+      ) : null}
+
+      {editar ? (
+        <EditarVentaDialog
+          venta={editar}
+          onClose={() => setEditar(null)}
+          onSaved={() => {
+            setEditar(null);
+            void fetchAll();
+          }}
+        />
+      ) : null}
+
+      {anular ? (
+        <AnularVentaDialog
+          venta={anular}
+          onClose={() => setAnular(null)}
+          onDone={() => {
+            setAnular(null);
+            setSelected(null);
+            void fetchAll();
+          }}
+        />
+      ) : null}
     </div>
+  );
+}
+
+/* ========================================================================== */
+
+/**
+ * Corregir los datos de una venta.
+ *
+ * Hace falta sobre todo por las migradas: llegaron con CI «MIGRADO-...» y sin
+ * teléfono porque la fuente no traía documento y no se inventan datos. La
+ * oficina los completa con el contrato delante.
+ *
+ * La deuda migrada también se corrige acá: es la cifra contra la que se calcula
+ * el saldo de esas ventas, y si el sistema anterior la reportó mal, hoy no
+ * había forma de arreglarla.
+ */
+function EditarVentaDialog({
+  venta,
+  onClose,
+  onSaved,
+}: {
+  venta: Venta;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const supabase = useMemo(() => createClient(), []);
+  const { push } = useToast();
+  const [nombre, setNombre] = useState(venta.buyer_full_name);
+  const [ci, setCi] = useState(venta.buyer_ci);
+  const [tel, setTel] = useState(venta.buyer_phone);
+  const [correo, setCorreo] = useState(venta.buyer_email ?? '');
+  const [precio, setPrecio] = useState(String(venta.price_agreed));
+  const [deuda, setDeuda] = useState(
+    venta.deuda_migrada !== null ? String(venta.deuda_migrada) : '',
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function guardar() {
+    setError(null);
+    if (nombre.trim().length < 3) {
+      setError('El nombre del comprador no puede quedar vacío.');
+      return;
+    }
+    if (!(Number(precio) > 0)) {
+      setError('El precio debe ser mayor a cero.');
+      return;
+    }
+    setBusy(true);
+    const { error: err } = await supabase.rpc('admin_editar_venta', {
+      p_reservation_id: venta.reservation_id,
+      p_full_name: nombre.trim(),
+      p_ci: ci.trim() || null,
+      p_phone: tel.trim() || null,
+      p_email: correo.trim() || null,
+      p_price: Number(precio),
+      p_deuda_migrada: venta.migrada && deuda.trim() !== '' ? Number(deuda) : null,
+    });
+    setBusy(false);
+    if (err) {
+      setError(adminErrorCopy(err.message));
+      return;
+    }
+    push('Venta actualizada.', 'success');
+    onSaved();
+  }
+
+  return (
+    <Dialog open onClose={onClose} title={`Editar venta — ${venta.tracking_code}`}>
+      <div className="space-y-3">
+        <input
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          placeholder="Nombre completo"
+          className={inputClass}
+        />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">CI</label>
+            <input value={ci} onChange={(e) => setCi(e.target.value)} className={inputClass} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Celular</label>
+            <input value={tel} onChange={(e) => setTel(e.target.value)} className={inputClass} />
+          </div>
+        </div>
+        <input
+          value={correo}
+          onChange={(e) => setCorreo(e.target.value)}
+          placeholder="Correo"
+          inputMode="email"
+          className={inputClass}
+        />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Precio pactado (Bs)</label>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={precio}
+              onChange={(e) => setPrecio(e.target.value)}
+              className={inputClass}
+            />
+          </div>
+          {venta.migrada ? (
+            <div>
+              <label className="mb-1 block text-xs text-stone-500">Deuda reportada (Bs)</label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={deuda}
+                onChange={(e) => setDeuda(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+          ) : null}
+        </div>
+        {venta.migrada ? (
+          <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900">
+            El saldo de esta venta se calcula contra la deuda reportada, no contra el precio. Si el
+            sistema anterior la informó mal, corregila acá.
+          </p>
+        ) : null}
+        {venta.buyer_ci.startsWith('MIGRADO') ? (
+          <p className="rounded-lg bg-stone-50 p-3 text-xs text-stone-500">
+            El CI dice «{venta.buyer_ci}» porque la fuente no traía documento del comprador y no se
+            inventó ninguno. Completalo con el contrato delante.
+          </p>
+        ) : null}
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <button type="button" className={btnSecondary} onClick={onClose}>
+          Volver
+        </button>
+        <button type="button" className={btnPrimary} disabled={busy} onClick={() => void guardar()}>
+          {busy ? 'Guardando…' : 'Guardar'}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+/* ========================================================================== */
+
+/**
+ * Anular una venta cargada por error: el lote vuelve a la vitrina.
+ *
+ * Los pagos NO se borran — son historia contable y siguen en el libro. Por eso
+ * el motivo es obligatorio: dentro de un mes nadie va a recordar por qué esta
+ * venta desapareció.
+ */
+function AnularVentaDialog({
+  venta,
+  onClose,
+  onDone,
+}: {
+  venta: Venta;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const supabase = useMemo(() => createClient(), []);
+  const { push } = useToast();
+  const [motivo, setMotivo] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function anular() {
+    setError(null);
+    if (motivo.trim().length < 5) {
+      setError('Escribí por qué se anula: queda en la auditoría.');
+      return;
+    }
+    setBusy(true);
+    const { error: err } = await supabase.rpc('admin_anular_venta', {
+      p_reservation_id: venta.reservation_id,
+      p_note: motivo.trim(),
+    });
+    setBusy(false);
+    if (err) {
+      setError(adminErrorCopy(err.message));
+      return;
+    }
+    push('Venta anulada. El lote volvió a disponible.', 'success');
+    onDone();
+  }
+
+  return (
+    <Dialog open onClose={onClose} title={`Anular venta — ${venta.tracking_code}`}>
+      <div className="space-y-3">
+        <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800">
+          Se anula la venta de <strong>{venta.buyer_full_name}</strong> (Mz {venta.manzana ?? '—'},
+          Lote {venta.lote ?? '—'}) y el lote vuelve a estar disponible.{' '}
+          {Number(venta.pagado_total) > 0 ? (
+            <>
+              Ya tiene {formatMoney(Number(venta.pagado_total), 'BOB')} pagados: esos pagos siguen
+              en el libro, así que habrá que resolver la devolución aparte.
+            </>
+          ) : null}
+        </p>
+        <textarea
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          rows={3}
+          placeholder="Motivo (queda en la auditoría)"
+          className={inputClass}
+        />
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <button type="button" className={btnSecondary} onClick={onClose}>
+          Volver
+        </button>
+        <button type="button" className={btnDanger} disabled={busy} onClick={() => void anular()}>
+          {busy ? 'Anulando…' : 'Anular venta'}
+        </button>
+      </div>
+    </Dialog>
   );
 }
