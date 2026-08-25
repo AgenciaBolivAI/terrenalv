@@ -1,0 +1,274 @@
+'use client';
+
+// La vidriera del mercado de traspasos, para cualquiera que pase.
+//
+// Lee v_mercado con la llave anónima (la vista solo expone el lote, jamás al
+// vendedor) y deja una consulta vía RPC. El tono es el del resto del sitio
+// público: claro con la plata, claro con las reglas.
+
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
+import { formatMoney } from '@/lib/format';
+
+interface Aviso {
+  listing_id: string;
+  proyecto: string;
+  slug: string;
+  manzana: string | null;
+  lote: string | null;
+  area_m2: number | null;
+  precio_lote: number;
+  saldo_a_asumir: number;
+  asking_price_bob: number;
+  note: string | null;
+  publicada: string;
+  fee_pct: number;
+}
+
+export function MercadoPublicoClient() {
+  const supabase = useMemo(() => createClient(), []);
+  const [avisos, setAvisos] = useState<Aviso[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [consultar, setConsultar] = useState<Aviso | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    void supabase
+      .from('v_mercado')
+      .select('*')
+      .order('publicada', { ascending: false })
+      .then(({ data }) => {
+        if (vivo) {
+          setAvisos((data ?? []) as Aviso[]);
+          setLoading(false);
+        }
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [supabase]);
+
+  return (
+    <div className="space-y-5 pt-4">
+      <header className="text-center">
+        <h1 className="text-2xl font-extrabold text-stone-900">Mercado de traspasos</h1>
+        <p className="mx-auto mt-2 max-w-xl text-sm text-stone-600">
+          Lotes de nuestras urbanizaciones que sus compradores ofrecen en traspaso. Si te interesa
+          uno, deja tu contacto: la oficina conecta a las partes y el traspaso se firma en
+          Terrenalv, con todos los papeles en regla.
+        </p>
+      </header>
+
+      {loading ? (
+        <p className="py-10 text-center text-sm text-stone-500">Cargando avisos…</p>
+      ) : avisos.length === 0 ? (
+        <section className="rounded-2xl border border-stone-200 bg-white p-8 text-center">
+          <p className="font-semibold text-stone-800">Hoy no hay lotes ofrecidos.</p>
+          <p className="mt-2 text-sm text-stone-600">
+            Vuelve pronto, o mira los lotes disponibles directamente de Terrenalv.
+          </p>
+          <Link
+            href="/prados-del-sur/mapa"
+            className="mt-4 inline-block rounded-xl bg-brand px-5 py-3 text-sm font-bold text-white active:bg-brand-light"
+          >
+            Ver el mapa de lotes
+          </Link>
+        </section>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {avisos.map((a) => (
+            <article
+              key={a.listing_id}
+              className="flex flex-col rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"
+            >
+              <p className="text-xs font-semibold tracking-wide text-brand uppercase">
+                {a.proyecto}
+              </p>
+              <h2 className="mt-1 text-lg font-extrabold text-stone-900">
+                Manzana {a.manzana ?? '—'} · Lote {a.lote ?? '—'}
+              </h2>
+              {a.area_m2 !== null ? (
+                <p className="text-sm text-stone-500">{Number(a.area_m2).toFixed(0)} m²</p>
+              ) : null}
+
+              <dl className="mt-3 space-y-1.5 text-sm">
+                <div className="flex justify-between">
+                  <dt className="text-stone-500">Pide el vendedor</dt>
+                  <dd className="font-bold tabular-nums text-stone-900">
+                    {formatMoney(Number(a.asking_price_bob), 'BOB')}
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-stone-500">Saldo a asumir con Terrenalv</dt>
+                  <dd className="font-semibold tabular-nums text-stone-700">
+                    {formatMoney(Number(a.saldo_a_asumir), 'BOB')}
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-stone-500">Precio original del lote</dt>
+                  <dd className="tabular-nums text-stone-500">
+                    {formatMoney(Number(a.precio_lote), 'BOB')}
+                  </dd>
+                </div>
+              </dl>
+
+              {a.note ? <p className="mt-3 text-sm text-stone-600">«{a.note}»</p> : null}
+
+              <button
+                type="button"
+                onClick={() => setConsultar(a)}
+                className="mt-4 w-full rounded-xl bg-brand px-4 py-3 text-sm font-bold text-white active:bg-brand-light"
+              >
+                Me interesa este lote
+              </button>
+              <p className="mt-2 text-center text-[11px] text-stone-400">
+                Publicado el {a.publicada}
+              </p>
+            </article>
+          ))}
+        </div>
+      )}
+
+      <section className="rounded-2xl border border-stone-200 bg-stone-50 p-5 text-sm text-stone-600">
+        <h3 className="font-bold text-stone-800">Cómo funciona</h3>
+        <ol className="mt-2 list-decimal space-y-1 pl-5">
+          <li>Dejas tu nombre y celular en el lote que te interesa.</li>
+          <li>El vendedor y la oficina se contactan contigo y acuerdan el precio.</li>
+          <li>
+            El traspaso se firma en la oficina de Terrenalv: tú asumes el saldo del lote y lo ya
+            pagado queda a tu favor.
+          </li>
+        </ol>
+        <p className="mt-3 text-xs text-stone-500">
+          La venta por el mercado paga a Terrenalv una comisión sobre el precio de venta (la cubre
+          el vendedor). Un traspaso directo — sin publicar acá — no paga comisión. Terrenalv es
+          dueña de cada lote hasta que se termina de pagar: por eso todo traspaso pasa por la
+          oficina.
+        </p>
+      </section>
+
+      {consultar ? (
+        <ConsultaDialog aviso={consultar} onClose={() => setConsultar(null)} />
+      ) : null}
+    </div>
+  );
+}
+
+/* ========================================================================== */
+
+function ConsultaDialog({ aviso, onClose }: { aviso: Aviso; onClose: () => void }) {
+  const supabase = useMemo(() => createClient(), []);
+  const [nombre, setNombre] = useState('');
+  const [telefono, setTelefono] = useState('');
+  const [mensaje, setMensaje] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [listo, setListo] = useState(false);
+
+  async function enviar() {
+    setError(null);
+    if (nombre.trim().length < 3) {
+      setError('Escribe tu nombre completo.');
+      return;
+    }
+    if (telefono.trim().length < 7) {
+      setError('Escribe tu número de celular.');
+      return;
+    }
+    setBusy(true);
+    const { error: err } = await supabase.rpc('mercado_consultar', {
+      p_listing_id: aviso.listing_id,
+      p_nombre: nombre.trim(),
+      p_telefono: telefono.trim(),
+      p_mensaje: mensaje.trim() || null,
+    });
+    setBusy(false);
+    if (err) {
+      setError(
+        err.message.includes('PHONE')
+          ? 'Revisa el celular: debe ser un número boliviano válido.'
+          : 'No se pudo enviar la consulta. Intenta de nuevo en un momento.',
+      );
+      return;
+    }
+    setListo(true);
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-t-2xl bg-white p-5 sm:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {listo ? (
+          <div className="text-center">
+            <h2 className="text-lg font-extrabold text-brand">¡Consulta enviada!</h2>
+            <p className="mt-2 text-sm text-stone-600">
+              El vendedor y la oficina de Terrenalv verán tu contacto y te llamarán para coordinar.
+            </p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="mt-4 w-full rounded-xl bg-brand px-4 py-3 text-sm font-bold text-white"
+            >
+              Listo
+            </button>
+          </div>
+        ) : (
+          <>
+            <h2 className="text-lg font-extrabold text-stone-900">
+              Mz {aviso.manzana ?? '—'} · Lote {aviso.lote ?? '—'} — {aviso.proyecto}
+            </h2>
+            <p className="mt-1 text-sm text-stone-600">
+              Deja tu contacto y te llaman para coordinar. Sin compromiso.
+            </p>
+            <div className="mt-4 space-y-3">
+              <input
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                placeholder="Tu nombre completo"
+                className="w-full rounded-xl border border-stone-300 px-4 py-3 text-sm"
+              />
+              <input
+                value={telefono}
+                onChange={(e) => setTelefono(e.target.value)}
+                placeholder="Tu celular (ej. 70012345)"
+                inputMode="tel"
+                className="w-full rounded-xl border border-stone-300 px-4 py-3 text-sm"
+              />
+              <textarea
+                value={mensaje}
+                onChange={(e) => setMensaje(e.target.value)}
+                rows={2}
+                placeholder="Mensaje (opcional)"
+                className="w-full rounded-xl border border-stone-300 px-4 py-3 text-sm"
+              />
+              {error ? <p className="text-sm text-red-600">{error}</p> : null}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void enviar()}
+                className="w-full rounded-xl bg-brand px-4 py-3 text-sm font-bold text-white active:bg-brand-light disabled:opacity-60"
+              >
+                {busy ? 'Enviando…' : 'Enviar mi consulta'}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full rounded-xl border border-stone-300 px-4 py-3 text-sm font-bold text-stone-600"
+              >
+                Volver
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

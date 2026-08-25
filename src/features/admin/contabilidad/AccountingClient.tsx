@@ -699,7 +699,7 @@ export default function AccountingClient({
                         .sort((a, b) => b.mes.localeCompare(a.mes) || b.total_bob - a.total_bob)
                         .map((c) => [
                           monthLabel(c.mes),
-                          c.purpose === 'cuota' ? 'Cuota' : c.purpose === 'abono' ? 'Abono' : 'Seña',
+                          c.purpose === 'cuota' ? 'Cuota' : c.purpose === 'abono' ? 'Abono' : c.purpose === 'comision' ? 'Comisión' : 'Seña',
                           c.forma,
                           fnum(Number(c.cobros), 0),
                           fnum(Number(c.total_bob)),
@@ -1653,7 +1653,7 @@ function StatementDialog({
                 <span className="font-mono text-xs text-stone-500">{pg.reference_code}</span>
                 <span className="text-stone-600">{dateLabel(pg.verified_at)}</span>
                 <span className="text-xs text-stone-400">
-                  {pg.purpose === 'cuota' ? 'cuota' : pg.purpose === 'abono' ? 'abono' : 'seña'}
+                  {pg.purpose === 'cuota' ? 'cuota' : pg.purpose === 'abono' ? 'abono' : pg.purpose === 'comision' ? 'comisión' : 'seña'}
                 </span>
                 <Badge className="bg-stone-100 text-stone-600">
                   {FORMA_DE_PAGO[pg.provider] ?? pg.provider}

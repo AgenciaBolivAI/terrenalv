@@ -84,7 +84,9 @@ export function Recibo({ r, emitidoPor }: { r: ReciboData; emitidoPor?: string }
                 ? 'Cuota del plan de pago'
                 : r.purpose === 'abono'
                   ? 'Abono al lote'
-                  : 'Seña / reserva del lote'}
+                  : r.purpose === 'comision'
+                    ? 'Comisión por venta en el mercado de traspasos'
+                    : 'Seña / reserva del lote'}
             </td>
             <td className="py-3 text-stone-600">{FORMA_DE_PAGO[r.provider] ?? r.provider}</td>
             <td className="py-3 text-right font-bold tabular-nums text-stone-900">
@@ -110,6 +112,7 @@ export function Recibo({ r, emitidoPor }: { r: ReciboData; emitidoPor?: string }
         </tfoot>
       </table>
 
+      {r.purpose === 'comision' ? null : (
       <section className="mt-6 grid grid-cols-3 gap-3 rounded-lg bg-stone-50 p-4 text-sm print:bg-white print:ring-1 print:ring-stone-300">
         <div>
           <p className="text-xs text-stone-500">Precio del lote</p>
@@ -126,6 +129,7 @@ export function Recibo({ r, emitidoPor }: { r: ReciboData; emitidoPor?: string }
           <p className="font-semibold tabular-nums">{formatMoney(r.saldo, 'BOB')}</p>
         </div>
       </section>
+      )}
 
       <footer className="mt-8 border-t border-stone-200 pt-4 text-xs text-stone-500">
         <p>

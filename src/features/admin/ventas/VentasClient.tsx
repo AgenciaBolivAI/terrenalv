@@ -18,6 +18,7 @@
 // las pantallas digan lo mismo.
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { formatMoney, waLink } from '@/lib/format';
 import type { PaymentStatus, RejectionReason } from '@/lib/db-types';
@@ -67,6 +68,10 @@ interface Venta {
   traspaso_de_tracking: string | null;
   traspaso_de_comprador: string | null;
   traspaso_pagado: number | null;
+  en_mercado: boolean;
+  mercado_listing_id: string | null;
+  mercado_pide: number | null;
+  mercado_fee_pct: number | null;
   source: 'web' | 'oficina';
   /**
    * Cómo nació la venta. Ojo con `origen_declarado`: cuando es false la vista
@@ -667,7 +672,15 @@ export default function VentasClient({
                                     <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
                                       Comprador
                                     </p>
-                                    <p className="mt-1 text-sm font-medium text-stone-900">{r.buyer_full_name}</p>
+                                    <p className="mt-1 text-sm font-medium text-stone-900">
+                                      <Link
+                                        href={`/admin/clientes?ci=${encodeURIComponent(r.buyer_ci)}`}
+                                        className="hover:text-brand hover:underline"
+                                        title="Ver el perfil completo del cliente"
+                                      >
+                                        {r.buyer_full_name}
+                                      </Link>
+                                    </p>
                                     <p className="text-xs text-stone-500">
                                       CI {r.buyer_ci} · {r.buyer_phone}
                                       {r.buyer_email ? ` · ${r.buyer_email}` : ''}
@@ -1253,7 +1266,22 @@ function TraspasarVentaDialog({
   const [motivo, setMotivo] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hecho, setHecho] = useState<{ codigo: string } | null>(null);
+  const [hecho, setHecho] = useState<{
+    codigo: string;
+    comision: number;
+    reciboId: string | null;
+  } | null>(null);
+  // Venta publicada en el mercado: el precio pactado y por donde entra la
+  // comision. Prefijado con lo que pedia el aviso; la oficina lo corrige al
+  // numero que las partes cerraron de verdad.
+  const [precioMercado, setPrecioMercado] = useState(
+    venta.en_mercado ? String(venta.mercado_pide ?? '') : '',
+  );
+  const [medio, setMedio] = useState<'efectivo' | 'manual_qr'>('efectivo');
+  const feePct = Number(venta.mercado_fee_pct ?? 0);
+  const comisionPrevista = venta.en_mercado
+    ? Math.round((Number(precioMercado) || 0) * feePct) / 100
+    : 0;
 
   async function traspasar() {
     setError(null);
@@ -1265,6 +1293,10 @@ function TraspasarVentaDialog({
       setError('Escribe el motivo del traspaso: queda en la auditoría.');
       return;
     }
+    if (venta.en_mercado && !(Number(precioMercado) > 0)) {
+      setError('Escribe el precio de venta que pactaron: sobre eso se cobra la comisión.');
+      return;
+    }
     setBusy(true);
     const { data, error: err } = await supabase.rpc('admin_traspasar_venta', {
       p_reservation_id: venta.reservation_id,
@@ -1273,15 +1305,25 @@ function TraspasarVentaDialog({
       p_phone: tel.trim(),
       p_email: correo.trim(),
       p_note: motivo.trim(),
+      p_precio_mercado: venta.en_mercado ? Number(precioMercado) : null,
+      p_medio: venta.en_mercado ? medio : null,
     });
     setBusy(false);
     if (err) {
       setError(adminErrorCopy(err.message));
       return;
     }
-    const r = data as { tracking_code?: string } | null;
+    const r = data as {
+      tracking_code?: string;
+      comision_bob?: number;
+      comision_payment_id?: string;
+    } | null;
     push('Traspaso registrado.', 'success');
-    setHecho({ codigo: r?.tracking_code ?? '' });
+    setHecho({
+      codigo: r?.tracking_code ?? '',
+      comision: Number(r?.comision_bob ?? 0),
+      reciboId: r?.comision_payment_id ?? null,
+    });
   }
 
   if (hecho) {
@@ -1295,6 +1337,24 @@ function TraspasarVentaDialog({
             {formatMoney(Number(venta.pagado_total), 'BOB')} pagados y{' '}
             {formatMoney(Number(venta.saldo), 'BOB')} de saldo.
           </p>
+          {hecho.comision > 0 ? (
+            <p className="rounded-lg bg-stone-50 p-3 text-sm text-stone-700">
+              Venta por el mercado: se cobró la comisión de{' '}
+              <strong>{formatMoney(hecho.comision, 'BOB')}</strong> al vendedor.
+              {hecho.reciboId ? (
+                <>
+                  {' '}
+                  <Link
+                    href={`/admin/recibo/${hecho.reciboId}`}
+                    className="font-semibold text-brand hover:underline"
+                  >
+                    Imprimir su recibo
+                  </Link>
+                  .
+                </>
+              ) : null}
+            </p>
+          ) : null}
           <p className="text-xs text-stone-500">
             La venta anterior quedó cerrada con sus recibos intactos. Si el comprador nuevo va en
             cuotas, creale su plan desde Contabilidad → Por cobrar.
@@ -1345,6 +1405,46 @@ function TraspasarVentaDialog({
           placeholder="Motivo del traspaso (queda en la auditoría)"
           className={inputClass}
         />
+        {venta.en_mercado ? (
+          <div className="space-y-3 rounded-lg border border-brand/30 bg-green-50/50 p-3">
+            <p className="text-sm font-semibold text-stone-800">
+              Esta venta está publicada en el mercado (pedía{' '}
+              {formatMoney(Number(venta.mercado_pide ?? 0), 'BOB')}). La venta por el mercado paga
+              a Terrenalv el <strong>{feePct}%</strong> del precio pactado; la cubre el vendedor.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs text-stone-500">
+                  Precio de venta pactado (Bs)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={precioMercado}
+                  onChange={(e) => setPrecioMercado(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-stone-500">La comisión entra por</label>
+                <select
+                  value={medio}
+                  onChange={(e) => setMedio(e.target.value as typeof medio)}
+                  className={inputClass}
+                >
+                  <option value="efectivo">Efectivo</option>
+                  <option value="manual_qr">QR / transferencia</option>
+                </select>
+              </div>
+            </div>
+            <p className="text-xs text-stone-600">
+              Comisión a cobrar:{' '}
+              <strong className="tabular-nums">{formatMoney(comisionPrevista, 'BOB')}</strong> — se
+              registra con recibo a nombre del vendedor y el aviso se cierra solo.
+            </p>
+          </div>
+        ) : null}
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
       </div>
       <div className="mt-4 flex justify-end gap-2">

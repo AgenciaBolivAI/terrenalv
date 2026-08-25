@@ -207,6 +207,12 @@ export default async function Home() {
             >
               Ver mapa
             </Link>
+            <Link
+              href="/mercado"
+              className="hidden rounded-full px-4 py-2 text-sm font-semibold transition hover:bg-white/10 sm:block"
+            >
+              Mercado
+            </Link>
             <MiReservaLink className="hidden rounded-full px-4 py-2 text-sm font-semibold transition hover:bg-white/10 sm:block">
               Mi reserva
             </MiReservaLink>

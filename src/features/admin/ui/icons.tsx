@@ -86,3 +86,6 @@ export const IconChart = (p: IconProps) =>
 // Urbanizaciones: capas apiladas — varios proyectos sobre la misma base.
 export const IconLayers = (p: IconProps) =>
   base(p, <><path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="m3 13 9 5 9-5" /><path d="m3 17 9 5 9-5" /></>);
+
+export const IconStore = (p: IconProps) =>
+  base(p, <><path d="M4 4h16l1.5 4.5a3 3 0 0 1-2.9 3.5 3 3 0 0 1-3-2.5 3 3 0 0 1-3.1 2.5 3 3 0 0 1-3-2.5 3 3 0 0 1-3.1 2.5A3 3 0 0 1 2.5 8.5Z" /><path d="M5 12v8h14v-8" /><path d="M10 20v-5h4v5" /></>);

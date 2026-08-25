@@ -17,6 +17,7 @@ import { LotSummaryCard } from './LotSummaryCard';
 import { PaymentSection } from './PaymentSection';
 import { ProofUploader } from './ProofUploader';
 import { CancelReservation } from './CancelReservation';
+import { MiPublicacion } from '@/features/market/MiPublicacion';
 
 const MAP_URL = '/prados-del-sur/mapa';
 
@@ -212,6 +213,7 @@ export function TrackingView({
             </p>
           </section>
           <SummaryFromStatus data={data} />
+          <MiPublicacion code={data.tracking_code} />
           <div className="rounded-2xl border border-stone-200 bg-white p-4 text-center">
             <p className="text-sm text-stone-600">Guarda tu código:</p>
             <p className="mt-1 font-mono text-xl font-extrabold text-stone-900">
