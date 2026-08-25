@@ -214,3 +214,20 @@ export function mesFin(iso: string): string {
   const d = new Date(`${iso.slice(0, 10)}T12:00:00`);
   return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10);
 }
+
+/**
+ * Cuánto entró por cada vía: efectivo, QR, depósito bancario.
+ *
+ * El efectivo hay que arquearlo y depositarlo; el QR tiene que aparecer en el
+ * extracto del banco. Sin separarlos no se puede cuadrar la caja, y ese dato
+ * se venía guardando sin mostrarse en ninguna parte.
+ */
+export interface CobroPorVia {
+  project_id: string;
+  mes: string;
+  provider: string;
+  forma: string;
+  purpose: string;
+  cobros: number;
+  total_bob: number;
+}

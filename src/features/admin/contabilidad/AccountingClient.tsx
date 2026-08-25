@@ -61,6 +61,7 @@ import {
   type LedgerAccount,
   type LedgerLine,
   type MonthlyCashflow,
+  type CobroPorVia,
   type PaymentRow,
   type SaleWithoutPlan,
 } from './types';
@@ -75,6 +76,19 @@ type Tab =
   | 'estados'
   | 'comprobantes'
   | 'gestion';
+
+/**
+ * Cómo se llama cada vía de cobro en pantalla.
+ *
+ * Son las mismas etiquetas que `private.forma_de_pago()` escribe en la glosa
+ * del libro, para que el filtro por forma encuentre lo que el asiento dice.
+ */
+const FORMA_DE_PAGO: Record<string, string> = {
+  efectivo: 'Efectivo',
+  manual_qr: 'QR / transferencia',
+  banco_ganadero: 'Banco Ganadero',
+  bnb: 'BNB',
+};
 
 /** Quién puede aparecer como contraparte de un egreso: un cliente no. */
 const EXPENSE_CONTACT_KINDS: { contactKinds: ContactKind[] } = {
@@ -145,6 +159,12 @@ export default function AccountingClient({
   const [libroBusy, setLibroBusy] = useState(false);
   /** Set by clicking a row of the libro mayor: shows only that account. */
   const [cuentaFiltro, setCuentaFiltro] = useState<string | null>(null);
+  // Filtro por forma de pago. Va sobre la glosa porque el libro ya la lleva
+  // escrita ("Cobro de cuota por Efectivo — ..."): filtrar por ahí es leer lo
+  // mismo que el contador ve en el asiento, no una condición aparte que
+  // podría contradecirlo.
+  const [formaFiltro, setFormaFiltro] = useState<string | null>(null);
+  const [cobros, setCobros] = useState<CobroPorVia[]>([]);
 
   // El plan de cuentas lo usan el editor de comprobantes y la pestaña de
   // gestión, así que se carga una vez acá y no dos veces abajo. Se llama
@@ -173,7 +193,7 @@ export default function AccountingClient({
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    const [accRes, cfRes, expRes, resRes, tesRes] = await Promise.all([
+    const [accRes, cfRes, expRes, resRes, tesRes, viaRes] = await Promise.all([
       alcance(supabase.from('v_account_status').select('*')),
       alcance(supabase.from('v_monthly_cashflow').select('*'))
         .order('mes', { ascending: false })
@@ -192,6 +212,7 @@ export default function AccountingClient({
           .select('id, tracking_code, buyer_full_name, price_agreed, currency, confirmed_at, lots!reservations_lot_id_fkey(number, manzanas(code))'),
       ).eq('status', 'confirmada'),
       supabase.from('v_tesoreria_saldos').select('*').eq('is_active', true).order('name'),
+      alcance(supabase.from('v_an_cobros_por_via').select('*')),
     ]);
 
     const acc = (accRes.data ?? []) as unknown as AccountStatus[];
@@ -199,6 +220,7 @@ export default function AccountingClient({
     setCashflow((cfRes.data ?? []) as unknown as MonthlyCashflow[]);
     setExpenses((expRes.data ?? []) as unknown as Expense[]);
     setTesoreria((tesRes.data ?? []) as unknown as TreasuryAccount[]);
+    setCobros((viaRes.data ?? []) as unknown as CobroPorVia[]);
 
     // A confirmed sale with no plan row is a buyer nobody is billing.
     const planned = new Set(acc.map((a) => a.reservation_id));
@@ -287,6 +309,23 @@ export default function AccountingClient({
     };
   }, [expenses]);
 
+  // Cómo entró la plata. El efectivo hay que arquearlo y depositarlo; el QR
+  // tiene que aparecer en el extracto del banco. Sin separarlos no se puede
+  // cuadrar la caja.
+  const porForma = useMemo(() => {
+    const m = new Map<string, { total: number; cobros: number }>();
+    for (const c of cobros) {
+      const a = m.get(c.forma) ?? { total: 0, cobros: 0 };
+      a.total += Number(c.total_bob);
+      a.cobros += Number(c.cobros);
+      m.set(c.forma, a);
+    }
+    const rows = [...m.entries()]
+      .map(([forma, v]) => ({ forma, ...v }))
+      .sort((a, b) => b.total - a.total);
+    return { rows, total: rows.reduce((a, r) => a + r.total, 0) };
+  }, [cobros]);
+
   const desdeTodo =
     [
       ...expenses.map((e) => e.incurred_on),
@@ -355,10 +394,16 @@ export default function AccountingClient({
   }, [tab, loadLibro]);
 
   /** Open the libro on a given period, optionally narrowed to one account. */
-  function abrirLibro(desdeIso?: string, hastaIso?: string, cuenta?: string | null) {
+  function abrirLibro(
+    desdeIso?: string,
+    hastaIso?: string,
+    cuenta?: string | null,
+    forma?: string | null,
+  ) {
     if (desdeIso) setDesde(desdeIso);
     if (hastaIso) setHasta(hastaIso);
     setCuentaFiltro(cuenta ?? null);
+    setFormaFiltro(forma ?? null);
     setTab('libro');
   }
 
@@ -368,7 +413,9 @@ export default function AccountingClient({
   // tambien 1111.01 y 1111.02, que son las cuentas de cada banco y cada caja.
   // Con igualdad estricta, el KPI de caja abriria un libro vacio.
   const diarioFiltrado = (diario ?? []).filter(
-    (l) => !cuentaFiltro || l.cuenta === cuentaFiltro || l.cuenta.startsWith(`${cuentaFiltro}.`),
+    (l) =>
+      (!cuentaFiltro || l.cuenta === cuentaFiltro || l.cuenta.startsWith(`${cuentaFiltro}.`)) &&
+      (!formaFiltro || l.glosa.includes(`por ${formaFiltro}`)),
   );
 
 
@@ -589,6 +636,54 @@ export default function AccountingClient({
                     ))}
                   </ul>
                 </>
+              )}
+            </section>
+
+            <section className="rounded-xl border border-stone-200 bg-white p-4">
+              <div className="flex items-baseline justify-between gap-2">
+                <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+                  Cómo entró la plata
+                </h2>
+                <span className="text-xs text-stone-400">
+                  {formatMoney(porForma.total, 'BOB')}
+                </span>
+              </div>
+              <p className="mt-1 mb-3 text-xs text-stone-400">
+                El efectivo hay que arquearlo y depositarlo; el QR tiene que aparecer en el
+                extracto. Clic para ver esos cobros en el libro.
+              </p>
+              {porForma.rows.length === 0 ? (
+                <p className="text-sm text-stone-500">Todavía no hay cobros aprobados.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {porForma.rows.map((f) => (
+                    <li key={f.forma}>
+                      <button
+                        type="button"
+                        onClick={() => abrirLibro(desdeTodo, todayIso(), null, f.forma)}
+                        className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-1
+                                   text-left text-sm hover:bg-stone-50
+                                   focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
+                      >
+                        <span className="w-36 shrink-0 truncate text-stone-600">{f.forma}</span>
+                        <span className="relative h-4 flex-1 overflow-hidden rounded bg-stone-100">
+                          <span
+                            className="absolute inset-y-0 left-0 rounded bg-brand"
+                            style={{
+                              width: `${Math.max(1.5, (f.total / Math.max(1, porForma.total)) * 100)}%`,
+                            }}
+                          />
+                        </span>
+                        <span className="w-16 shrink-0 text-right text-xs text-stone-400">
+                          {f.cobros} cobro{f.cobros === 1 ? '' : 's'}
+                        </span>
+                        <span className="w-24 shrink-0 text-right font-semibold tabular-nums text-stone-800">
+                          {formatMoney(f.total, 'BOB')}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               )}
             </section>
 
@@ -1082,6 +1177,16 @@ export default function AccountingClient({
               <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
                 Libro diario
               </h2>
+              {formaFiltro ? (
+                <button
+                  type="button"
+                  onClick={() => setFormaFiltro(null)}
+                  className="cursor-pointer rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800
+                             hover:bg-green-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
+                >
+                  {formaFiltro} ✕
+                </button>
+              ) : null}
               {cuentaFiltro ? (
                 <button
                   type="button"
@@ -1110,7 +1215,8 @@ export default function AccountingClient({
                   meta={{
                     title: 'Libro Diario',
                     subtitle: `${projectName} · ${dateLabel(desde)} a ${dateLabel(hasta)}`
-                      + (cuentaFiltro ? ` · cuenta ${cuentaFiltro}` : ''),
+                      + (cuentaFiltro ? ` · cuenta ${cuentaFiltro}` : '')
+                      + (formaFiltro ? ` · ${formaFiltro}` : ''),
                     filename: `libro-diario-${desde}-a-${hasta}`,
                     footnote: 'Partida doble: cada transacción son dos líneas que suman cero.',
                   }}
@@ -1426,8 +1532,11 @@ function StatementDialog({
                 <span className="font-mono text-xs text-stone-500">{pg.reference_code}</span>
                 <span className="text-stone-600">{dateLabel(pg.verified_at)}</span>
                 <span className="text-xs text-stone-400">
-                  {pg.purpose === 'cuota' ? 'cuota' : 'sena'}
+                  {pg.purpose === 'cuota' ? 'cuota' : 'seña'}
                 </span>
+                <Badge className="bg-stone-100 text-stone-600">
+                  {FORMA_DE_PAGO[pg.provider] ?? pg.provider}
+                </Badge>
                 <span className="ml-auto font-semibold tabular-nums">
                   {formatMoney(Number(pg.amount), pg.currency)}
                 </span>
