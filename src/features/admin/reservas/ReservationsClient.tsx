@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { formatMoney, formatDateTime, waLink } from '@/lib/format';
 import type { TeamRole } from '@/lib/db-types';
@@ -59,6 +61,7 @@ function rowTimeLabel(tab: TabId, row: QueueRow): string {
 export default function ReservationsClient({ projectId, role, initialTab, openId, initialQuery }: Props) {
   const supabase = useMemo(() => createClient(), []);
   const { push } = useToast();
+  const router = useRouter();
 
   const [tab, setTab] = useState<TabId>(initialTab);
   const [query, setQuery] = useState(initialQuery);
@@ -223,13 +226,21 @@ export default function ReservationsClient({ projectId, role, initialTab, openId
       .then(({ data }) => {
         if (!data) return;
         const row = data as unknown as QueueRow;
+        // Confirmada = venta: esa fila ya no tiene bandeja en esta pantalla.
+        // Los enlaces viejos siguen llegando acá (un lote vendido en
+        // /admin/lotes apunta a su reserva), así que se la reenvía a donde la
+        // venta sí se ve, en vez de dejar el clic sin destino.
+        if (row.status === 'confirmada') {
+          router.replace(`/admin/ventas?open=${row.id}`);
+          return;
+        }
         const destTab = tabForStatus(row.status);
         setTab(destTab);
         syncUrl(destTab, row.id);
         setRows((prev) => (prev.some((r) => r.id === row.id) ? prev : [row, ...prev]));
         setSelectedId(row.id);
       });
-  }, [loading, openId, supabase, syncUrl]);
+  }, [loading, openId, supabase, syncUrl, router]);
 
   // ---- Realtime: the NotificationBell (single team-topic subscriber) re-emits
   // broadcasts as a DOM event; refetch on it (debounced) + on window focus. ----
@@ -320,26 +331,46 @@ export default function ReservationsClient({ projectId, role, initialTab, openId
 
       {/* Tabs */}
       <div className="mb-3 flex gap-1 overflow-x-auto rounded-xl border border-stone-200 bg-white p-1">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => changeTab(t.id)}
-            className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap ${
-              tab === t.id ? 'bg-brand text-white' : 'text-stone-600 hover:bg-stone-100'
-            }`}
-          >
-            <span className="sm:hidden">{t.short}</span>
-            <span className="hidden sm:inline">{t.label}</span>
-            <span
-              className={`rounded-full px-1.5 text-[11px] font-bold ${
-                tab === t.id ? 'bg-white/20' : 'bg-stone-100 text-stone-500'
+        {TABS.map((t) =>
+          t.id === 'confirmadas' ? (
+            // Una reserva confirmada ya es una venta: su bandeja se mudó a
+            // /admin/ventas, con saldos, pagos y recibos. El botón se vuelve
+            // enlace para que el flujo siga siendo visible desde la cola sin
+            // duplicar esa lista acá. El contador se mantiene: es el mismo
+            // número que va a encontrar del otro lado.
+            <Link
+              key={t.id}
+              href="/admin/ventas"
+              className="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium
+                         whitespace-nowrap text-brand hover:bg-green-50"
+            >
+              <span className="sm:hidden">Ventas &rarr;</span>
+              <span className="hidden sm:inline">Ventas confirmadas &rarr;</span>
+              <span className="rounded-full bg-stone-100 px-1.5 text-[11px] font-bold text-stone-500">
+                {counts[t.id]}
+              </span>
+            </Link>
+          ) : (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => changeTab(t.id)}
+              className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap ${
+                tab === t.id ? 'bg-brand text-white' : 'text-stone-600 hover:bg-stone-100'
               }`}
             >
-              {counts[t.id]}
-            </span>
-          </button>
-        ))}
+              <span className="sm:hidden">{t.short}</span>
+              <span className="hidden sm:inline">{t.label}</span>
+              <span
+                className={`rounded-full px-1.5 text-[11px] font-bold ${
+                  tab === t.id ? 'bg-white/20' : 'bg-stone-100 text-stone-500'
+                }`}
+              >
+                {counts[t.id]}
+              </span>
+            </button>
+          ),
+        )}
       </div>
 
       {/* List */}

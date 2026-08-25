@@ -18,6 +18,13 @@ export default async function ReservasPage({
     if (ctx.reason === 'auth') redirect('/admin/login');
     return null;
   }
+  // La bandeja de confirmadas se mudó a /admin/ventas: acá queda solo la cola
+  // de trabajo. Los enlaces viejos (dashboard, analítica, marcadores) siguen
+  // llegando con ?tab=confirmadas, así que se los reenvía en vez de dejarlos
+  // caer en "Por revisar" como si nada.
+  if (sp.tab === 'confirmadas') {
+    redirect(sp.open ? `/admin/ventas?open=${encodeURIComponent(sp.open)}` : '/admin/ventas');
+  }
   const tab = (TABS.some((t) => t.id === sp.tab) ? sp.tab : 'revisar') as TabId;
 
   return (

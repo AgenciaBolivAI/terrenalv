@@ -9,6 +9,7 @@ import SignOutButton from '@/features/admin/auth/SignOutButton';
 import { ToastProvider } from '@/features/admin/ui/toast';
 import {
   IconBell,
+  IconCheck,
   IconGrid,
   IconHome,
   IconInbox,
@@ -40,6 +41,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { href: '/admin', label: 'Dashboard', icon: IconHome },
   { href: '/admin/reservas', label: 'Reservas', icon: IconInbox },
+  { href: '/admin/ventas', label: 'Ventas', icon: IconCheck },
   { href: '/admin/lotes', label: 'Lotes', icon: IconGrid },
   { href: '/admin/notificaciones', label: 'Notificaciones', icon: IconBell },
   { href: '/admin/contabilidad', label: 'Contabilidad', icon: IconLedger, roles: ['admin', 'contabilidad'] },

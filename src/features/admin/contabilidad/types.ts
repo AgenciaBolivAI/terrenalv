@@ -107,16 +107,50 @@ export interface Installment {
   paid_at: string | null;
 }
 
-/** A confirmed sale that has no payment plan yet — the gap the panel must close. */
+/**
+ * Venta confirmada sin plan de cuotas.
+ *
+ * Antes era solo una alarma («nadie les está facturando»). Con la migración son
+ * 1.400+ ventas legítimas cuyo cronograma vive en el sistema anterior, así que
+ * además de crearles plan hay que poder COBRARLES: cada pago sin plan entra
+ * como abono y baja el saldo.
+ */
 export interface SaleWithoutPlan {
   id: string;
+  project_id: string;
   tracking_code: string;
   buyer_full_name: string;
+  buyer_phone: string;
   price_agreed: number;
   currency: Currency;
   confirmed_at: string | null;
   manzana: string;
   lote: string;
+  /** Del saldo reportado al migrar (o del precio) menos lo cobrado acá. */
+  saldo: number;
+  migrada: boolean;
+}
+
+/**
+ * A quién se le está cobrando, venga de donde venga.
+ *
+ * El diálogo de cobro atiende dos casos con la misma cara: la cuenta con plan
+ * (cuota, cascada desde la más vieja) y la venta sin plan (abono directo al
+ * saldo). Si cada caso tuviera su diálogo, uno de los dos se quedaría sin
+ * recibo o sin forma de pago la próxima vez que se toque el otro.
+ */
+export interface CobroTarget {
+  reservation_id: string;
+  /** Para prellenar el tipo de cambio del proyecto al cobrar en dólares. */
+  project_id: string;
+  tracking_code: string;
+  buyer_full_name: string;
+  buyer_phone: string;
+  saldo: number;
+  currency: Currency;
+  /** Monto sugerido al abrir: la cuota mensual si hay plan, vacío si no. */
+  monto_sugerido: number | null;
+  tiene_plan: boolean;
 }
 
 /** es-BO short month label: "ago 2026". */

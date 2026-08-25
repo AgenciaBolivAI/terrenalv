@@ -62,6 +62,7 @@ import {
   type LedgerLine,
   type MonthlyCashflow,
   type CobroPorVia,
+  type CobroTarget,
   type PaymentRow,
   type SaleWithoutPlan,
 } from './types';
@@ -94,6 +95,9 @@ const FORMA_DE_PAGO: Record<string, string> = {
 const EXPENSE_CONTACT_KINDS: { contactKinds: ContactKind[] } = {
   contactKinds: ['proveedor', 'empleado', 'otro'],
 };
+
+/** Filas de «sin plan» que se muestran sin buscar. */
+const SIN_PLAN_VISIBLES = 25;
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'resumen', label: 'Resumen' },
@@ -147,7 +151,8 @@ export default function AccountingClient({
   const [cuotas, setCuotas] = useState<Installment[] | null>(null);
   const [pagos, setPagos] = useState<PaymentRow[] | null>(null);
   const [planFor, setPlanFor] = useState<SaleWithoutPlan | null>(null);
-  const [payFor, setPayFor] = useState<AccountStatus | null>(null);
+  const [payFor, setPayFor] = useState<CobroTarget | null>(null);
+  const [buscarSinPlan, setBuscarSinPlan] = useState('');
   const [expenseOpen, setExpenseOpen] = useState(false);
 
   // Libro: the contador works in periods, so this has its own date range and
@@ -206,11 +211,22 @@ export default function AccountingClient({
         .is('deleted_at', null)
         .order('incurred_on', { ascending: false })
         .limit(1000),
-      alcance(
-        supabase
-          .from('reservations')
-          .select('id, tracking_code, buyer_full_name, price_agreed, currency, confirmed_at, lots!reservations_lot_id_fkey(number, manzanas(code))'),
-      ).eq('status', 'confirmada'),
+      // Ventas sin plan, desde v_ventas y PAGINADO: son 1.400+ filas migradas y
+      // PostgREST corta en 1.000 — sin paginar, un tercio desaparecía en
+      // silencio de esta lista.
+      (async () => {
+        const filas: Record<string, unknown>[] = [];
+        for (let desde = 0; ; desde += 1000) {
+          const { data: pagina } = await alcance(
+            supabase.from('v_ventas').select('*').eq('con_plan', false),
+          )
+            .order('saldo', { ascending: false })
+            .range(desde, desde + 999);
+          filas.push(...((pagina ?? []) as Record<string, unknown>[]));
+          if (!pagina || pagina.length < 1000) break;
+        }
+        return { data: filas };
+      })(),
       supabase.from('v_tesoreria_saldos').select('*').eq('is_active', true).order('name'),
       alcance(supabase.from('v_an_cobros_por_via').select('*')),
     ]);
@@ -222,22 +238,21 @@ export default function AccountingClient({
     setTesoreria((tesRes.data ?? []) as unknown as TreasuryAccount[]);
     setCobros((viaRes.data ?? []) as unknown as CobroPorVia[]);
 
-    // A confirmed sale with no plan row is a buyer nobody is billing.
-    const planned = new Set(acc.map((a) => a.reservation_id));
-    const sales = (resRes.data ?? []).map((r) => {
-      const lot = r.lots as unknown as { number: string; manzanas: { code: string } | null } | null;
-      return {
-        id: r.id as string,
-        tracking_code: r.tracking_code as string,
-        buyer_full_name: r.buyer_full_name as string,
-        price_agreed: Number(r.price_agreed),
-        currency: r.currency as Currency,
-        confirmed_at: (r.confirmed_at as string) ?? null,
-        manzana: lot?.manzanas?.code ?? '—',
-        lote: lot?.number ?? '—',
-      } satisfies SaleWithoutPlan;
-    });
-    setNoPlan(sales.filter((s) => !planned.has(s.id)));
+    const sales = ((resRes.data ?? []) as Record<string, unknown>[]).map((r) => ({
+      id: r.reservation_id as string,
+      project_id: r.project_id as string,
+      tracking_code: r.tracking_code as string,
+      buyer_full_name: r.buyer_full_name as string,
+      buyer_phone: (r.buyer_phone as string) ?? '',
+      price_agreed: Number(r.price_agreed),
+      currency: (r.currency as Currency) ?? 'BOB',
+      confirmed_at: (r.fecha_venta as string) ?? null,
+      manzana: (r.manzana as string) ?? '—',
+      lote: (r.lote as string) ?? '—',
+      saldo: Number(r.saldo ?? 0),
+      migrada: Boolean(r.migrada),
+    } satisfies SaleWithoutPlan));
+    setNoPlan(sales);
     setLoading(false);
   }, [supabase, alcance]);
 
@@ -341,6 +356,20 @@ export default function AccountingClient({
     const max = Math.max(1, ...rows.map((r) => r.total));
     return { rows, max };
   }, [expenses]);
+
+  // 1.400+ filas sin plan: se listan las de mayor saldo y el resto por
+  // búsqueda — una lista completa acá sería scroll infinito sin uso.
+  const sinPlanFiltradas = useMemo(() => {
+    const q = buscarSinPlan.trim().toLowerCase();
+    if (!q) return noPlan;
+    return noPlan.filter(
+      (s) =>
+        s.buyer_full_name.toLowerCase().includes(q) ||
+        s.tracking_code.toLowerCase().includes(q) ||
+        `${s.manzana}-${s.lote}`.toLowerCase().includes(q),
+    );
+  }, [noPlan, buscarSinPlan]);
+  const sinPlanVisibles = sinPlanFiltradas.slice(0, SIN_PLAN_VISIBLES);
 
   const cobrarRows = (onlyLate ? active.filter((a) => Number(a.cuotas_vencidas) > 0) : active).sort(
     (a, b) => Number(b.monto_vencido) - Number(a.monto_vencido) || Number(b.saldo) - Number(a.saldo),
@@ -644,9 +673,39 @@ export default function AccountingClient({
                 <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
                   Cómo entró la plata
                 </h2>
-                <span className="text-xs text-stone-400">
-                  {formatMoney(porForma.total, 'BOB')}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-stone-400">
+                    {formatMoney(porForma.total, 'BOB')}
+                  </span>
+                  <ExportButtons
+                    disabled={!cobros.length}
+                    meta={{
+                      title: 'Cobros por Vía y Tipo',
+                      subtitle: projectName,
+                      filename: `cobros-clasificados-${new Date().toISOString().slice(0, 10)}`,
+                      footnote:
+                        'Cada cobro aprobado, clasificado por mes, tipo (seña / cuota / abono) y forma de pago. Bolivianos.',
+                    }}
+                    columns={[
+                      { header: 'Mes' },
+                      { header: 'Tipo' },
+                      { header: 'Forma de pago' },
+                      { header: 'Cobros', align: 'right' },
+                      { header: 'Total', align: 'right' },
+                    ]}
+                    rows={() =>
+                      [...cobros]
+                        .sort((a, b) => b.mes.localeCompare(a.mes) || b.total_bob - a.total_bob)
+                        .map((c) => [
+                          monthLabel(c.mes),
+                          c.purpose === 'cuota' ? 'Cuota' : c.purpose === 'abono' ? 'Abono' : 'Seña',
+                          c.forma,
+                          fnum(Number(c.cobros), 0),
+                          fnum(Number(c.total_bob)),
+                        ]) as XCell[][]
+                    }
+                  />
+                </div>
               </div>
               <p className="mt-1 mb-3 text-xs text-stone-400">
                 El efectivo hay que arquearlo y depositarlo; el QR tiene que aparecer en el
@@ -828,31 +887,75 @@ export default function AccountingClient({
       {tab === 'cobrar' ? (
         <div className="space-y-5">
           {noPlan.length > 0 ? (
-            <section className="rounded-xl border border-amber-300 bg-amber-50 p-4">
-              <h2 className="text-sm font-bold text-amber-900">
-                {noPlan.length} venta(s) sin plan de pago
-              </h2>
-              <p className="mt-1 text-xs text-amber-800">
-                Están confirmadas pero no tienen cuotas cargadas, así que no aparecen en lo que hay
-                por cobrar ni en la mora. Nadie les está facturando.
+            <section className="rounded-xl border border-stone-200 bg-white p-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <h2 className="text-sm font-bold text-stone-900">
+                  {noPlan.length} venta(s) sin plan de cuotas
+                </h2>
+                <input
+                  value={buscarSinPlan}
+                  onChange={(e) => setBuscarSinPlan(e.target.value)}
+                  placeholder="Buscar por nombre, código o lote"
+                  className={`${inputClass} ml-auto w-auto min-w-60`}
+                />
+              </div>
+              <p className="mt-1 text-xs text-stone-500">
+                En su mayoría migradas del sistema anterior: su cronograma vive allá, pero acá se
+                les puede <strong>registrar abonos</strong> (bajan el saldo) o crearles un plan de
+                cuotas propio. Ordenadas por saldo.
               </p>
               <ul className="mt-3 space-y-2">
-                {noPlan.map((s) => (
+                {sinPlanVisibles.map((s) => (
                   <li
                     key={s.id}
-                    className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-white px-3 py-2"
+                    className="flex flex-wrap items-center gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2"
                   >
                     <span className="font-mono text-xs font-semibold text-stone-700">{s.tracking_code}</span>
                     <span className="text-sm text-stone-800">{s.buyer_full_name}</span>
                     <span className="text-xs text-stone-500">
-                      Mz {s.manzana}, Lote {s.lote} · {formatMoney(s.price_agreed, s.currency)}
+                      Mz {s.manzana}, Lote {s.lote}
+                      {s.migrada ? ' · migrada' : ''}
                     </span>
-                    <button type="button" className={`${btnPrimary} ml-auto`} onClick={() => setPlanFor(s)}>
-                      Crear plan de pago
-                    </button>
+                    <span
+                      className={`text-sm font-semibold tabular-nums ${
+                        s.saldo > 0 ? 'text-red-600' : 'text-brand'
+                      }`}
+                    >
+                      {s.saldo > 0 ? `Debe ${formatMoney(s.saldo, s.currency)}` : 'Al día'}
+                    </span>
+                    <div className="ml-auto flex gap-2">
+                      <button
+                        type="button"
+                        className={btnPrimary}
+                        onClick={() =>
+                          setPayFor({
+                            reservation_id: s.id,
+                            project_id: s.project_id,
+                            tracking_code: s.tracking_code,
+                            buyer_full_name: s.buyer_full_name,
+                            buyer_phone: s.buyer_phone,
+                            saldo: s.saldo,
+                            currency: s.currency,
+                            monto_sugerido: null,
+                            tiene_plan: false,
+                          })
+                        }
+                      >
+                        Registrar abono
+                      </button>
+                      <button type="button" className={btnSecondary} onClick={() => setPlanFor(s)}>
+                        Crear plan
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
+              {sinPlanFiltradas.length > SIN_PLAN_VISIBLES ? (
+                <p className="mt-2 text-xs text-stone-400">
+                  Mostrando {SIN_PLAN_VISIBLES} de {sinPlanFiltradas.length} — refiná la búsqueda
+                  para ver el resto. El total y el CSV de ventas los tiene la pantalla de Ventas.
+                </p>
+              ) : null}
             </section>
           ) : null}
 
@@ -958,7 +1061,23 @@ export default function AccountingClient({
                             <button type="button" className={btnSecondary} onClick={() => void openDetail(a)}>
                               Estado de cuenta
                             </button>
-                            <button type="button" className={btnPrimary} onClick={() => setPayFor(a)}>
+                            <button
+                              type="button"
+                              className={btnPrimary}
+                              onClick={() =>
+                                setPayFor({
+                                  reservation_id: a.reservation_id,
+                                  project_id: a.project_id,
+                                  tracking_code: a.tracking_code,
+                                  buyer_full_name: a.buyer_full_name,
+                                  buyer_phone: a.buyer_phone,
+                                  saldo: Number(a.saldo),
+                                  currency: a.currency,
+                                  monto_sugerido: Number(a.monthly_amount),
+                                  tiene_plan: true,
+                                })
+                              }
+                            >
                               Registrar pago
                             </button>
                           </div>
@@ -1387,12 +1506,13 @@ export default function AccountingClient({
 
       {payFor ? (
         <RegisterPaymentDialog
-          account={payFor}
+          cobro={payFor}
           onClose={() => setPayFor(null)}
-          onPaid={() => {
-            setPayFor(null);
-            void fetchAll();
-          }}
+          // Solo refresca: cerrar lo decide el diálogo, que tras registrar se
+          // queda mostrando el recibo — el comprador está en el mostrador
+          // esperándolo, y cerrarle la ventana en ese momento lo dejaba sin
+          // papel y a la cajera buscándolo por Contabilidad.
+          onPaid={() => void fetchAll()}
         />
       ) : null}
 
@@ -1532,7 +1652,7 @@ function StatementDialog({
                 <span className="font-mono text-xs text-stone-500">{pg.reference_code}</span>
                 <span className="text-stone-600">{dateLabel(pg.verified_at)}</span>
                 <span className="text-xs text-stone-400">
-                  {pg.purpose === 'cuota' ? 'cuota' : 'seña'}
+                  {pg.purpose === 'cuota' ? 'cuota' : pg.purpose === 'abono' ? 'abono' : 'seña'}
                 </span>
                 <Badge className="bg-stone-100 text-stone-600">
                   {FORMA_DE_PAGO[pg.provider] ?? pg.provider}
@@ -1692,17 +1812,40 @@ function CreatePlanDialog({
 /* ========================================================================== */
 
 function RegisterPaymentDialog({
-  account,
+  cobro,
   onClose,
   onPaid,
 }: {
-  account: AccountStatus;
+  cobro: CobroTarget;
   onClose: () => void;
   onPaid: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const { push } = useToast();
-  const [amount, setAmount] = useState(String(account.monthly_amount));
+  const [amount, setAmount] = useState(
+    cobro.monto_sugerido != null ? String(cobro.monto_sugerido) : '',
+  );
+  // En qué moneda entró la plata. El negocio es en bolivianos, pero en el
+  // mostrador aparecen dólares — y el cambio real del día no siempre es el
+  // configurado, así que se prellena y se deja corregir.
+  const [moneda, setMoneda] = useState<'BOB' | 'USD'>('BOB');
+  const [cambio, setCambio] = useState('');
+
+  useEffect(() => {
+    let vivo = true;
+    void supabase
+      .rpc('get_exchange_rate', { p_project_id: cobro.project_id })
+      .then(({ data }) => {
+        if (vivo && data != null) setCambio(String(data));
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [supabase, cobro.project_id]);
+  // El pago quedó registrado: ahora lo que hace falta es el RECIBO, porque el
+  // comprador está parado en el mostrador esperándolo. Por eso el diálogo no se
+  // cierra solo: muestra el enlace de imprimir y el de WhatsApp.
+  const [hecho, setHecho] = useState<{ paymentId: string; tipo: string } | null>(null);
   const [paidOn, setPaidOn] = useState(() => new Date().toISOString().slice(0, 10));
   const [provider, setProvider] = useState<'efectivo' | 'manual_qr' | 'banco_ganadero' | 'bnb'>('efectivo');
   const [reference, setReference] = useState('');
@@ -1721,46 +1864,166 @@ function RegisterPaymentDialog({
       setError('El monto debe ser mayor a cero.');
       return;
     }
+    const tc = Number(cambio);
+    if (moneda === 'USD' && !(tc >= 1 && tc <= 100)) {
+      setError('Revisa el tipo de cambio: tiene que ser Bs por $us (ej. 6.96).');
+      return;
+    }
     setBusy(true);
     const { data, error: err } = await supabase.rpc('admin_register_cuota_payment', {
-      p_reservation_id: account.reservation_id,
+      p_reservation_id: cobro.reservation_id,
       p_amount: a,
       p_paid_on: paidOn,
       p_provider: provider,
       p_reference: reference.trim() || null,
       p_note: note.trim() || null,
       p_treasury_account_id: cuentaId || null,
+      p_currency: moneda,
+      p_exchange_rate: moneda === 'USD' ? tc : null,
     });
     setBusy(false);
     if (err) {
       setError(adminErrorCopy(err.message));
       return;
     }
-    const r = data as { aplicado?: number; sobrante?: number; cuotas_afectadas?: number } | null;
-    const extra =
-      Number(r?.sobrante ?? 0) > 0
-        ? ` Sobran ${formatMoney(Number(r?.sobrante), account.currency)} sin aplicar: el plan ya no tiene cuotas pendientes.`
-        : '';
-    push(`Pago registrado en ${r?.cuotas_afectadas ?? 0} cuota(s).${extra}`, 'success');
-    onPaid();
+    const r = data as {
+      payment_id?: string;
+      tipo?: string;
+      aplicado?: number;
+      sobrante?: number;
+      cuotas_afectadas?: number;
+    } | null;
+    if (r?.tipo === 'abono') {
+      push('Abono registrado.', 'success');
+    } else {
+      const extra =
+        Number(r?.sobrante ?? 0) > 0
+          ? ` Sobran ${formatMoney(Number(r?.sobrante), cobro.currency)} sin aplicar: el plan ya no tiene cuotas pendientes.`
+          : '';
+      push(`Pago registrado en ${r?.cuotas_afectadas ?? 0} cuota(s).${extra}`, 'success');
+    }
+    if (r?.payment_id) {
+      setHecho({ paymentId: r.payment_id, tipo: r?.tipo ?? 'cuota' });
+      onPaid();
+    } else {
+      onPaid();
+      onClose();
+    }
+  }
+
+  if (hecho) {
+    const enlace = `/reserva/${cobro.tracking_code}/recibo/${hecho.paymentId}`;
+    return (
+      <Dialog open onClose={onClose} title="Pago registrado">
+        <div className="space-y-3">
+          <p className="rounded-lg bg-green-50 p-3 text-sm text-green-800">
+            {hecho.tipo === 'abono' ? 'Abono' : 'Pago'} de{' '}
+            <strong>{formatMoney(Number(amount), moneda)}</strong>
+            {moneda === 'USD'
+              ? ` (${formatMoney(Math.round(Number(amount) * Number(cambio) * 100) / 100, 'BOB')} al cambio ${cambio})`
+              : ''}{' '}
+            registrado a {cobro.buyer_full_name}.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href={`/admin/recibo/${hecho.paymentId}`}
+              target="_blank"
+              rel="noreferrer"
+              className={btnSecondary}
+            >
+              Ver / imprimir recibo
+            </a>
+            <a
+              href={waLink(
+                cobro.buyer_phone,
+                `Hola ${cobro.buyer_full_name}, aquí está el recibo de tu ${
+                  hecho.tipo === 'abono' ? 'abono' : 'pago'
+                } de ${formatMoney(Number(amount), cobro.currency)}: ${
+                  typeof window === 'undefined' ? '' : window.location.origin
+                }${enlace}`,
+              )}
+              target="_blank"
+              rel="noreferrer"
+              className={btnPrimary}
+            >
+              Enviar por WhatsApp
+            </a>
+          </div>
+          <p className="text-[11px] text-stone-500">
+            El enlace abre el recibo con el código de la reserva: el comprador lo ve sin cuenta, y
+            solo el suyo.
+          </p>
+        </div>
+        <div className="mt-4 flex justify-end">
+          <button type="button" className={btnSecondary} onClick={onClose}>
+            Listo
+          </button>
+        </div>
+      </Dialog>
+    );
   }
 
   return (
-    <Dialog open onClose={onClose} title={`Registrar pago — ${account.buyer_full_name}`}>
+    <Dialog
+      open
+      onClose={onClose}
+      title={`${cobro.tiene_plan ? 'Registrar pago' : 'Registrar abono'} — ${cobro.buyer_full_name}`}
+    >
       <div className="space-y-3">
         <p className="rounded-lg bg-stone-50 p-3 text-sm text-stone-600">
-          Saldo actual <strong>{formatMoney(Number(account.saldo), account.currency)}</strong>. El
-          pago se aplica desde la cuota más vieja hacia adelante.
+          Saldo actual <strong>{formatMoney(cobro.saldo, cobro.currency)}</strong>.{' '}
+          {cobro.tiene_plan
+            ? 'El pago se aplica desde la cuota más vieja hacia adelante.'
+            : 'Esta venta no tiene plan de cuotas: el pago entra como abono y baja el saldo.'}
         </p>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs text-stone-500">Monto</label>
-            <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className={inputClass} />
+            <div className="flex gap-1.5">
+              <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className={inputClass} />
+              <select
+                value={moneda}
+                onChange={(e) => setMoneda(e.target.value as 'BOB' | 'USD')}
+                className={`${inputClass} w-auto`}
+                title="En qué moneda entró la plata"
+              >
+                <option value="BOB">Bs</option>
+                <option value="USD">$us</option>
+              </select>
+            </div>
           </div>
           <div>
             <label className="mb-1 block text-xs text-stone-500">Fecha</label>
             <input type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} className={inputClass} />
           </div>
+          {moneda === 'USD' ? (
+            <div className="col-span-2">
+              <label className="mb-1 block text-xs text-stone-500">
+                Tipo de cambio del día (Bs por $us)
+              </label>
+              <input
+                type="number"
+                min={1}
+                step="0.01"
+                value={cambio}
+                onChange={(e) => setCambio(e.target.value)}
+                className={inputClass}
+              />
+              <p className="mt-1 text-xs text-stone-500">
+                Prellenado con el configurado — corregilo al del día si difiere.
+                {Number(amount) > 0 && Number(cambio) > 0 ? (
+                  <>
+                    {' '}
+                    Se asientan{' '}
+                    <strong className="tabular-nums">
+                      {formatMoney(Math.round(Number(amount) * Number(cambio) * 100) / 100, 'BOB')}
+                    </strong>
+                    .
+                  </>
+                ) : null}
+              </p>
+            </div>
+          ) : null}
           <div>
             <label className="mb-1 block text-xs text-stone-500">Forma de pago</label>
             <select value={provider} onChange={(e) => setProvider(e.target.value as typeof provider)} className={inputClass}>

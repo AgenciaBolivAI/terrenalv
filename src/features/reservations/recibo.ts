@@ -16,6 +16,8 @@ export interface ReciboData {
   purpose: string;
   amount: number;
   currency: 'BOB' | 'USD';
+  amount_bob: number;
+  exchange_rate_used: number | null;
   provider: string;
   verified_at: string | null;
   created_at: string;
@@ -40,6 +42,8 @@ interface Row {
   purpose: string;
   amount: number;
   currency: 'BOB' | 'USD';
+  amount_bob: number;
+  exchange_rate_used: number | null;
   provider: string;
   verified_at: string | null;
   created_at: string;
@@ -57,7 +61,7 @@ interface Row {
 }
 
 const SELECT =
-  'id, reservation_id, reference_code, purpose, amount, currency, provider, verified_at, created_at, status, ' +
+  'id, reservation_id, reference_code, purpose, amount, currency, amount_bob, exchange_rate_used, provider, verified_at, created_at, status, ' +
   'reservations!payments_reservation_id_fkey(tracking_code, buyer_full_name, buyer_ci, buyer_phone, ' +
   'price_agreed, currency, projects(name), lots!reservations_lot_id_fkey(number, manzanas(code)))';
 
@@ -86,12 +90,32 @@ export async function cargarRecibo(
   // es peor que no dar papel.
   if (pay.status !== 'aprobado') return null;
 
-  const { data: todos } = await supabase
-    .from('payments')
-    .select('amount')
+  // Los totales salen de v_ventas, que es la misma cuenta que ve el panel:
+  // suma en BOLIVIANOS (un pago en dólares vale su conversión, no su nominal)
+  // y para una venta migrada parte de la deuda que reportaba el sistema
+  // anterior. Si el recibo hiciera su propia cuenta, diría otro saldo que la
+  // pantalla de Ventas — y el comprador se lleva el papel.
+  const { data: venta } = await supabase
+    .from('v_ventas')
+    .select('cobrado_aqui, saldo')
     .eq('reservation_id', pay.reservation_id)
-    .eq('status', 'aprobado');
-  const pagadoTotal = (todos ?? []).reduce((s, p) => s + Number(p.amount ?? 0), 0);
+    .maybeSingle();
+
+  let pagadoTotal: number;
+  let saldo: number;
+  if (venta) {
+    pagadoTotal = Number((venta as { cobrado_aqui: number }).cobrado_aqui);
+    saldo = Number((venta as { saldo: number }).saldo);
+  } else {
+    // Reserva aún no confirmada (o cancelada): cuenta simple en Bs.
+    const { data: todos } = await supabase
+      .from('payments')
+      .select('amount_bob')
+      .eq('reservation_id', pay.reservation_id)
+      .eq('status', 'aprobado');
+    pagadoTotal = (todos ?? []).reduce((s, p) => s + Number(p.amount_bob ?? 0), 0);
+    saldo = Math.max(0, Number(res.price_agreed) - pagadoTotal);
+  }
 
   return {
     id: pay.id,
@@ -99,6 +123,8 @@ export async function cargarRecibo(
     purpose: pay.purpose,
     amount: Number(pay.amount),
     currency: pay.currency,
+    amount_bob: Number(pay.amount_bob),
+    exchange_rate_used: pay.exchange_rate_used == null ? null : Number(pay.exchange_rate_used),
     provider: pay.provider,
     verified_at: pay.verified_at,
     created_at: pay.created_at,
@@ -112,7 +138,7 @@ export async function cargarRecibo(
     lote: res.lots?.number ?? '—',
     proyecto: res.projects?.name ?? 'Terrenalv',
     pagado_total: pagadoTotal,
-    saldo: Math.max(0, Number(res.price_agreed) - pagadoTotal),
+    saldo,
   };
 }
 

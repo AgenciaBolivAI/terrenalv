@@ -80,11 +80,21 @@ export function Recibo({ r, emitidoPor }: { r: ReciboData; emitidoPor?: string }
         <tbody>
           <tr className="border-b border-stone-200">
             <td className="py-3 text-stone-800">
-              {r.purpose === 'cuota' ? 'Cuota del plan de pago' : 'Seña / reserva del lote'}
+              {r.purpose === 'cuota'
+                ? 'Cuota del plan de pago'
+                : r.purpose === 'abono'
+                  ? 'Abono al lote'
+                  : 'Seña / reserva del lote'}
             </td>
             <td className="py-3 text-stone-600">{FORMA_DE_PAGO[r.provider] ?? r.provider}</td>
             <td className="py-3 text-right font-bold tabular-nums text-stone-900">
               {formatMoney(r.amount, r.currency)}
+              {r.currency !== 'BOB' ? (
+                <span className="block text-xs font-normal text-stone-500">
+                  = {formatMoney(r.amount_bob, 'BOB')}
+                  {r.exchange_rate_used ? ` (t/c ${r.exchange_rate_used})` : ''}
+                </span>
+              ) : null}
             </td>
           </tr>
         </tbody>
@@ -108,12 +118,12 @@ export function Recibo({ r, emitidoPor }: { r: ReciboData; emitidoPor?: string }
         <div>
           <p className="text-xs text-stone-500">Pagado a la fecha</p>
           <p className="font-semibold tabular-nums text-brand">
-            {formatMoney(r.pagado_total, r.currency)}
+            {formatMoney(r.pagado_total, 'BOB')}
           </p>
         </div>
         <div>
           <p className="text-xs text-stone-500">Saldo</p>
-          <p className="font-semibold tabular-nums">{formatMoney(r.saldo, r.currency)}</p>
+          <p className="font-semibold tabular-nums">{formatMoney(r.saldo, 'BOB')}</p>
         </div>
       </section>
 

@@ -14,6 +14,8 @@ export interface QueuePayment {
   rejection_reason: RejectionReason | null;
   rejection_note: string | null;
   created_at: string;
+  provider: string;
+  verified_at: string | null;
 }
 
 export interface QueueRow {
@@ -50,7 +52,7 @@ export const QUEUE_SELECT =
   'source, confirmed_at, cancelled_at, cancel_reason, created_at, ' +
   'lot:lots!reservations_lot_id_fkey(id, number, manzana:manzanas(id, code)), ' +
   'payments(id, reference_code, purpose, amount, currency, amount_bob, status, proof_storage_path, ' +
-  'proof_sha256, proof_submitted_at, rejection_reason, rejection_note, created_at)';
+  'proof_sha256, proof_submitted_at, rejection_reason, rejection_note, created_at, provider, verified_at)';
 
 /** Latest 'reserva' payment (the reviewable one). */
 export function reservePayment(row: QueueRow): QueuePayment | null {

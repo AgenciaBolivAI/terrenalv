@@ -61,6 +61,13 @@ function isFormTarget(e: KeyboardEvent): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
 }
 
+const FORMA_DE_PAGO: Record<string, string> = {
+  efectivo: 'Efectivo',
+  manual_qr: 'QR / transferencia',
+  banco_ganadero: 'Banco Ganadero',
+  bnb: 'BNB',
+};
+
 export default function ReservationDetail({ row, role, waTemplates, onClose, onNavigate, onActed }: Props) {
   const supabase = useMemo(() => createClient(), []);
   const { push } = useToast();
@@ -83,6 +90,11 @@ export default function ReservationDetail({ row, role, waTemplates, onClose, onN
 
   const isPdf = !!payment?.proof_storage_path?.toLowerCase().endsWith('.pdf');
   const reviewable = payment?.status === 'comprobante_subido' && row.status === 'en_verificacion';
+  // Todos los pagos aprobados, no solo el de la seña: una venta que ya arrancó
+  // acumula cuotas y abonos y cada uno tiene su papel.
+  const pagosAprobados = (row.payments ?? [])
+    .filter((p) => p.status === 'aprobado')
+    .sort((a, b) => (b.verified_at ?? b.created_at).localeCompare(a.verified_at ?? a.created_at));
   const activeStatuses = ['pendiente_pago', 'en_verificacion', 'rechazo_reintento'];
   const isActive = activeStatuses.includes(row.status);
 
@@ -403,43 +415,64 @@ export default function ReservationDetail({ row, role, waTemplates, onClose, onN
               ) : null}
             </div>
 
-            {/* Recibo — aparece en cuanto el pago está aprobado, que es
-                justo cuando el comprador lo pide. Antes sólo se llegaba desde
-                Contabilidad, o sea cambiando de sección y buscando al cliente
-                a mano. */}
-            {payment?.status === 'aprobado' ? (
+            {/* Recibos: uno por cada pago aprobado de esta reserva — la seña,
+                las cuotas y los abonos. Es LA pantalla donde la oficina tiene
+                abierta la venta, así que el papel se emite desde acá sin ir a
+                buscar al cliente por Contabilidad. */}
+            {pagosAprobados.length > 0 ? (
               <div className="rounded-xl border border-brand-light/40 bg-green-50/60 p-3">
                 <p className="text-xs font-semibold tracking-wide text-stone-600 uppercase">
-                  Recibo
+                  Recibos ({pagosAprobados.length})
                 </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <a
-                    href={`/admin/recibo/${payment.id}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={btnSecondary}
-                  >
-                    Ver / imprimir
-                  </a>
-                  <a
-                    href={waLink(
-                      row.buyer_phone,
-                      `Hola ${row.buyer_full_name}, aquí está el recibo de tu pago ` +
-                        `de ${formatMoney(payment.amount_bob, 'BOB')} por el lote ` +
-                        `${row.lot?.number ?? '—'} de la manzana ${row.lot?.manzana?.code ?? '—'}: ` +
-                        `${typeof window === 'undefined' ? '' : window.location.origin}` +
-                        `/reserva/${row.tracking_code}/recibo/${payment.id}`,
-                    )}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={btnPrimary}
-                  >
-                    Enviar por WhatsApp
-                  </a>
-                </div>
+                <ul className="mt-2 space-y-2">
+                  {pagosAprobados.map((pg) => (
+                    <li
+                      key={pg.id}
+                      className="flex flex-wrap items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2"
+                    >
+                      <span className="text-xs text-stone-500">
+                        {formatDateTime(pg.verified_at ?? pg.created_at)}
+                      </span>
+                      <Badge className="bg-stone-100 text-stone-600">
+                        {pg.purpose === 'cuota' ? 'Cuota' : pg.purpose === 'abono' ? 'Abono' : 'Seña'}
+                      </Badge>
+                      <span className="text-xs text-stone-500">
+                        {FORMA_DE_PAGO[pg.provider] ?? pg.provider}
+                      </span>
+                      <span className="font-semibold tabular-nums text-stone-900">
+                        {formatMoney(pg.amount_bob, 'BOB')}
+                      </span>
+                      <div className="ml-auto flex gap-1.5">
+                        <a
+                          href={`/admin/recibo/${pg.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={btnSecondary}
+                        >
+                          Recibo
+                        </a>
+                        <a
+                          href={waLink(
+                            row.buyer_phone,
+                            `Hola ${row.buyer_full_name}, aquí está el recibo de tu pago ` +
+                              `de ${formatMoney(pg.amount_bob, 'BOB')} por el lote ` +
+                              `${row.lot?.number ?? '—'} de la manzana ${row.lot?.manzana?.code ?? '—'}: ` +
+                              `${typeof window === 'undefined' ? '' : window.location.origin}` +
+                              `/reserva/${row.tracking_code}/recibo/${pg.id}`,
+                          )}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={btnPrimary}
+                        >
+                          WhatsApp
+                        </a>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
                 <p className="mt-2 text-[11px] text-stone-500">
-                  El enlace abre el recibo con el código de la reserva, así que el comprador lo
-                  ve sin necesidad de cuenta — y sólo el suyo.
+                  El enlace de WhatsApp abre el recibo con el código de la reserva: el comprador lo
+                  ve sin cuenta, y sólo el suyo.
                 </p>
               </div>
             ) : null}
