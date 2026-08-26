@@ -842,7 +842,9 @@ export default function PlanesClient({
 
             <div className="rounded-lg border border-stone-200 p-3">
               <p className="mb-2 text-xs text-stone-500">
-                Elegí qué fijar: lo otro se calcula solo.
+                Elegí qué fijar: lo otro se calcula solo. Las cuotas salen siempre
+                parejas — si fijás una cuota, el sistema busca el plazo que más se
+                le acerca y reparte igual.
               </p>
               <div className="flex gap-2">
                 <button

@@ -10,12 +10,12 @@ const bs = (n: number) => `Bs ${n.toLocaleString('es-BO')}`;
 
 describe('saldosCorridos', () => {
   it('LPV-DEMO2 reprogramado: arranca tras la pagada en 40.250 y muere en 0', () => {
-    // 1 cuota pagada de 3.750 + 7 de 5.156,25 + la última ajustada a 4.156,25
-    // = Bs 44.000, que es precio 50.000 − seña 1.000 − inicial 5.000.
+    // 1 cuota pagada de 3.750 + 8 cuotas PAREJAS de 5.031,25 = Bs 44.000,
+    // que es precio 50.000 − seña 1.000 − inicial 5.000. Parejas por regla
+    // de la casa: 40.250 / 8 = 5.031,25 exacto.
     const cuotas = [
       { amount: 3750 },
-      ...Array.from({ length: 7 }, () => ({ amount: 5156.25 })),
-      { amount: 4156.25 },
+      ...Array.from({ length: 8 }, () => ({ amount: 5031.25 })),
     ];
     const saldos = saldosCorridos(cuotas);
     expect(saldos[0]).toBe(40250); // el «te queda» del recibo tras la 1
@@ -65,10 +65,10 @@ describe('terminosDelPlan', () => {
     // fue exactamente la incongruencia que salió en producción.
     expect(
       terminosDelPlan(
-        { months: 8, monthly_amount: 5156.25, cuotas_totales: 9, cuotas_pagadas: 1 },
+        { months: 8, monthly_amount: 5031.25, cuotas_totales: 9, cuotas_pagadas: 1 },
         bs,
       ),
-    ).toBe('9 cuotas · las 8 que faltan son de Bs 5.156,25');
+    ).toBe('9 cuotas · las 8 que faltan son de Bs 5.031,25');
   });
 
   it('los montos llegan como texto desde la base y no rompe', () => {

@@ -90,11 +90,32 @@ const MOV_BADGE: Record<Movimiento['tipo'], { texto: string; clase: string }> = 
   pago_comision: { texto: 'Se le pagó comisión', clase: 'bg-stone-200 text-stone-700' },
 };
 
+interface Regla {
+  id: string;
+  profile_id: string | null;
+  project_id: string | null;
+  pct: number;
+  base: string;
+  is_active: boolean;
+}
+
 export default function ComisionesClient() {
   const supabase = useMemo(() => createClient(), []);
   const { push } = useToast();
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [detalle, setDetalle] = useState<Comision[]>([]);
+  // El porcentaje pactado con cada vendedor se edita aca mismo: la regla es
+  // lo que viene (sus PROXIMAS ventas); el % de una venta ya hecha se cambia
+  // venta por venta, porque eso si reescribe plata pactada.
+  const [reglas, setReglas] = useState<Regla[]>([]);
+  const [editandoRegla, setEditandoRegla] = useState<{
+    profileId: string;
+    vendedor: string;
+    ruleId: string | null;
+    pct: string;
+    base: string;
+  } | null>(null);
+  const [editandoVenta, setEditandoVenta] = useState<{ c: Comision; pct: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [abierto, setAbierto] = useState<string | null>(null);
   const [pagando, setPagando] = useState<Comision | null>(null);
@@ -107,7 +128,7 @@ export default function ComisionesClient() {
   const [filtroEmpleado, setFiltroEmpleado] = useState<string>('');
 
   const cargar = useCallback(async () => {
-    const [v, d, mv] = await Promise.all([
+    const [v, d, mv, rg] = await Promise.all([
       supabase.from('v_comisiones_por_vendedor').select('*').order('por_pagar', { ascending: false }),
       supabase.from('v_comisiones').select('*').order('fecha_venta', { ascending: false }),
       supabase
@@ -115,10 +136,15 @@ export default function ComisionesClient() {
         .select('*')
         .order('cuando', { ascending: false })
         .limit(500),
+      supabase
+        .from('commission_rules')
+        .select('id, profile_id, project_id, pct, base, is_active')
+        .eq('is_active', true),
     ]);
     setVendedores((v.data ?? []) as unknown as Vendedor[]);
     setDetalle((d.data ?? []) as unknown as Comision[]);
     setMovs((mv.data ?? []) as unknown as Movimiento[]);
+    setReglas((rg.data ?? []) as unknown as Regla[]);
     setLoading(false);
   }, [supabase]);
 
@@ -135,6 +161,18 @@ export default function ComisionesClient() {
       sinVendedor: 0,
     }),
     [vendedores],
+  );
+
+  // La regla que rige para un vendedor: la suya propia si tiene, si no la
+  // general del equipo. Misma precedencia que usa la base al asignar.
+  const reglaDe = useCallback(
+    (profileId: string) => {
+      const propia = reglas.find((r) => r.profile_id === profileId && r.project_id === null);
+      if (propia) return { ...propia, propia: true };
+      const general = reglas.find((r) => r.profile_id === null && r.project_id === null);
+      return general ? { ...general, propia: false } : null;
+    },
+    [reglas],
   );
 
   const visibles = useMemo(
@@ -158,7 +196,7 @@ export default function ComisionesClient() {
           Quién vendió qué, cuánto ganó y cuánto se le debe.
         </p>
         <Link href="/admin/financiamiento" className={`${btnSecondary} ml-auto`}>
-          Reglas y porcentajes
+          Financiamiento por precio
         </Link>
       </div>
 
@@ -433,6 +471,39 @@ export default function ComisionesClient() {
                     {abierto === v.profile_id ? (
                       <tr className="border-b border-stone-100 bg-stone-50/70 last:border-0">
                         <td colSpan={7} className="px-4 py-3">
+                          {(() => {
+                            const r = reglaDe(v.profile_id);
+                            return (
+                              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2">
+                                <span className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+                                  Comisión pactada
+                                </span>
+                                <Badge className="bg-green-50 text-brand">
+                                  {r ? `${Number(r.pct)}% sobre ${r.base}` : 'sin regla — 0%'}
+                                </Badge>
+                                {r && !r.propia ? (
+                                  <span className="text-xs text-stone-400">
+                                    (usa la regla general del equipo)
+                                  </span>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  className="ml-auto rounded-lg border border-stone-300 bg-white px-2.5 py-1 text-xs font-semibold text-stone-700 hover:bg-stone-100"
+                                  onClick={() =>
+                                    setEditandoRegla({
+                                      profileId: v.profile_id,
+                                      vendedor: v.vendedor,
+                                      ruleId: r && r.propia ? r.id : null,
+                                      pct: String(r ? Number(r.pct) : 0),
+                                      base: r?.base ?? 'cobrado',
+                                    })
+                                  }
+                                >
+                                  Cambiar %
+                                </button>
+                              </div>
+                            );
+                          })()}
                           <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
                             Sus ventas
                           </p>
@@ -459,9 +530,16 @@ export default function ComisionesClient() {
                                       Mz {c.manzana ?? '—'}, Lote {c.lote ?? '—'}
                                     </span>
                                     <span className="text-xs text-stone-400">{c.comprador}</span>
-                                    <Badge className="bg-stone-100 text-stone-600">
+                                    <button
+                                      type="button"
+                                      title="Cambiar el % de ESTA venta"
+                                      onClick={() =>
+                                        setEditandoVenta({ c, pct: String(Number(c.pct)) })
+                                      }
+                                      className="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-semibold text-stone-600 underline decoration-dotted underline-offset-2 hover:bg-stone-200"
+                                    >
                                       {Number(c.pct)}% sobre {c.base}
-                                    </Badge>
+                                    </button>
                                     <span className="text-xs text-stone-500">
                                       cobrado {formatMoney(Number(c.cobrado), 'BOB')}
                                     </span>
@@ -499,6 +577,123 @@ export default function ComisionesClient() {
           congelado en cada venta: cambiar la regla no reescribe lo ya pactado.
         </p>
       </section>
+
+      {/* ---- El % pactado con un vendedor (sus proximas ventas) ---- */}
+      {editandoRegla ? (
+        <Dialog
+          open
+          onClose={() => setEditandoRegla(null)}
+          title={`Comisión de ${editandoRegla.vendedor}`}
+        >
+          <p className="text-sm text-stone-600">
+            Vale para sus <strong>próximas</strong> ventas. Las ya asignadas no se tocan: el
+            % de una venta hecha se cambia en esa venta, en su lista de ventas.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs text-stone-500">Porcentaje (%)</label>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step="0.1"
+                value={editandoRegla.pct}
+                onChange={(e) => setEditandoRegla({ ...editandoRegla, pct: e.target.value })}
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-stone-500">Sobre</label>
+              <select
+                value={editandoRegla.base}
+                onChange={(e) => setEditandoRegla({ ...editandoRegla, base: e.target.value })}
+                className={inputClass}
+              >
+                <option value="cobrado">lo cobrado (recomendado)</option>
+                <option value="precio">el precio</option>
+              </select>
+            </div>
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" className={btnSecondary} onClick={() => setEditandoRegla(null)}>
+              Volver
+            </button>
+            <button
+              type="button"
+              className={btnPrimary}
+              onClick={async () => {
+                const { error } = await supabase.rpc('admin_guardar_regla_comision', {
+                  p_id: editandoRegla.ruleId,
+                  p_project_id: null,
+                  p_profile_id: editandoRegla.profileId,
+                  p_nombre: editandoRegla.vendedor,
+                  p_pct: Number(editandoRegla.pct) || 0,
+                  p_base: editandoRegla.base,
+                  p_activo: true,
+                });
+                if (error) {
+                  push(adminErrorCopy(error.message), 'error');
+                  return;
+                }
+                push('Regla guardada. Rige para sus próximas ventas.', 'success');
+                setEditandoRegla(null);
+                void cargar();
+              }}
+            >
+              Guardar
+            </button>
+          </div>
+        </Dialog>
+      ) : null}
+
+      {/* ---- El % de UNA venta ya hecha ---- */}
+      {editandoVenta ? (
+        <Dialog
+          open
+          onClose={() => setEditandoVenta(null)}
+          title={`${editandoVenta.c.tracking_code} — % de esta venta`}
+        >
+          <p className="text-sm text-stone-600">
+            Cambia lo pactado en <strong>esta venta</strong> de {editandoVenta.c.vendedor}: lo
+            ganado y lo que se le debe se recalculan al instante. Lo ya pagado no se toca.
+          </p>
+          <label className="mt-3 mb-1 block text-xs text-stone-500">Porcentaje (%)</label>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step="0.1"
+            value={editandoVenta.pct}
+            onChange={(e) => setEditandoVenta({ ...editandoVenta, pct: e.target.value })}
+            className={inputClass}
+          />
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" className={btnSecondary} onClick={() => setEditandoVenta(null)}>
+              Volver
+            </button>
+            <button
+              type="button"
+              className={btnPrimary}
+              onClick={async () => {
+                const { error } = await supabase.rpc('admin_asignar_vendedor', {
+                  p_reservation_id: editandoVenta.c.reservation_id,
+                  p_profile_id: editandoVenta.c.profile_id,
+                  p_pct: Number(editandoVenta.pct) || 0,
+                });
+                if (error) {
+                  push(adminErrorCopy(error.message), 'error');
+                  return;
+                }
+                push('Porcentaje actualizado en la venta.', 'success');
+                setEditandoVenta(null);
+                void cargar();
+              }}
+            >
+              Guardar
+            </button>
+          </div>
+        </Dialog>
+      ) : null}
 
       {pagando ? (
         <PagarComisionDialog
