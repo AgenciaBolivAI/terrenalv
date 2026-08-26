@@ -1,5 +1,5 @@
 import { formatMoney } from '@/lib/format';
-import { LogoMark } from '@/components/Logo';
+import { Logo } from '@/components/Logo';
 import type { ContratoData } from './contrato';
 
 // El papel del contrato — compartido por el panel y por la página del
@@ -38,12 +38,11 @@ export function Contrato({ c }: { c: ContratoData }) {
       ) : null}
 
       <header className="flex items-start justify-between gap-4 border-b border-stone-300 pb-4">
-        <div className="flex items-center gap-3">
-          <LogoMark className="h-10 w-10" />
-          <div>
-            <p className="text-lg font-black tracking-tight text-stone-900">TERRENALV S.R.L.</p>
-            <p className="text-xs text-stone-500">Urbanización Ciudadela · Zanja Honda, Santa Cruz</p>
-          </div>
+        <div>
+          <Logo className="h-9 w-auto" />
+          <p className="mt-1.5 text-xs text-stone-500">
+            TERRENALV S.R.L. · Zanja Honda, Santa Cruz
+          </p>
         </div>
         <div className="text-right">
           <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">

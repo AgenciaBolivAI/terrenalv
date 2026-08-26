@@ -48,17 +48,8 @@ export function Logo({
   return <span className={`inline-flex items-center ${className ?? ''}`}>{img}</span>;
 }
 
-/** Square brand mark: the house-A glyph from the wordmark. */
-export function LogoMark({ className }: { className?: string }) {
-  return (
-    <Image
-      src="/logo-mark.png"
-      alt="Terrenalv"
-      width={512}
-      height={378}
-      className={className}
-    />
-  );
-}
-
-export const LOGO_RATIO = RATIO;
+// NO agregar acá un <LogoMark> que apunte a /logo-mark.png: ese archivo nunca
+// existió. El componente estaba y renderizaba una imagen rota en el contrato,
+// en el plan de pago y en la página del comprador — cuatro pantallas que se
+// imprimen y se le entregan a alguien. El membrete es <Logo>, que usa
+// public/logo.png y sí está.

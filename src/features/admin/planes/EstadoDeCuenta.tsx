@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { formatMoney } from '@/lib/format';
-import { LogoMark } from '@/components/Logo';
+import { Logo } from '@/components/Logo';
 import type { EstadoDeCuenta as Datos } from './estado-de-cuenta';
 
 // El estado de cuenta que ve el comprador con su enlace.
@@ -30,12 +30,11 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
   return (
     <article className="rounded-2xl border border-stone-300 bg-white p-6 text-sm sm:p-8 print:rounded-none print:border-0 print:p-0">
       <header className="flex flex-wrap items-start justify-between gap-4 border-b-2 border-brand pb-4">
-        <div className="flex items-center gap-3">
-          <LogoMark className="h-10 w-10" />
-          <div>
-            <p className="text-lg font-black tracking-tight text-stone-900">TERRENALV S.R.L.</p>
-            <p className="text-xs text-stone-500">Urbanización {d.proyecto}</p>
-          </div>
+        <div>
+          <Logo className="h-9 w-auto" />
+          <p className="mt-1.5 text-xs text-stone-500">
+            TERRENALV S.R.L. · Urbanización {d.proyecto}
+          </p>
         </div>
         <div className="text-right">
           <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">

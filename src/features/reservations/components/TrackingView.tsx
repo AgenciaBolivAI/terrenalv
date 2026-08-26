@@ -6,7 +6,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { LogoMark } from '@/components/Logo';
+import { Logo } from '@/components/Logo';
 import { formatDateTime, formatMoney } from '@/lib/format';
 import type { TrackedReservation } from '../lib/api';
 import { useReservationStatus } from '../hooks/useReservationStatus';
@@ -195,7 +195,7 @@ export function TrackingView({
                   <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
-              <LogoMark className="h-8 w-8" />
+              <Logo className="h-7 w-auto" />
             </div>
             <h2 className="text-2xl font-extrabold text-brand">
               ¡Lote reservado a tu nombre!
