@@ -171,8 +171,6 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
                   <th className="py-2 font-semibold text-stone-500">N°</th>
                   <th className="py-2 font-semibold text-stone-500">Vence</th>
                   <th className="py-2 text-right font-semibold text-stone-500">Cuota</th>
-                  <th className="py-2 text-right font-semibold text-stone-500">Capital</th>
-                  <th className="py-2 text-right font-semibold text-stone-500">Interés</th>
                   <th className="py-2 text-right font-semibold text-stone-500">Te queda</th>
                   <th className="py-2 text-center font-semibold text-stone-500">Estado</th>
                 </tr>
@@ -190,12 +188,6 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
                       </td>
                       <td className="py-1.5 text-right font-semibold tabular-nums">
                         {formatMoney(Number(c.amount), 'BOB')}
-                      </td>
-                      <td className="py-1.5 text-right tabular-nums text-stone-600">
-                        {formatMoney(Number(c.amount) - Number(c.interes), 'BOB')}
-                      </td>
-                      <td className="py-1.5 text-right tabular-nums text-stone-500">
-                        {Number(c.interes) > 0 ? formatMoney(Number(c.interes), 'BOB') : '—'}
                       </td>
                       <td className="py-1.5 text-right tabular-nums text-stone-600">
                         {formatMoney(Math.max(0, restante), 'BOB')}

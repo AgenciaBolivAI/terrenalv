@@ -45,8 +45,6 @@ export async function bajarPlanPdf(p: PlanPdfDatos): Promise<string> {
       c.number,
       fecha(c.due_date),
       fnum(Number(c.amount)),
-      fnum(Number(c.amount) - Number(c.interes)),
-      Number(c.interes) > 0 ? fnum(Number(c.interes)) : '—',
       fnum(Math.max(0, restante)),
       c.status === 'pagada'
         ? 'Pagada'
@@ -87,8 +85,6 @@ export async function bajarPlanPdf(p: PlanPdfDatos): Promise<string> {
       { header: 'N°', align: 'right', width: 28 },
       { header: 'Vence' },
       { header: 'Cuota', align: 'right' },
-      { header: 'Capital', align: 'right' },
-      { header: 'Interés', align: 'right' },
       { header: 'Le queda', align: 'right' },
       { header: 'Estado' },
     ],
