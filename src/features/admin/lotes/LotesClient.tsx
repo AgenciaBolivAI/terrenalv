@@ -334,9 +334,23 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
     const entries = Object.entries(pending);
     if (entries.length === 0) return;
     setBusy(true);
+    // Los lotes se guardan a la vez, no en fila india. Cuando alguien corrige
+    // media manzana son cincuenta lotes: de a uno era esperar cincuenta viajes
+    // al servidor, uno atrás del otro, mirando el botón girar.
+    //
+    // Cada lote sigue yendo en su propio UPDATE, así que uno que falla no
+    // arrastra a los demás y se lo puede nombrar por su número, como antes.
     const failed: string[] = [];
-    for (const [lotId, patch] of entries) {
-      const { error } = await supabase.from('lots').update(patch).eq('id', lotId);
+    const resultados = await Promise.all(
+      entries.map(([lotId, patch]) =>
+        supabase
+          .from('lots')
+          .update(patch)
+          .eq('id', lotId)
+          .then(({ error }) => ({ lotId, error })),
+      ),
+    );
+    for (const { lotId, error } of resultados) {
       if (error) {
         const lot = lotsRef.current.find((l) => l.id === lotId);
         failed.push(lot?.number ?? lotId);

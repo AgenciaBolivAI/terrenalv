@@ -67,20 +67,10 @@ export default async function DashboardPage() {
   const todayEnd = laPazDayEndIso();
   const d30 = new Date(Date.now() - 30 * 86_400_000).toISOString();
 
-  const lotCountQ = (status: LotStatus) =>
-    supabase
-      .from('lots')
-      .select('id', { count: 'exact', head: true })
-      .eq('project_id', projectId)
-      .is('deleted_at', null)
-      .eq('status', status);
-
-  const resCountQ = (status: ReservationStatus) =>
-    supabase
-      .from('reservations')
-      .select('id', { count: 'exact', head: true })
-      .eq('project_id', projectId)
-      .eq('status', status);
+  // Diez casillas, dos preguntas. La base agrupa por estado mucho mejor de lo
+  // que nosotros podemos pedirle un conteo por vez.
+  const conteo = (filas: { status: string; n: number }[] | null, status: string) =>
+    Number(filas?.find((f) => f.status === status)?.n ?? 0);
 
   const [
     lotCounts,
@@ -92,8 +82,8 @@ export default async function DashboardPage() {
     expiringRes,
     waSettingRes,
   ] = await Promise.all([
-    Promise.all(LOT_CARDS.map((c) => lotCountQ(c.status))),
-    Promise.all(RES_CARDS.map((c) => resCountQ(c.status))),
+    supabase.from('v_conteo_lotes').select('status, n').eq('project_id', projectId),
+    supabase.from('v_conteo_reservas').select('status, n').eq('project_id', projectId),
     supabase
       .from('payments')
       .select('amount_bob')
@@ -234,7 +224,7 @@ export default async function DashboardPage() {
               href={`/admin/reservas?tab=${c.tab}`}
               className="group rounded-xl border border-stone-200 bg-white p-4 transition hover:border-brand-light hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
             >
-              <p className="text-2xl font-bold text-stone-900">{resCounts[i].count ?? 0}</p>
+              <p className="text-2xl font-bold text-stone-900">{conteo(resCounts.data as { status: string; n: number }[] | null, c.status)}</p>
               <p className="flex items-center justify-between gap-2 text-xs text-stone-500">
                 {c.label}
                 <span aria-hidden="true" className="text-stone-300 group-hover:text-brand-light">
@@ -259,7 +249,7 @@ export default async function DashboardPage() {
                 href={`/admin/lotes?estado=${c.status}`}
                 className="group rounded-lg bg-stone-50 p-3 transition hover:bg-stone-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
               >
-                <p className={`text-xl font-bold ${c.accent}`}>{lotCounts[i].count ?? 0}</p>
+                <p className={`text-xl font-bold ${c.accent}`}>{conteo(lotCounts.data as { status: string; n: number }[] | null, c.status)}</p>
                 <p className="flex items-center justify-between gap-2 text-xs text-stone-500">
                   {c.label}
                   <span aria-hidden="true" className="text-stone-300 group-hover:text-stone-500">

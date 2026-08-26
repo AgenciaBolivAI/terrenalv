@@ -47,12 +47,15 @@ export function ElegirLoteDialog({
       setLoading(false);
       return;
     }
+    // Una sola pregunta: el lote y su precio juntos. Antes el precio se pedía
+    // de a uno —hasta 2.000 llamadas sueltas, en tandas de seis— y el diálogo
+    // tardaba una eternidad en abrir con el cliente sentado enfrente. La
+    // cuenta del precio es la misma que usa el mapa público, hecha en la
+    // vista, así que el mostrador y la web nunca cotizan distinto.
     const { data } = await supabase
-      .from('lots')
-      .select('id, project_id, number, area_m2, manzanas(code)')
+      .from('v_lotes_elegibles')
+      .select('id, project_id, number, area_m2, manzana, precio')
       .eq('project_id', projectId)
-      .eq('status', 'disponible')
-      .is('deleted_at', null)
       .order('number')
       .limit(2000);
 
@@ -61,23 +64,18 @@ export function ElegirLoteDialog({
       project_id: string;
       number: string;
       area_m2: number | null;
-      manzanas: { code: string } | null;
+      manzana: string | null;
+      precio: number | null;
     }[];
 
-    // El precio sale de la misma función que usa el mapa público, así que el
-    // mostrador y la web nunca cotizan distinto.
-    const precios = await Promise.all(
-      lista.map((l) => supabase.rpc('lot_price', { p_lot_id: l.id }).then(({ data: p }) => p)),
-    );
-
     setRows(
-      lista.map((l, i) => ({
+      lista.map((l) => ({
         id: l.id,
         project_id: l.project_id,
         number: l.number,
-        manzana: l.manzanas?.code ?? '—',
+        manzana: l.manzana ?? '—',
         area_m2: l.area_m2 == null ? null : Number(l.area_m2),
-        precio: precios[i] == null ? null : Number(precios[i]),
+        precio: l.precio == null ? null : Number(l.precio),
       })),
     );
     setLoading(false);
