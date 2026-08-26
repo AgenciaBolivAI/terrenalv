@@ -35,7 +35,11 @@ type ActionDialog =
   | 'pago_manual'
   | 'cancelar'
   | 'reactivar'
-  | 'revertir';
+  | 'revertir'
+  | 'cobrar_sena'
+  | 'abonar'
+  | 'convertir'
+  | 'editar';
 
 interface Props {
   row: QueueRow;
@@ -79,6 +83,23 @@ export default function ReservationDetail({ row, role, waTemplates, onClose, onN
   const [dupCount, setDupCount] = useState(0);
   const [dialog, setDialog] = useState<ActionDialog>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Cómo viene la reserva: qué pagó de seña, cuánto abonó a cuenta de su
+  // cuota inicial y cuánto le falta. Es lo que la oficina necesita ver antes
+  // de decidir si le cobra, le extiende el plazo o la deja vencer.
+  const [curso, setCurso] = useState<{
+    sena_pagada: number;
+    abonado: number;
+    inicial_objetivo: number;
+    falta_para_inicial: number;
+    viva: boolean;
+    horas_restantes: number | null;
+  } | null>(null);
+  const [monto, setMonto] = useState('');
+  const [dias, setDias] = useState('30');
+  const [forma, setForma] = useState<'efectivo' | 'manual_qr' | 'banco_ganadero' | 'bnb'>(
+    'efectivo',
+  );
+  const [edit, setEdit] = useState({ nombre: '', ci: '', tel: '', correo: '', precio: '' });
   const [busy, setBusy] = useState(false);
 
   // Reject form state
@@ -99,6 +120,22 @@ export default function ReservationDetail({ row, role, waTemplates, onClose, onN
   const isActive = activeStatuses.includes(row.status);
 
   // ---- Signed proof URL ----
+  // El progreso de la reserva hacia su cuota inicial.
+  useEffect(() => {
+    let vivo = true;
+    void supabase
+      .from('v_reservas_en_curso')
+      .select('sena_pagada, abonado, inicial_objetivo, falta_para_inicial, viva, horas_restantes')
+      .eq('reservation_id', row.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (vivo) setCurso((data as typeof curso) ?? null);
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [supabase, row.id, row.status]);
+
   useEffect(() => {
     let alive = true;
     setProofUrl(null);
@@ -279,6 +316,48 @@ export default function ReservationDetail({ row, role, waTemplates, onClose, onN
                   {isActive && (
                     <MenuItem label="Registrar pago manual" onClick={() => { setNote(''); setDialog('pago_manual'); }} />
                   )}
+                  {isActive && (
+                    <MenuItem
+                      label="Cobrar seña y guardar el lote"
+                      onClick={() => {
+                        setMonto(String(row.amount_due ?? ''));
+                        setDias('30');
+                        setDialog('cobrar_sena');
+                      }}
+                    />
+                  )}
+                  {isActive && (
+                    <MenuItem
+                      label="Abonar a la cuota inicial"
+                      onClick={() => {
+                        setMonto(
+                          curso && Number(curso.falta_para_inicial) > 0
+                            ? String(curso.falta_para_inicial)
+                            : '',
+                        );
+                        setDialog('abonar');
+                      }}
+                    />
+                  )}
+                  {isActive && curso && Number(curso.falta_para_inicial) <= 0 && (
+                    <MenuItem
+                      label="Convertir en venta"
+                      onClick={() => { setNote(''); setDialog('convertir'); }}
+                    />
+                  )}
+                  <MenuItem
+                    label="Editar datos"
+                    onClick={() => {
+                      setEdit({
+                        nombre: row.buyer_full_name ?? '',
+                        ci: row.buyer_ci ?? '',
+                        tel: row.buyer_phone ?? '',
+                        correo: row.buyer_email ?? '',
+                        precio: String(row.price_agreed ?? ''),
+                      });
+                      setDialog('editar');
+                    }}
+                  />
                   {(row.status === 'expirada' || row.status === 'cancelada') && (
                     <MenuItem label="Reactivar reserva" onClick={() => { setHours(24); setDialog('reactivar'); }} />
                   )}
@@ -543,6 +622,68 @@ export default function ReservationDetail({ row, role, waTemplates, onClose, onN
               </div>
             </div>
 
+            {/* Cómo viene la reserva hacia su cuota inicial: es la pregunta
+                que la oficina se hace al atender — ¿le cobro, le extiendo el
+                plazo, o la dejo vencer? */}
+            {curso && curso.viva && Number(curso.inicial_objetivo) > 0 ? (
+              <div className="rounded-xl border border-stone-200 p-3">
+                <h3 className="mb-1.5 text-xs font-semibold tracking-wide text-stone-500 uppercase">
+                  Camino a la cuota inicial
+                </h3>
+                <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                  <div>
+                    <p className="text-[11px] text-stone-500">Seña</p>
+                    <p className="font-semibold tabular-nums">
+                      {formatMoney(Number(curso.sena_pagada), 'BOB')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-stone-500">Abonado</p>
+                    <p className="font-semibold tabular-nums">
+                      {formatMoney(Number(curso.abonado), 'BOB')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-stone-500">Le falta</p>
+                    <p
+                      className={`font-semibold tabular-nums ${
+                        Number(curso.falta_para_inicial) > 0 ? 'text-red-600' : 'text-brand'
+                      }`}
+                    >
+                      {formatMoney(Number(curso.falta_para_inicial), 'BOB')}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-stone-200">
+                  <div
+                    className="h-full bg-brand"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        Math.round(
+                          ((Number(curso.sena_pagada) + Number(curso.abonado)) /
+                            Number(curso.inicial_objetivo)) *
+                            100,
+                        ),
+                      )}%`,
+                    }}
+                  />
+                </div>
+                <p className="mt-1.5 text-[11px] text-stone-500">
+                  Objetivo {formatMoney(Number(curso.inicial_objetivo), 'BOB')}
+                  {curso.horas_restantes !== null ? (
+                    <>
+                      {' · '}
+                      {Number(curso.horas_restantes) > 24
+                        ? `${Math.floor(Number(curso.horas_restantes) / 24)} día(s) de plazo`
+                        : `${Math.max(0, Math.round(Number(curso.horas_restantes)))} hora(s) de plazo`}
+                    </>
+                  ) : null}
+                  . Al completarla, la reserva se vuelve venta sola.
+                </p>
+              </div>
+            ) : null}
+
             {/* Timeline */}
             <div>
               <h3 className="mb-1.5 text-xs font-semibold tracking-wide text-stone-500 uppercase">
@@ -776,6 +917,271 @@ export default function ReservationDetail({ row, role, waTemplates, onClose, onN
             }
           >
             {busy ? 'Cancelando…' : 'Cancelar reserva'}
+          </button>
+        </div>
+      </Dialog>
+
+      {/* ---- Cobrar la seña y guardar el lote un plazo ---- */}
+      <Dialog
+        open={dialog === 'cobrar_sena'}
+        onClose={() => setDialog(null)}
+        title="Cobrar seña y guardar el lote"
+      >
+        <p className="text-sm text-stone-600">
+          Entra la seña al libro y el lote le queda guardado el plazo que elijas. La reserva
+          <strong> sigue siendo reserva</strong>: se vuelve venta cuando complete su cuota inicial.
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Seña cobrada (Bs)</label>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={monto}
+              onChange={(e) => setMonto(e.target.value)}
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Días para juntar la inicial</label>
+            <input
+              type="number"
+              min={1}
+              max={365}
+              value={dias}
+              onChange={(e) => setDias(e.target.value)}
+              className={inputClass}
+            />
+          </div>
+        </div>
+        <div className="mt-3">
+          <label className="mb-1 block text-xs text-stone-500">Forma de pago</label>
+          <select
+            value={forma}
+            onChange={(e) => setForma(e.target.value as typeof forma)}
+            className={inputClass}
+          >
+            <option value="efectivo">Efectivo</option>
+            <option value="manual_qr">QR / transferencia</option>
+            <option value="banco_ganadero">Banco Ganadero</option>
+            <option value="bnb">BNB</option>
+          </select>
+        </div>
+        <p className="mt-2 text-xs text-stone-400">
+          Si el plazo vence sin completar la cuota inicial, el lote vuelve a la vitrina y la seña
+          se pierde.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" className={btnSecondary} onClick={() => setDialog(null)}>
+            Volver
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            className={btnPrimary}
+            onClick={() =>
+              void runRpc(
+                'admin_cobrar_sena',
+                {
+                  p_reservation_id: row.id,
+                  p_amount: Number(monto) || null,
+                  p_provider: forma,
+                  p_dias: Number(dias) || null,
+                },
+                'Seña cobrada. El lote queda guardado.',
+                false,
+              )
+            }
+          >
+            {busy ? 'Cobrando…' : 'Cobrar seña'}
+          </button>
+        </div>
+      </Dialog>
+
+      {/* ---- Abonar a cuenta de la cuota inicial ---- */}
+      <Dialog
+        open={dialog === 'abonar'}
+        onClose={() => setDialog(null)}
+        title="Abonar a la cuota inicial"
+      >
+        {curso ? (
+          <p className="rounded-lg bg-stone-50 p-3 text-sm text-stone-600">
+            Lleva pagado {formatMoney(Number(curso.sena_pagada) + Number(curso.abonado), 'BOB')} de{' '}
+            {formatMoney(Number(curso.inicial_objetivo), 'BOB')} de cuota inicial
+            {Number(curso.falta_para_inicial) > 0 ? (
+              <>
+                {' '}
+                — le faltan{' '}
+                <strong>{formatMoney(Number(curso.falta_para_inicial), 'BOB')}</strong>.
+              </>
+            ) : (
+              <> — ya la completó.</>
+            )}
+          </p>
+        ) : null}
+        <label className="mt-3 mb-1 block text-xs text-stone-500">Monto (Bs)</label>
+        <input
+          type="number"
+          min={0}
+          step="0.01"
+          value={monto}
+          onChange={(e) => setMonto(e.target.value)}
+          className={inputClass}
+        />
+        <div className="mt-3">
+          <label className="mb-1 block text-xs text-stone-500">Forma de pago</label>
+          <select
+            value={forma}
+            onChange={(e) => setForma(e.target.value as typeof forma)}
+            className={inputClass}
+          >
+            <option value="efectivo">Efectivo</option>
+            <option value="manual_qr">QR / transferencia</option>
+            <option value="banco_ganadero">Banco Ganadero</option>
+            <option value="bnb">BNB</option>
+          </select>
+        </div>
+        <p className="mt-2 text-xs text-stone-400">
+          Cuando complete la cuota inicial, la reserva se convierte en venta sola.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" className={btnSecondary} onClick={() => setDialog(null)}>
+            Volver
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            className={btnPrimary}
+            onClick={() =>
+              void runRpc(
+                'admin_register_cuota_payment',
+                {
+                  p_reservation_id: row.id,
+                  p_amount: Number(monto) || 0,
+                  p_provider: forma,
+                },
+                'Abono registrado.',
+                false,
+              )
+            }
+          >
+            {busy ? 'Registrando…' : 'Registrar abono'}
+          </button>
+        </div>
+      </Dialog>
+
+      {/* ---- Convertir la reserva en venta ---- */}
+      <Dialog
+        open={dialog === 'convertir'}
+        onClose={() => setDialog(null)}
+        title="Convertir en venta"
+      >
+        <p className="text-sm text-stone-600">
+          El lote pasa a <strong>vendido</strong> y la reserva se vuelve una venta con su saldo. Lo
+          que ya pagó —seña incluida— cuenta contra el precio.
+        </p>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={2}
+          placeholder="Nota (opcional)"
+          className={`${inputClass} mt-3`}
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" className={btnSecondary} onClick={() => setDialog(null)}>
+            Volver
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            className={btnPrimary}
+            onClick={() =>
+              void runRpc(
+                'admin_confirmar_reserva',
+                { p_reservation_id: row.id, p_note: note.trim() || null },
+                'Reserva convertida en venta.',
+                true,
+              )
+            }
+          >
+            {busy ? 'Convirtiendo…' : 'Convertir en venta'}
+          </button>
+        </div>
+      </Dialog>
+
+      {/* ---- Editar los datos de CUALQUIER reserva ---- */}
+      <Dialog open={dialog === 'editar'} onClose={() => setDialog(null)} title="Editar datos">
+        <p className="text-sm text-stone-600">
+          Sirve en cualquier estado — también vencida o cancelada, que es justo cuando el comprador
+          aparece al día siguiente y hay que corregirle un dato antes de reactivarla.
+        </p>
+        <div className="mt-3 space-y-3">
+          <input
+            value={edit.nombre}
+            onChange={(e) => setEdit((v) => ({ ...v, nombre: e.target.value }))}
+            placeholder="Nombre completo"
+            className={inputClass}
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <input
+              value={edit.ci}
+              onChange={(e) => setEdit((v) => ({ ...v, ci: e.target.value }))}
+              placeholder="CI"
+              className={inputClass}
+            />
+            <input
+              value={edit.tel}
+              onChange={(e) => setEdit((v) => ({ ...v, tel: e.target.value }))}
+              placeholder="Celular"
+              inputMode="tel"
+              className={inputClass}
+            />
+          </div>
+          <input
+            value={edit.correo}
+            onChange={(e) => setEdit((v) => ({ ...v, correo: e.target.value }))}
+            placeholder="Correo"
+            inputMode="email"
+            className={inputClass}
+          />
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Precio pactado (Bs)</label>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={edit.precio}
+              onChange={(e) => setEdit((v) => ({ ...v, precio: e.target.value }))}
+              className={inputClass}
+            />
+          </div>
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" className={btnSecondary} onClick={() => setDialog(null)}>
+            Volver
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            className={btnPrimary}
+            onClick={() =>
+              void runRpc(
+                'admin_editar_reserva',
+                {
+                  p_reservation_id: row.id,
+                  p_full_name: edit.nombre.trim() || null,
+                  p_ci: edit.ci.trim() || null,
+                  p_phone: edit.tel.trim() || null,
+                  p_email: edit.correo.trim(),
+                  p_price: Number(edit.precio) || null,
+                },
+                'Datos actualizados.',
+                false,
+              )
+            }
+          >
+            {busy ? 'Guardando…' : 'Guardar'}
           </button>
         </div>
       </Dialog>
