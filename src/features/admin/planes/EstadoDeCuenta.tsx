@@ -157,9 +157,7 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
                 total {formatMoney(totalInteres, 'BOB')} · pagás{' '}
                 {formatMoney(totalCuotas, 'BOB')} en total
               </>
-            ) : (
-              <> sin interés</>
-            )}
+            ) : null}
             . Llevás {d.plan.cuotas_pagadas} de {d.plan.cuotas_totales} cuotas
             {d.plan.proxima_cuota ? ` · la próxima vence el ${fecha(d.plan.proxima_cuota)}` : ''}.
           </p>
