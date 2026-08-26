@@ -27,6 +27,7 @@ import {
   IconExchange,
 } from '@/features/admin/ui/icons';
 import { AdminProvider } from './AdminContext';
+import { puedeVer, seccionDe, type Acceso } from '@/features/admin/lib/acceso';
 import type { TeamRole } from '@/lib/db-types';
 import { ROLE_LABEL } from '@/features/admin/lib/roles';
 import NotificationBell from './NotificationBell';
@@ -140,6 +141,7 @@ export default function AdminShell({
   projects,
   activeSlug,
   currency,
+  acceso = null,
   children,
 }: {
   profile: Profile;
@@ -149,25 +151,38 @@ export default function AdminShell({
   projects: SwitchableProject[];
   activeSlug: string | null;
   currency: 'USD' | 'BOB';
+  /** Nivel efectivo por seccion (mi_acceso()); null = solo filtro por rol. */
+  acceso?: Acceso | null;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const [userMenu, setUserMenu] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const nav = NAV.filter((item) => !item.roles || item.roles.includes(profile.role));
+  // Dos filtros, en orden: el techo del ROL (lo que ese rol puede en la
+  // base) y los PERMISOS por persona (los recortes que decidio el dueno).
+  const visible = (item: NavItem) =>
+    (!item.roles || item.roles.includes(profile.role)) &&
+    puedeVer(acceso, seccionDe(item.href));
+  const nav = NAV.filter(visible);
   // Un grupo sin nada que mostrar no se dibuja: un título suelto sin entradas
   // hace pensar que algo se rompió.
   const grupos = GRUPOS.map((g) => ({
     titulo: g.titulo,
-    items: g.items.filter((i) => !i.roles || i.roles.includes(profile.role)),
+    items: g.items.filter(visible),
   })).filter((g) => g.items.length > 0);
+
+  // Si esta persona no tiene acceso a la seccion de la ruta actual, no se le
+  // muestra el contenido — ni llegando por URL directa. El dato ademas esta
+  // protegido en la base (rol + candados de solo-lectura); esto es la puerta.
+  const seccionActual = seccionDe(pathname);
+  const bloqueado = !puedeVer(acceso, seccionActual);
   const mobileMain = nav.slice(0, 3);
   const mobileMore = nav.slice(3);
   const roleLabel = ROLE_LABEL[profile.role] ?? profile.role;
 
   return (
-    <AdminProvider value={{ profile, projectId, projectName, currency }}>
+    <AdminProvider value={{ profile, projectId, projectName, currency, acceso }}>
       <ToastProvider>
         <div className="admin-scope min-h-dvh bg-stone-100">
           {/* Desktop sidebar */}
@@ -287,7 +302,21 @@ export default function AdminShell({
               </div>
             </header>
 
-            <main className="flex-1 px-3 pb-24 pt-4 sm:px-5 md:pb-8">{children}</main>
+            <main className="flex-1 px-3 pb-24 pt-4 sm:px-5 md:pb-8">
+              {bloqueado ? (
+                <div className="mx-auto max-w-md rounded-2xl border border-stone-200 bg-white p-8 text-center">
+                  <p className="text-sm font-semibold text-stone-800">
+                    No tenés acceso a esta sección
+                  </p>
+                  <p className="mt-2 text-xs text-stone-500">
+                    Tu cuenta no tiene habilitado este módulo. Si lo necesitás,
+                    pedile al administrador que te lo habilite en Equipo.
+                  </p>
+                </div>
+              ) : (
+                children
+              )}
+            </main>
           </div>
 
           {/* Mobile bottom tab bar */}

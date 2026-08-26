@@ -4,6 +4,12 @@
 import { rpcErrorCopy } from '@/lib/errors';
 
 const ADMIN_ERROR_COPY: Record<string, string> = {
+  PERMISO_SOLO_LECTURA:
+    'Tu acceso a esta sección es de solo lectura: podés mirar, pero no cambiar nada. Pedí al administrador que te habilite la edición.',
+  PLAZO_NO_AMORTIZA:
+    'Con ese interés y ese plazo la cuota apenas cubre el interés del mes: la deuda nunca bajaría. Acortá el plazo o bajá la tasa.',
+  ADMIN_NO_SE_RESTRINGE:
+    'Un administrador siempre puede todo. Si querés restringir a esta persona, cambiale primero el rol.',
   PAYMENT_NOT_REVIEWABLE: 'Este comprobante ya fue revisado por otra persona. Actualiza la lista.',
   RESERVATION_NOT_IN_REVIEW: 'La reserva ya no está en verificación. Actualiza la lista.',
   NOTE_REQUIRED: 'La nota es obligatoria para esta acción.',

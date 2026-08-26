@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import AnalyticsClient from '@/features/admin/analitica/AnalyticsClient';
+import MiAnalitica from '@/features/admin/analitica/MiAnalitica';
 import { getAdminContext } from '@/features/admin/lib/get-admin-context';
 import { EmptyState } from '@/features/admin/ui/bits';
 import { isAccounting } from '@/features/admin/lib/roles';
@@ -14,14 +15,21 @@ export default async function AnaliticaPage() {
     if (ctx.reason === 'auth') redirect('/admin/login');
     return null;
   }
-  // Incluye montos vendidos y rendimiento por persona: admin solamente.
-  if (!isAccounting(ctx.profile.role)) {
+  // Cada uno ve la analítica que le corresponde: la de la EMPRESA si su
+  // acceso lo dice, o LA SUYA — sus ventas, su comisión — si es 'propia'.
+  // Un vendedor ya no choca contra una pared: ve sus propios números.
+  const nivel =
+    ctx.acceso?.['analitica'] ?? (isAccounting(ctx.profile.role) ? 'empresa' : 'propia');
+  if (nivel === 'no') {
     return (
       <EmptyState
         title="Sección restringida"
-        hint="La analítica del proyecto no está disponible para el rol de ventas."
+        hint="Tu cuenta no tiene habilitada la analítica. Pedila en Equipo."
       />
     );
+  }
+  if (nivel === 'propia') {
+    return <MiAnalitica />;
   }
   if (!ctx.project) {
     return <EmptyState title="Proyecto no encontrado" hint="Ejecuta las migraciones." />;

@@ -75,6 +75,7 @@ export default async function AdminPanelLayout({ children }: { children: React.R
     <>
       <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       <AdminShell
+        acceso={ctx.acceso}
         profile={ctx.profile}
         projectId={ctx.project?.id ?? null}
         projectName={ctx.project?.name ?? PROJECT_NAME}

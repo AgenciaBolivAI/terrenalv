@@ -8,6 +8,7 @@ import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
 import { Badge, EmptyState, Spinner, btnPrimary, btnSecondary, inputClass } from '@/features/admin/ui/bits';
 import { Dialog } from '@/features/admin/ui/dialog';
 import { useToast } from '@/features/admin/ui/toast';
+import PermisosDialog from './PermisosDialog';
 
 interface ProfileRow {
   id: string;
@@ -16,6 +17,8 @@ interface ProfileRow {
   phone: string | null;
   is_active: boolean;
   created_at: string;
+  /** Recortes por persona debajo del techo del rol (secciones tocadas a mano). */
+  permisos: Record<string, string> | null;
 }
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -32,12 +35,13 @@ export default function TeamClient({ selfId }: { selfId: string }) {
   const [role, setRole] = useState<TeamRole>('ventas');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [permisosDe, setPermisosDe] = useState<ProfileRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     const { data } = await supabase
       .from('profiles')
-      .select('id, full_name, role, phone, is_active, created_at')
+      .select('id, full_name, role, phone, is_active, created_at, permisos')
       .order('created_at', { ascending: true });
     setRows((data ?? []) as ProfileRow[]);
     setLoading(false);
@@ -135,6 +139,16 @@ export default function TeamClient({ selfId }: { selfId: string }) {
                   </option>
                 ))}
               </select>
+              {p.role !== 'admin' ? (
+                <button
+                  type="button"
+                  onClick={() => setPermisosDe(p)}
+                  className="rounded-lg border border-stone-200 px-2.5 py-1 text-xs font-medium text-stone-600 hover:bg-stone-50"
+                  title="Qué secciones ve y cuáles puede tocar"
+                >
+                  Permisos
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => void setMember(p, p.role, !p.is_active)}
@@ -150,6 +164,19 @@ export default function TeamClient({ selfId }: { selfId: string }) {
           ))}
         </ul>
       )}
+
+      {permisosDe ? (
+        <PermisosDialog
+          profileId={permisosDe.id}
+          nombre={permisosDe.full_name}
+          permisos={permisosDe.permisos ?? {}}
+          onClose={() => setPermisosDe(null)}
+          onSaved={() => {
+            setPermisosDe(null);
+            void load();
+          }}
+        />
+      ) : null}
 
       <Dialog open={inviteOpen} onClose={() => setInviteOpen(false)} title="Invitar al equipo">
         <div className="space-y-3">

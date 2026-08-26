@@ -8,6 +8,8 @@ export interface AdminContextValue {
   projectId: string | null;
   projectName: string;
   currency: 'USD' | 'BOB';
+  /** Nivel efectivo por seccion; null si la base no pudo resolverlo. */
+  acceso: Record<string, string> | null;
 }
 
 const AdminContext = createContext<AdminContextValue | null>(null);

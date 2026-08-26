@@ -20,6 +20,8 @@ export type AdminContext =
       profile: Profile;
       project: AdminProject | null;
       projects: AdminProject[];
+      /** Nivel efectivo por seccion (mi_acceso(): rol + recortes por persona). */
+      acceso: Record<string, string> | null;
     };
 
 /**
@@ -69,6 +71,9 @@ export async function getAdminContext(): Promise<AdminContext> {
       lista[0] ??
       null;
 
+    // Que puede ver y tocar esta persona, ya resuelto por la base.
+    const { data: acceso } = await supabase.rpc('mi_acceso');
+
     return {
       ok: true,
       userId: user.id,
@@ -77,6 +82,7 @@ export async function getAdminContext(): Promise<AdminContext> {
       project,
       /** Todas las que puede administrar, para el selector de la barra. */
       projects: lista,
+      acceso: (acceso as Record<string, string> | null) ?? null,
     };
   } catch {
     return { ok: false, reason: 'env' };
