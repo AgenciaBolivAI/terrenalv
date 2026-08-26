@@ -597,6 +597,16 @@ export default function PlanesClient({
                                     >
                                       <IconWhatsapp className="h-4 w-4" /> WhatsApp
                                     </a>
+                                    {/* El papel que el comprador se lleva: su
+                                        cronograma cuota por cuota. */}
+                                    <a
+                                      href={`/admin/plan/${r.plan_id}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="mt-2 ml-2 inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-stone-700 hover:bg-stone-100"
+                                    >
+                                      Imprimir plan de pago
+                                    </a>
                                   </div>
                                 </div>
 

@@ -1253,9 +1253,17 @@ function FichaLoteDialog({
                     próxima vence {dateLabel(plan.proxima_cuota)}
                   </span>
                 ) : null}
+                <a
+                  href={`/admin/plan/${plan.plan_id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-auto text-xs font-semibold text-brand hover:underline"
+                >
+                  Imprimir plan
+                </a>
                 <Link
                   href={`/admin/planes?open=${plan.plan_id}`}
-                  className="ml-auto text-xs font-semibold text-brand hover:underline"
+                  className="text-xs font-semibold text-brand hover:underline"
                 >
                   Abrir en Planes
                 </Link>

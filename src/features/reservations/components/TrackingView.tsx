@@ -228,6 +228,14 @@ export function TrackingView({
             >
               Ver mi contrato
             </Link>
+            {/* Su cronograma: qué cuota le toca y cuándo vence. Si no tiene
+                plan, la página lo dice y vuelve. */}
+            <Link
+              href={`/reserva/${encodeURIComponent(data.tracking_code)}/plan`}
+              className="mt-2 block w-full rounded-xl border border-brand px-4 py-3 text-center text-sm font-bold text-brand active:bg-green-50"
+            >
+              Ver mi plan de pago
+            </Link>
             {(data.recibos ?? []).length > 0 ? (
               <ul className="mt-3 divide-y divide-stone-100 border-t border-stone-100">
                 {(data.recibos ?? []).map((rc) => (

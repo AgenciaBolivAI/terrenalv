@@ -1,0 +1,185 @@
+'use client';
+
+// El plan de pago como ARCHIVO PDF, para mandárselo al comprador.
+//
+// Un enlace se pierde entre los mensajes; el PDF queda en su teléfono y lo
+// puede reenviar a su esposa, a su contador o al banco. Se arma con el mismo
+// motor que el resto de las exportaciones del panel, así que sale con el
+// membrete y el formato de la casa.
+//
+// LÍMITE HONESTO: un enlace de WhatsApp (wa.me) solo lleva TEXTO — no puede
+// adjuntar archivos. Por eso el botón de enviar primero baja el PDF y después
+// abre WhatsApp con el mensaje escrito: el archivo ya está en Descargas
+// esperando el clip. Adjuntarlo solo, sin tocar nada, necesita la API de
+// WhatsApp Business (token y phone id).
+
+import { useState } from 'react';
+import { exportPdf, num as fnum, type Cell } from '@/features/admin/export';
+import { formatMoney, waLink } from '@/lib/format';
+import { IconWhatsapp } from '@/features/admin/ui/icons';
+
+export interface PlanPdfDatos {
+  tracking_code: string;
+  proyecto: string;
+  buyer_full_name: string;
+  buyer_ci: string;
+  buyer_phone: string | null;
+  manzana: string | null;
+  lote: string | null;
+  total_price: number;
+  down_payment: number;
+  financed_amount: number;
+  months: number;
+  monthly_amount: number;
+  monthly_interest_pct: number;
+  first_due_date: string;
+  cuotas: {
+    number: number;
+    due_date: string;
+    amount: number;
+    interes: number;
+    amount_paid: number;
+    status: string;
+  }[];
+}
+
+function fecha(iso: string): string {
+  return new Date(`${iso}T12:00:00`).toLocaleDateString('es-BO', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: 'America/La_Paz',
+  });
+}
+
+/** Arma el PDF del cronograma y lo baja. Devuelve el nombre del archivo. */
+export async function bajarPlanPdf(p: PlanPdfDatos): Promise<string> {
+  const totalCuotas = p.cuotas.reduce((s, c) => s + Number(c.amount), 0);
+  const totalInteres = p.cuotas.reduce((s, c) => s + Number(c.interes), 0);
+
+  // El saldo corriente: lo que le queda DESPUÉS de cada cuota. Es la columna
+  // que el comprador busca con el dedo el 14 de cada mes.
+  let restante = totalCuotas;
+  const filas: Cell[][] = p.cuotas.map((c) => {
+    restante = Math.round((restante - Number(c.amount)) * 100) / 100;
+    return [
+      c.number,
+      fecha(c.due_date),
+      fnum(Number(c.amount)),
+      fnum(Number(c.amount) - Number(c.interes)),
+      Number(c.interes) > 0 ? fnum(Number(c.interes)) : '—',
+      fnum(Math.max(0, restante)),
+      c.status === 'pagada'
+        ? 'Pagada'
+        : Number(c.amount_paid) > 0
+          ? `Parcial ${fnum(Number(c.amount_paid))}`
+          : 'Pendiente',
+    ];
+  });
+
+  const condiciones =
+    `Lote: Mz ${p.manzana ?? '—'}, Lote ${p.lote ?? '—'} — ${p.proyecto}   ·   ` +
+    `Precio ${formatMoney(Number(p.total_price), 'BOB')}   ·   ` +
+    `Cuota inicial ${formatMoney(Number(p.down_payment), 'BOB')}   ·   ` +
+    `Financiado ${formatMoney(Number(p.financed_amount), 'BOB')}   ·   ` +
+    `${p.months} cuotas de ${formatMoney(Number(p.monthly_amount), 'BOB')}` +
+    (Number(p.monthly_interest_pct) > 0
+      ? `   ·   Interés ${Number(p.monthly_interest_pct)}% mensual sobre saldo   ·   ` +
+        `Interés total ${formatMoney(totalInteres, 'BOB')}   ·   ` +
+        `Total a pagar ${formatMoney(totalCuotas, 'BOB')}`
+      : '   ·   Sin interés');
+
+  const filename = `plan-de-pago-${p.tracking_code}`;
+
+  await exportPdf(
+    {
+      title: `Plan de pago — ${p.buyer_full_name}`,
+      subtitle: `${p.tracking_code} · CI ${p.buyer_ci} · Primera cuota ${fecha(p.first_due_date)}`,
+      filename,
+      footnote:
+        condiciones +
+        '   |   No constituye factura. Terrenalv S.R.L. conserva la propiedad del lote hasta la cancelación total del precio.',
+    },
+    [
+      { header: 'N°', align: 'right', width: 28 },
+      { header: 'Vence' },
+      { header: 'Cuota', align: 'right' },
+      { header: 'Capital', align: 'right' },
+      { header: 'Interés', align: 'right' },
+      { header: 'Le queda', align: 'right' },
+      { header: 'Estado' },
+    ],
+    filas,
+    { orientation: 'portrait' },
+  );
+
+  return `${filename}.pdf`;
+}
+
+export function PlanPdfButton({ p }: { p: PlanPdfDatos }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-100 disabled:opacity-60"
+      onClick={async () => {
+        setBusy(true);
+        await bajarPlanPdf(p);
+        setBusy(false);
+      }}
+    >
+      {busy ? 'Armando…' : 'Descargar PDF'}
+    </button>
+  );
+}
+
+/**
+ * Enviar el plan por WhatsApp: baja el PDF y abre el chat con el mensaje
+ * escrito, para adjuntar el archivo que quedó en Descargas.
+ */
+export function EnviarPlanPdfWhatsapp({ p }: { p: PlanPdfDatos }) {
+  const [busy, setBusy] = useState(false);
+
+  if (!p.buyer_phone) {
+    return (
+      <span
+        className="rounded-lg border border-stone-200 px-3 py-1.5 text-sm text-stone-400"
+        title="Este comprador no tiene celular cargado."
+      >
+        Sin celular
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
+      title="Baja el PDF y abre WhatsApp para adjuntarlo"
+      onClick={async () => {
+        setBusy(true);
+        const archivo = await bajarPlanPdf(p);
+        const enlace =
+          typeof window === 'undefined'
+            ? ''
+            : `${window.location.origin}/reserva/${encodeURIComponent(p.tracking_code)}/plan`;
+        const texto =
+          `Hola ${p.buyer_full_name.split(' ')[0] ?? ''}, te paso tu plan de pago de Terrenalv: ` +
+          `${p.months} cuotas de ${formatMoney(Number(p.monthly_amount), 'BOB')}. ` +
+          `Te adjunto el cronograma en PDF. También podés verlo online acá: ${enlace}`;
+        window.open(waLink(p.buyer_phone as string, texto), '_blank', 'noopener,noreferrer');
+        setBusy(false);
+        window.alert(
+          `El PDF «${archivo}» quedó en Descargas.\n\n` +
+            'En WhatsApp tocá el clip 📎 y adjuntalo.\n\n' +
+            'Para que se adjunte solo hace falta la API de WhatsApp Business (token y phone id).',
+        );
+      }}
+    >
+      <IconWhatsapp className="h-4 w-4" />
+      {busy ? 'Armando PDF…' : 'Enviar PDF por WhatsApp'}
+    </button>
+  );
+}
