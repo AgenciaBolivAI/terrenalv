@@ -20,7 +20,18 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { createClient } from '@/lib/supabase/client';
 import { FichaClienteDialog } from '@/features/admin/clientes/FichaClienteDialog';
 import { formatMoney, waLink } from '@/lib/format';
-import { Badge, EmptyState, Kpi, Spinner, inputClass } from '@/features/admin/ui/bits';
+import {
+  Badge,
+  EmptyState,
+  Kpi,
+  Spinner,
+  btnPrimary,
+  btnSecondary,
+  inputClass,
+} from '@/features/admin/ui/bits';
+import { Dialog } from '@/features/admin/ui/dialog';
+import { useToast } from '@/features/admin/ui/toast';
+import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
 import { IconSearch, IconWhatsapp } from '@/features/admin/ui/icons';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
 import { num as fnum, type Cell as XCell } from '@/features/admin/export';
@@ -123,7 +134,15 @@ export default function PlanesClient({
   const [selected, setSelected] = useState<string | null>(null);
   // El nombre del comprador abre su ficha sin salir de Planes.
   const [ficha, setFicha] = useState<{ ci: string; nombre: string } | null>(null);
+  const { push } = useToast();
   const [cuotas, setCuotas] = useState<Installment[] | null>(null);
+  // Las fechas se corrigen: el plan se arma el día que se firma, pero la
+  // gente cobra el 5, el 15 o a fin de mes. Si el cronograma no se acomoda a
+  // eso, la mora que muestra el sistema es mentira.
+  const [moviendo, setMoviendo] = useState<{ id: string; numero: number; fecha: string } | null>(
+    null,
+  );
+  const [corriendo, setCorriendo] = useState<{ planId: string; fecha: string } | null>(null);
   const selectedRef = useRef<string | null>(null);
   selectedRef.current = selected;
 
@@ -607,6 +626,22 @@ export default function PlanesClient({
                                     >
                                       Imprimir plan de pago
                                     </a>
+                                    {r.estado === 'activo' ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setCorriendo({
+                                            planId: r.plan_id,
+                                            fecha:
+                                              r.proxima_cuota ??
+                                              new Date().toISOString().slice(0, 10),
+                                          })
+                                        }
+                                        className="mt-2 ml-2 inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-stone-700 hover:bg-stone-100"
+                                      >
+                                        Cambiar fechas de pago
+                                      </button>
+                                    ) : null}
                                   </div>
                                 </div>
 
@@ -669,7 +704,24 @@ export default function PlanesClient({
                                                       : 'text-stone-600'
                                                   }`}
                                                 >
-                                                  {dateLabel(c.due_date)}
+                                                  {c.status === 'pagada' || c.status === 'anulada' ? (
+                                                    dateLabel(c.due_date)
+                                                  ) : (
+                                                    <button
+                                                      type="button"
+                                                      title="Cambiar la fecha de esta cuota"
+                                                      onClick={() =>
+                                                        setMoviendo({
+                                                          id: c.id,
+                                                          numero: c.number,
+                                                          fecha: c.due_date,
+                                                        })
+                                                      }
+                                                      className="underline decoration-dotted underline-offset-2 hover:text-brand"
+                                                    >
+                                                      {dateLabel(c.due_date)}
+                                                    </button>
+                                                  )}
                                                 </td>
                                                 <td className="px-3 py-1.5 text-right tabular-nums text-stone-900">
                                                   {formatMoney(Number(c.amount), r.currency)}
@@ -727,6 +779,98 @@ export default function PlanesClient({
 
       {ficha ? (
         <FichaClienteDialog ci={ficha.ci} nombre={ficha.nombre} onClose={() => setFicha(null)} />
+      ) : null}
+
+      {/* ---- Mover UNA cuota ---- */}
+      {moviendo ? (
+        <Dialog
+          open
+          onClose={() => setMoviendo(null)}
+          title={`Cuota N° ${moviendo.numero} — cambiar fecha`}
+        >
+          <p className="text-sm text-stone-600">
+            Solo cambia cuándo vence esta cuota. El monto no se toca, y las cuotas que ya se
+            pagaron no se mueven nunca.
+          </p>
+          <label className="mt-3 mb-1 block text-xs text-stone-500">Nueva fecha de vencimiento</label>
+          <input
+            type="date"
+            value={moviendo.fecha}
+            onChange={(e) => setMoviendo({ ...moviendo, fecha: e.target.value })}
+            className={inputClass}
+          />
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" className={btnSecondary} onClick={() => setMoviendo(null)}>
+              Volver
+            </button>
+            <button
+              type="button"
+              className={btnPrimary}
+              onClick={async () => {
+                const { error } = await supabase.rpc('admin_mover_vencimiento_cuota', {
+                  p_installment_id: moviendo.id,
+                  p_fecha: moviendo.fecha,
+                });
+                if (error) {
+                  push(adminErrorCopy(error.message), 'error');
+                  return;
+                }
+                push('Fecha actualizada.', 'success');
+                setMoviendo(null);
+                void fetchAll();
+              }}
+            >
+              Guardar
+            </button>
+          </div>
+        </Dialog>
+      ) : null}
+
+      {/* ---- Correr TODO el cronograma pendiente ---- */}
+      {corriendo ? (
+        <Dialog open onClose={() => setCorriendo(null)} title="Cambiar fechas de pago">
+          <p className="text-sm text-stone-600">
+            Todas las cuotas <strong>pendientes</strong> se recorren mes a mes desde la fecha que
+            elijas. Las ya pagadas quedan como están: mover su fecha sería reescribir cuándo pagó.
+          </p>
+          <label className="mt-3 mb-1 block text-xs text-stone-500">
+            La próxima cuota vence el
+          </label>
+          <input
+            type="date"
+            value={corriendo.fecha}
+            onChange={(e) => setCorriendo({ ...corriendo, fecha: e.target.value })}
+            className={inputClass}
+          />
+          <p className="mt-2 text-xs text-stone-400">
+            Sirve cuando el comprador cobra otro día del mes: si el cronograma no se acomoda, el
+            sistema lo muestra en mora aunque pague puntual.
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" className={btnSecondary} onClick={() => setCorriendo(null)}>
+              Volver
+            </button>
+            <button
+              type="button"
+              className={btnPrimary}
+              onClick={async () => {
+                const { error } = await supabase.rpc('admin_mover_vencimientos', {
+                  p_plan_id: corriendo.planId,
+                  p_primera_fecha: corriendo.fecha,
+                });
+                if (error) {
+                  push(adminErrorCopy(error.message), 'error');
+                  return;
+                }
+                push('Cronograma actualizado.', 'success');
+                setCorriendo(null);
+                void fetchAll();
+              }}
+            >
+              Cambiar fechas
+            </button>
+          </div>
+        </Dialog>
       ) : null}
     </div>
   );

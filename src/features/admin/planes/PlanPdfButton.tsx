@@ -15,33 +15,11 @@
 
 import { useState } from 'react';
 import { exportPdf, num as fnum, type Cell } from '@/features/admin/export';
+import type { EstadoDeCuenta } from './estado-de-cuenta';
 import { formatMoney, waLink } from '@/lib/format';
 import { IconWhatsapp } from '@/features/admin/ui/icons';
 
-export interface PlanPdfDatos {
-  tracking_code: string;
-  proyecto: string;
-  buyer_full_name: string;
-  buyer_ci: string;
-  buyer_phone: string | null;
-  manzana: string | null;
-  lote: string | null;
-  total_price: number;
-  down_payment: number;
-  financed_amount: number;
-  months: number;
-  monthly_amount: number;
-  monthly_interest_pct: number;
-  first_due_date: string;
-  cuotas: {
-    number: number;
-    due_date: string;
-    amount: number;
-    interes: number;
-    amount_paid: number;
-    status: string;
-  }[];
-}
+export type PlanPdfDatos = EstadoDeCuenta;
 
 function fecha(iso: string): string {
   return new Date(`${iso}T12:00:00`).toLocaleDateString('es-BO', {
@@ -54,13 +32,14 @@ function fecha(iso: string): string {
 
 /** Arma el PDF del cronograma y lo baja. Devuelve el nombre del archivo. */
 export async function bajarPlanPdf(p: PlanPdfDatos): Promise<string> {
-  const totalCuotas = p.cuotas.reduce((s, c) => s + Number(c.amount), 0);
-  const totalInteres = p.cuotas.reduce((s, c) => s + Number(c.interes), 0);
+  const cuotas = p.plan?.cuotas ?? [];
+  const totalCuotas = cuotas.reduce((s, c) => s + Number(c.amount), 0);
+  const totalInteres = cuotas.reduce((s, c) => s + Number(c.interes), 0);
 
   // El saldo corriente: lo que le queda DESPUÉS de cada cuota. Es la columna
   // que el comprador busca con el dedo el 14 de cada mes.
   let restante = totalCuotas;
-  const filas: Cell[][] = p.cuotas.map((c) => {
+  const filas: Cell[][] = cuotas.map((c) => {
     restante = Math.round((restante - Number(c.amount)) * 100) / 100;
     return [
       c.number,
@@ -79,22 +58,26 @@ export async function bajarPlanPdf(p: PlanPdfDatos): Promise<string> {
 
   const condiciones =
     `Lote: Mz ${p.manzana ?? '—'}, Lote ${p.lote ?? '—'} — ${p.proyecto}   ·   ` +
-    `Precio ${formatMoney(Number(p.total_price), 'BOB')}   ·   ` +
-    `Cuota inicial ${formatMoney(Number(p.down_payment), 'BOB')}   ·   ` +
-    `Financiado ${formatMoney(Number(p.financed_amount), 'BOB')}   ·   ` +
-    `${p.months} cuotas de ${formatMoney(Number(p.monthly_amount), 'BOB')}` +
-    (Number(p.monthly_interest_pct) > 0
-      ? `   ·   Interés ${Number(p.monthly_interest_pct)}% mensual sobre saldo   ·   ` +
+    `Precio ${formatMoney(Number(p.precio), 'BOB')}   ·   ` +
+    `Pagado ${formatMoney(Number(p.pagado), 'BOB')}   ·   ` +
+    `Saldo ${formatMoney(Number(p.saldo), 'BOB')}` +
+    (p.plan
+      ? `   ·   ${p.plan.months} cuotas de ${formatMoney(Number(p.plan.monthly_amount), 'BOB')}`
+      : '') +
+    (Number(p.plan?.monthly_interest_pct ?? 0) > 0
+      ? `   ·   Interés ${Number(p.plan?.monthly_interest_pct)}% mensual sobre saldo   ·   ` +
         `Interés total ${formatMoney(totalInteres, 'BOB')}   ·   ` +
         `Total a pagar ${formatMoney(totalCuotas, 'BOB')}`
-      : '   ·   Sin interés');
+      : '');
 
   const filename = `plan-de-pago-${p.tracking_code}`;
 
   await exportPdf(
     {
       title: `Plan de pago — ${p.buyer_full_name}`,
-      subtitle: `${p.tracking_code} · CI ${p.buyer_ci} · Primera cuota ${fecha(p.first_due_date)}`,
+      subtitle:
+        `${p.tracking_code} · CI ${p.buyer_ci}` +
+        (p.plan ? ` · Primera cuota ${fecha(p.plan.first_due_date)}` : ''),
       filename,
       footnote:
         condiciones +
@@ -116,7 +99,7 @@ export async function bajarPlanPdf(p: PlanPdfDatos): Promise<string> {
   return `${filename}.pdf`;
 }
 
-export function PlanPdfButton({ p }: { p: PlanPdfDatos }) {
+export function PlanPdfButton({ d: p }: { d: PlanPdfDatos }) {
   const [busy, setBusy] = useState(false);
   return (
     <button
@@ -138,7 +121,7 @@ export function PlanPdfButton({ p }: { p: PlanPdfDatos }) {
  * Enviar el plan por WhatsApp: baja el PDF y abre el chat con el mensaje
  * escrito, para adjuntar el archivo que quedó en Descargas.
  */
-export function EnviarPlanPdfWhatsapp({ p }: { p: PlanPdfDatos }) {
+export function EnviarPlanPdfWhatsapp({ d: p }: { d: PlanPdfDatos }) {
   const [busy, setBusy] = useState(false);
 
   if (!p.buyer_phone) {
@@ -167,7 +150,9 @@ export function EnviarPlanPdfWhatsapp({ p }: { p: PlanPdfDatos }) {
             : `${window.location.origin}/reserva/${encodeURIComponent(p.tracking_code)}/plan`;
         const texto =
           `Hola ${p.buyer_full_name.split(' ')[0] ?? ''}, te paso tu plan de pago de Terrenalv: ` +
-          `${p.months} cuotas de ${formatMoney(Number(p.monthly_amount), 'BOB')}. ` +
+          (p.plan
+            ? `${p.plan.months} cuotas de ${formatMoney(Number(p.plan.monthly_amount), 'BOB')}. `
+            : `saldo ${formatMoney(Number(p.saldo), 'BOB')}. `) +
           `Te adjunto el cronograma en PDF. También podés verlo online acá: ${enlace}`;
         window.open(waLink(p.buyer_phone as string, texto), '_blank', 'noopener,noreferrer');
         setBusy(false);

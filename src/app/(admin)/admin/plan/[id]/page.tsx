@@ -3,8 +3,8 @@ import { notFound, redirect } from 'next/navigation';
 import { getAdminContext } from '@/features/admin/lib/get-admin-context';
 import { PrintButton } from '@/features/admin/contabilidad/PrintButton';
 import { EnviarPlanPdfWhatsapp, PlanPdfButton } from '@/features/admin/planes/PlanPdfButton';
-import { PlanDePago } from '@/features/admin/planes/PlanDePago';
-import { cargarPlanImpreso } from '@/features/admin/planes/plan-impreso';
+import { EstadoDeCuenta } from '@/features/admin/planes/EstadoDeCuenta';
+import { cargarEstadoDeCuenta } from '@/features/admin/planes/estado-de-cuenta';
 
 export const metadata: Metadata = { title: 'Plan de pago' };
 export const dynamic = 'force-dynamic';
@@ -18,9 +18,11 @@ export default async function PlanImpresoPage({ params }: { params: Promise<{ id
     return null;
   }
 
+  // `id` puede ser el id del plan o el código de seguimiento: los dos llegan
+  // acá desde pantallas distintas y ninguno debería dar 404.
   const { id } = await params;
-  const p = await cargarPlanImpreso({ planId: id });
-  if (!p) notFound();
+  const d = await cargarEstadoDeCuenta(id);
+  if (!d) notFound();
 
   return (
     <main className="mx-auto max-w-3xl p-6 print:p-0">
@@ -29,10 +31,10 @@ export default async function PlanImpresoPage({ params }: { params: Promise<{ id
           ← Volver a Planes
         </a>
         <div className="flex flex-wrap items-center gap-2">
-          <EnviarPlanPdfWhatsapp p={p} />
-          <PlanPdfButton p={p} />
+          <EnviarPlanPdfWhatsapp d={d} />
+          <PlanPdfButton d={d} />
           <a
-            href={`/reserva/${encodeURIComponent(p.tracking_code)}/plan`}
+            href={`/reserva/${encodeURIComponent(d.tracking_code)}/plan`}
             target="_blank"
             rel="noreferrer"
             className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-100"
@@ -44,7 +46,7 @@ export default async function PlanImpresoPage({ params }: { params: Promise<{ id
         </div>
       </div>
 
-      <PlanDePago p={p} emitidoPor={ctx.profile.full_name ?? undefined} />
+      <EstadoDeCuenta d={d} />
     </main>
   );
 }
