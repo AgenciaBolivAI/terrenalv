@@ -15,6 +15,7 @@
 
 import { useState } from 'react';
 import { exportPdf, num as fnum, type Cell } from '@/features/admin/export';
+import { saldosCorridos, terminosDelPlan } from './cuentas';
 import type { EstadoDeCuenta } from './estado-de-cuenta';
 import { formatMoney, waLink } from '@/lib/format';
 import { IconWhatsapp } from '@/features/admin/ui/icons';
@@ -36,16 +37,15 @@ export async function bajarPlanPdf(p: PlanPdfDatos): Promise<string> {
   const totalCuotas = cuotas.reduce((s, c) => s + Number(c.amount), 0);
   const totalInteres = cuotas.reduce((s, c) => s + Number(c.interes), 0);
 
-  // El saldo corriente: lo que le queda DESPUÉS de cada cuota. Es la columna
-  // que el comprador busca con el dedo el 14 de cada mes.
-  let restante = totalCuotas;
-  const filas: Cell[][] = cuotas.map((c) => {
-    restante = Math.round((restante - Number(c.amount)) * 100) / 100;
+  // El saldo corriente: lo que le queda DESPUÉS de cada cuota. La cuenta
+  // vive en cuentas.ts, la misma que usa la pantalla, con sus tests.
+  const saldos = saldosCorridos(cuotas);
+  const filas: Cell[][] = cuotas.map((c, i) => {
     return [
       c.number,
       fecha(c.due_date),
       fnum(Number(c.amount)),
-      fnum(Math.max(0, restante)),
+      fnum(saldos[i]),
       c.status === 'pagada'
         ? 'Pagada'
         : Number(c.amount_paid) > 0
@@ -60,7 +60,7 @@ export async function bajarPlanPdf(p: PlanPdfDatos): Promise<string> {
     `Pagado ${formatMoney(Number(p.pagado), 'BOB')}   ·   ` +
     `Saldo ${formatMoney(Number(p.saldo), 'BOB')}` +
     (p.plan
-      ? `   ·   ${p.plan.months} cuotas de ${formatMoney(Number(p.plan.monthly_amount), 'BOB')}`
+      ? `   ·   ${terminosDelPlan(p.plan, (n) => formatMoney(n, 'BOB'))}`
       : '') +
     (Number(p.plan?.monthly_interest_pct ?? 0) > 0
       ? `   ·   Interés ${Number(p.plan?.monthly_interest_pct)}% mensual sobre saldo   ·   ` +
@@ -147,7 +147,7 @@ export function EnviarPlanPdfWhatsapp({ d: p }: { d: PlanPdfDatos }) {
         const texto =
           `Hola ${p.buyer_full_name.split(' ')[0] ?? ''}, te paso tu plan de pago de Terrenalv: ` +
           (p.plan
-            ? `${p.plan.months} cuotas de ${formatMoney(Number(p.plan.monthly_amount), 'BOB')}. `
+            ? `${terminosDelPlan(p.plan, (n) => formatMoney(n, 'BOB'))}. `
             : `saldo ${formatMoney(Number(p.saldo), 'BOB')}. `) +
           `Te adjunto el cronograma en PDF. También podés verlo online acá: ${enlace}`;
         window.open(waLink(p.buyer_phone as string, texto), '_blank', 'noopener,noreferrer');

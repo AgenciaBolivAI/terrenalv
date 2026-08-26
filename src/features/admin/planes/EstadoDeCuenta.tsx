@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { formatMoney } from '@/lib/format';
+import { saldosCorridos } from './cuentas';
 import { Logo } from '@/components/Logo';
 import type { EstadoDeCuenta as Datos } from './estado-de-cuenta';
 
@@ -25,7 +26,10 @@ function fecha(iso: string | null): string {
 export function EstadoDeCuenta({ d }: { d: Datos }) {
   const totalCuotas = d.plan ? d.plan.cuotas.reduce((s, c) => s + Number(c.amount), 0) : 0;
   const totalInteres = d.plan ? d.plan.cuotas.reduce((s, c) => s + Number(c.interes), 0) : 0;
-  let restante = totalCuotas;
+  // El «te queda» de cada fila sale de cuentas.ts — la misma cuenta que usa
+  // el PDF, con sus tests. Dos copias de esta aritmética ya se contradijeron
+  // una vez en producción.
+  const saldos = d.plan ? saldosCorridos(d.plan.cuotas) : [];
 
   return (
     <article className="rounded-2xl border border-stone-300 bg-white p-6 text-sm sm:p-8 print:rounded-none print:border-0 print:p-0">
@@ -148,8 +152,22 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
             {d.plan.estado !== 'activo' ? ` · ${d.plan.estado}` : ''}
           </h2>
           <p className="mt-1 text-xs text-stone-600">
-            {d.plan.months} cuotas de{' '}
-            <strong>{formatMoney(Number(d.plan.monthly_amount), 'BOB')}</strong>
+            {Number(d.plan.cuotas_totales) === Number(d.plan.months) ? (
+              <>
+                {d.plan.months} cuotas de{' '}
+                <strong>{formatMoney(Number(d.plan.monthly_amount), 'BOB')}</strong>
+              </>
+            ) : (
+              // El plan se reprogramó, así que las cuotas ya pagadas fueron de
+              // otro monto. Decir «8 cuotas de Bs 5.156» al lado de «llevás 1
+              // de 9» se contradice solo: son ocho las que faltan, no ocho las
+              // que hay. Se nombra el total y se aclara qué queda.
+              <>
+                {d.plan.cuotas_totales} cuotas · las{' '}
+                {Number(d.plan.cuotas_totales) - Number(d.plan.cuotas_pagadas)} que faltan son de{' '}
+                <strong>{formatMoney(Number(d.plan.monthly_amount), 'BOB')}</strong>
+              </>
+            )}
             {Number(d.plan.monthly_interest_pct) > 0 ? (
               <>
                 {' '}
@@ -174,8 +192,7 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
                 </tr>
               </thead>
               <tbody>
-                {d.plan.cuotas.map((c) => {
-                  restante = Math.round((restante - Number(c.amount)) * 100) / 100;
+                {d.plan.cuotas.map((c, i) => {
                   const hoy = new Date().toISOString().slice(0, 10);
                   const vencida = c.status !== 'pagada' && c.due_date < hoy;
                   return (
@@ -188,7 +205,7 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
                         {formatMoney(Number(c.amount), 'BOB')}
                       </td>
                       <td className="py-1.5 text-right tabular-nums text-stone-600">
-                        {formatMoney(Math.max(0, restante), 'BOB')}
+                        {formatMoney(saldos[i], 'BOB')}
                       </td>
                       <td className="py-1.5 text-center">
                         {c.status === 'pagada' ? (

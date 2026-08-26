@@ -61,6 +61,7 @@ interface Plan {
   total_price: number;
   down_payment: number;
   financed_amount: number;
+  sena_pagada: number;
   months: number;
   monthly_amount: number;
   /** Null en los planes sin interés, que son la mayoría. */
@@ -583,6 +584,12 @@ export default function PlanesClient({
                                         label="Cuota inicial"
                                         valor={formatMoney(Number(r.down_payment), r.currency)}
                                       />
+                                      {Number(r.sena_pagada) > 0 ? (
+                                        <Dato
+                                          label="Seña / reserva"
+                                          valor={formatMoney(Number(r.sena_pagada), r.currency)}
+                                        />
+                                      ) : null}
                                       <Dato
                                         label="Financiado"
                                         valor={formatMoney(Number(r.financed_amount), r.currency)}
