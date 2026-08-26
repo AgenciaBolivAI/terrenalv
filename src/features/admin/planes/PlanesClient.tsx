@@ -143,6 +143,16 @@ export default function PlanesClient({
     null,
   );
   const [corriendo, setCorriendo] = useState<{ planId: string; fecha: string } | null>(null);
+  // Un plan es un acuerdo entre dos personas, y los acuerdos se renegocian:
+  // más plazo, otro interés, otra cuota. Eso tiene que poder registrarse.
+  const [editando, setEditando] = useState<{
+    planId: string;
+    interes: string;
+    meses: string;
+    cuota: string;
+    fecha: string;
+    fijar: 'meses' | 'cuota';
+  } | null>(null);
   const selectedRef = useRef<string | null>(null);
   selectedRef.current = selected;
 
@@ -630,6 +640,26 @@ export default function PlanesClient({
                                       <button
                                         type="button"
                                         onClick={() =>
+                                          setEditando({
+                                            planId: r.plan_id,
+                                            interes: String(r.monthly_interest_pct ?? 0),
+                                            meses: String(r.months),
+                                            cuota: String(r.monthly_amount),
+                                            fecha:
+                                              r.proxima_cuota ??
+                                              new Date().toISOString().slice(0, 10),
+                                            fijar: 'meses',
+                                          })
+                                        }
+                                        className="mt-2 ml-2 inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-stone-700 hover:bg-stone-100"
+                                      >
+                                        Editar condiciones
+                                      </button>
+                                    ) : null}
+                                    {r.estado === 'activo' ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
                                           setCorriendo({
                                             planId: r.plan_id,
                                             fecha:
@@ -779,6 +809,144 @@ export default function PlanesClient({
 
       {ficha ? (
         <FichaClienteDialog ci={ficha.ci} nombre={ficha.nombre} onClose={() => setFicha(null)} />
+      ) : null}
+
+      {/* ---- Renegociar el plan entero ---- */}
+      {editando ? (
+        <Dialog open onClose={() => setEditando(null)} title="Editar condiciones del plan">
+          <p className="text-sm text-stone-600">
+            Se reprograma <strong>lo que falta pagar</strong> con las condiciones nuevas. Las
+            cuotas ya pagadas no se tocan — cambiarlas sería reescribir la plata que entró.
+          </p>
+
+          <div className="mt-3 space-y-3">
+            <div>
+              <label className="mb-1 block text-xs text-stone-500">Interés mensual (%)</label>
+              <input
+                type="number"
+                min={0}
+                max={20}
+                step="0.1"
+                value={editando.interes}
+                onChange={(e) => setEditando({ ...editando, interes: e.target.value })}
+                className={inputClass}
+              />
+            </div>
+
+            <div className="rounded-lg border border-stone-200 p-3">
+              <p className="mb-2 text-xs text-stone-500">
+                Elegí qué fijar: lo otro se calcula solo.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditando({ ...editando, fijar: 'meses' })}
+                  className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium ${
+                    editando.fijar === 'meses'
+                      ? 'bg-green-50 text-brand'
+                      : 'bg-stone-100 text-stone-600'
+                  }`}
+                >
+                  Fijo el plazo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditando({ ...editando, fijar: 'cuota' })}
+                  className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium ${
+                    editando.fijar === 'cuota'
+                      ? 'bg-green-50 text-brand'
+                      : 'bg-stone-100 text-stone-600'
+                  }`}
+                >
+                  Fijo la cuota
+                </button>
+              </div>
+              <div className="mt-3">
+                {editando.fijar === 'meses' ? (
+                  <>
+                    <label className="mb-1 block text-xs text-stone-500">
+                      Cuotas que faltan (meses)
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={480}
+                      value={editando.meses}
+                      onChange={(e) => setEditando({ ...editando, meses: e.target.value })}
+                      className={inputClass}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <label className="mb-1 block text-xs text-stone-500">
+                      Cuota mensual (Bs)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={editando.cuota}
+                      onChange={(e) => setEditando({ ...editando, cuota: e.target.value })}
+                      className={inputClass}
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs text-stone-500">
+                La próxima cuota vence el
+              </label>
+              <input
+                type="date"
+                value={editando.fecha}
+                onChange={(e) => setEditando({ ...editando, fecha: e.target.value })}
+                className={inputClass}
+              />
+            </div>
+          </div>
+
+          <p className="mt-2 text-xs text-stone-400">
+            Con interés, la cuota tiene que superar el interés del mes o la deuda no bajaría nunca
+            — el sistema lo rechaza y te dice de cuánto es ese interés.
+          </p>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" className={btnSecondary} onClick={() => setEditando(null)}>
+              Volver
+            </button>
+            <button
+              type="button"
+              className={btnPrimary}
+              onClick={async () => {
+                const { data, error } = await supabase.rpc('admin_editar_plan', {
+                  p_plan_id: editando.planId,
+                  p_interes_mensual: Number(editando.interes) || 0,
+                  p_meses: editando.fijar === 'meses' ? Number(editando.meses) || null : null,
+                  p_cuota: editando.fijar === 'cuota' ? Number(editando.cuota) || null : null,
+                  p_primera_fecha: editando.fecha || null,
+                });
+                if (error) {
+                  push(adminErrorCopy(error.message), 'error');
+                  return;
+                }
+                const d = data as { meses?: number; cuota?: number } | null;
+                push(
+                  `Plan reprogramado: ${d?.meses ?? '—'} cuotas de ${formatMoney(
+                    Number(d?.cuota ?? 0),
+                    'BOB',
+                  )}.`,
+                  'success',
+                );
+                setEditando(null);
+                void fetchAll();
+              }}
+            >
+              Guardar condiciones
+            </button>
+          </div>
+        </Dialog>
       ) : null}
 
       {/* ---- Mover UNA cuota ---- */}
