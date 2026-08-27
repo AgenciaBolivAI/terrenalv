@@ -603,45 +603,95 @@ export default function VentasClient({
                 disabled={!visibles.length}
                 orientation="landscape"
                 meta={{
-                  title: 'Ventas',
+                  title: 'Cartera de ventas',
                   subtitle: projectName,
-                  filename: `ventas-${new Date().toISOString().slice(0, 10)}`,
+                  filename: `cartera-${new Date().toISOString().slice(0, 10)}`,
                   footnote:
-                    'Saldo: deuda migrada (si la hay) o precio pactado, menos cuotas y abonos aprobados en este sistema.',
+                    'Estado: Pagado = sin deuda · Vigente = al día · Atrasado = 1 o 2 cuotas vencidas · Vencido = 3 o más. ' +
+                    'Pago inicial: la cuota inicial del plan, o lo pagado si es al contado. ' +
+                    'Saldo: deuda migrada (si la hay) o precio pactado, menos capital cobrado en este sistema.',
                 }}
                 columns={[
                   { header: 'Código' },
-                  { header: 'Comprador' },
+                  { header: 'Cliente' },
                   { header: 'CI' },
+                  { header: 'Teléfono' },
                   { header: 'Proyecto' },
                   { header: 'Manzana' },
                   { header: 'Lote' },
+                  { header: 'Sup. m²', align: 'right' },
                   { header: 'Fecha' },
-                  { header: 'Precio', align: 'right' },
+                  { header: 'Modalidad' },
+                  { header: 'Monto venta', align: 'right' },
+                  { header: 'Moneda' },
+                  { header: 'Pago inicial', align: 'right' },
+                  { header: 'Plazo', align: 'right' },
+                  { header: 'Cuota', align: 'right' },
+                  { header: 'Interés %', align: 'right' },
                   { header: 'Pagado', align: 'right' },
                   { header: 'Saldo', align: 'right' },
+                  { header: 'Cuotas venc.', align: 'right' },
                   { header: 'Estado' },
+                  { header: 'Promotor' },
                   { header: 'Origen' },
                 ]}
-                rows={() =>
-                  visibles.map((r) => [
-                    r.tracking_code,
-                    r.buyer_full_name,
-                    r.buyer_ci,
+                rows={async () => {
+                  // La cartera completa sale de la base al momento de exportar,
+                  // no de lo que la tabla tiene en pantalla: el reporte lleva
+                  // columnas (teléfono, plazo, cuota, promotor, superficie)
+                  // que la pantalla no carga.
+                  let q = supabase.from('v_cartera').select('*');
+                  if (scope !== null) q = q.eq('project_id', scope);
+                  const { data } = await q.order('fecha_venta', { ascending: false }).limit(5000);
+                  interface FilaCartera {
+                    codigo: string;
+                    cliente: string;
+                    ci: string;
+                    telefono: string | null;
+                    proyecto: string;
+                    manzana: string | null;
+                    lote: string | null;
+                    sup_m2: number | null;
+                    fecha_venta: string;
+                    modalidad: string;
+                    monto_venta: number;
+                    moneda: string;
+                    pago_inicial: number | null;
+                    plazo_meses: number | null;
+                    monto_cuota: number | null;
+                    interes_mensual_pct: number;
+                    pagado: number;
+                    saldo: number;
+                    cuotas_vencidas: number;
+                    estado_cartera: string;
+                    promotor: string | null;
+                    origen: string;
+                  }
+                  return ((data ?? []) as unknown as FilaCartera[]).map((r) => [
+                    r.codigo,
+                    r.cliente,
+                    r.ci,
+                    r.telefono ?? '',
                     r.proyecto,
                     r.manzana ?? '',
                     r.lote ?? '',
+                    r.sup_m2 == null ? '' : Number(r.sup_m2),
                     dateLabel(r.fecha_venta),
-                    fnum(Number(r.price_agreed)),
-                    fnum(Number(r.pagado_total)),
-                    fnum(Number(r.saldo)),
-                    r.compra_iniciada ? 'Venta' : 'Confirmada sin inicial',
-                    // Va la etiqueta larga de la vista y no la abreviada de la
-                    // tabla: en el papel nadie tiene el resto de la pantalla
-                    // para adivinar qué quiere decir «Directa».
-                    r.origen_declarado ? r.origen_label : `${r.origen_label} (deducido)`,
-                  ]) as XCell[][]
-                }
+                    r.modalidad,
+                    Number(r.monto_venta),
+                    r.moneda,
+                    r.pago_inicial == null ? '' : Number(r.pago_inicial),
+                    r.plazo_meses ?? '',
+                    r.monto_cuota == null ? '' : Number(r.monto_cuota),
+                    Number(r.interes_mensual_pct),
+                    Number(r.pagado),
+                    Number(r.saldo),
+                    Number(r.cuotas_vencidas),
+                    r.estado_cartera,
+                    r.promotor ?? '',
+                    r.origen,
+                  ]) as XCell[][];
+                }}
               />
             </div>
 

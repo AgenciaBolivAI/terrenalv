@@ -8,7 +8,7 @@
 
 import { useState } from 'react';
 import { btnSecondary } from '@/features/admin/ui/bits';
-import { exportCsv, exportPdf, type Cell, type ExportColumn, type ExportMeta } from './index';
+import { exportPdf, exportXlsx, type Cell, type ExportColumn, type ExportMeta } from './index';
 
 export function ExportButtons({
   meta,
@@ -21,7 +21,7 @@ export function ExportButtons({
   columns: ExportColumn[];
   /** Se calculan al hacer clic, no en cada render: una tabla larga no tiene por
    *  qué armarse en memoria mientras nadie exporta nada. */
-  rows: () => Cell[][];
+  rows: () => Cell[][] | Promise<Cell[][]>;
   orientation?: 'portrait' | 'landscape';
   disabled?: boolean;
 }) {
@@ -30,7 +30,16 @@ export function ExportButtons({
   async function pdf() {
     setBusy(true);
     try {
-      await exportPdf(meta, columns, rows(), { orientation });
+      await exportPdf(meta, columns, await rows(), { orientation });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function excel() {
+    setBusy(true);
+    try {
+      await exportXlsx(meta, columns, await rows());
     } finally {
       setBusy(false);
     }
@@ -38,13 +47,16 @@ export function ExportButtons({
 
   return (
     <div className="flex gap-2">
+      {/* Excel nativo: cada dato en su celda, en cualquier máquina. El CSV
+          dependía de la configuración regional de quien lo abría y en el
+          Excel del equipo caía todo en la columna A. */}
       <button
         type="button"
         className={btnSecondary}
-        disabled={disabled}
-        onClick={() => exportCsv(meta, columns, rows())}
+        disabled={disabled || busy}
+        onClick={() => void excel()}
       >
-        CSV
+        Excel
       </button>
       <button type="button" className={btnSecondary} disabled={disabled || busy} onClick={() => void pdf()}>
         {busy ? 'Generando…' : 'PDF'}

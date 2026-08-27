@@ -77,6 +77,75 @@ function save(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
+// ---------------------------------------------------------------------------
+// XLSX — Excel de verdad
+// ---------------------------------------------------------------------------
+
+/**
+ * Un es-BO como «1.234,56» de vuelta a número, para que Excel reciba una
+ * CELDA NUMÉRICA y no un texto. Los montos del panel llegan pre-formateados
+ * (fnum) y un número real se ordena, se suma y se filtra en cualquier Excel.
+ */
+function desformatear(v: Cell): string | number {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'number') return v;
+  const t = v.trim();
+  if (/^-?\d{1,3}(\.\d{3})*(,\d+)?$/.test(t) || /^-?\d+(,\d+)?$/.test(t)) {
+    const n = Number(t.replace(/\./g, '').replace(',', '.'));
+    if (Number.isFinite(n)) return n;
+  }
+  return v;
+}
+
+/**
+ * Excel nativo (.xlsx), no CSV.
+ *
+ * El CSV dependía de cómo estuviera configurado el Excel de quien lo abre:
+ * con separador de listas en coma, un archivo separado por punto y coma caía
+ * ENTERO en la columna A y los decimales quedaban regados por B, C y D. Un
+ * .xlsx no tiene separador que adivinar: cada dato llega en su celda, en
+ * cualquier máquina, y los montos llegan como números de verdad.
+ *
+ * La librería se carga bajo demanda, igual que el PDF.
+ */
+export async function exportXlsx(
+  meta: ExportMeta,
+  columns: ExportColumn[],
+  rows: Cell[][],
+): Promise<void> {
+  const XLSX = await import('xlsx');
+
+  const encabezado = columns.map((c) => c.header);
+  const datos = rows.map((r) => r.map(desformatear));
+
+  const hoja = XLSX.utils.aoa_to_sheet([
+    [meta.title],
+    ...(meta.subtitle ? [[meta.subtitle]] : []),
+    [`Generado ${stamp()}`],
+    [],
+    encabezado,
+    ...datos,
+  ]);
+
+  // Anchos: que los nombres no salgan cortados.
+  hoja['!cols'] = columns.map((c, i) => {
+    const largo = Math.max(
+      c.header.length,
+      ...datos.slice(0, 200).map((r) => String(r[i] ?? '').length),
+    );
+    return { wch: Math.min(42, Math.max(9, largo + 2)) };
+  });
+
+  const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hoja, meta.title.slice(0, 31));
+  if (meta.footnote) {
+    const notas = XLSX.utils.aoa_to_sheet([['Notas'], [meta.footnote]]);
+    notas['!cols'] = [{ wch: 110 }];
+    XLSX.utils.book_append_sheet(libro, notas, 'Notas');
+  }
+  XLSX.writeFile(libro, `${meta.filename}.xlsx`);
+}
+
 export function exportCsv(meta: ExportMeta, columns: ExportColumn[], rows: Cell[][]): void {
   const csv = toCsv(
     columns.map((c) => c.header),
