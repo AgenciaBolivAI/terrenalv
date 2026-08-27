@@ -68,6 +68,7 @@ interface Plan {
   /** Null en los planes sin interés, que son la mayoría. */
   annual_interest_pct: number | null;
   cuota_inicial: number;
+  financiado_original: number;
   /** Interés MENSUAL sobre saldo — el que se pacta acá. */
   monthly_interest_pct: number | null;
   first_due_date: string;
@@ -596,9 +597,11 @@ export default function PlanesClient({
                                           valor={formatMoney(Number(r.sena_pagada), r.currency)}
                                         />
                                       ) : null}
+                                      {/* Lo financiado AL FIRMAR: el abono a
+                                          capital reescribe financed_amount. */}
                                       <Dato
                                         label="Financiado"
-                                        valor={formatMoney(Number(r.financed_amount), r.currency)}
+                                        valor={formatMoney(Number(r.financiado_original), r.currency)}
                                       />
                                       <Dato label="Cuotas" valor={`${r.months} mensuales`} />
                                       <Dato

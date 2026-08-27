@@ -176,9 +176,12 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
                   —la seña y lo que se entregó al firmar—, no solo el campo
                   down_payment. Así precio − inicial = financiado cierra. */}
               <Dato label="Cuota inicial" valor={formatMoney(Number(d.plan.cuota_inicial), 'BOB')} />
+              {/* Lo financiado AL FIRMAR. `financed_amount` lo reescribe el
+                  abono a capital, y usarlo acá hacía que una amortización se
+                  leyera como cuota inicial. */}
               <Dato
                 label="Financiado"
-                valor={formatMoney(Number(d.plan.financed_amount), 'BOB')}
+                valor={formatMoney(Number(d.plan.financiado_original), 'BOB')}
               />
               <Dato label="Cuotas" valor={`${d.plan.months} mensuales`} />
               <Dato
