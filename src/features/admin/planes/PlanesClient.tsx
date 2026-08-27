@@ -36,7 +36,8 @@ import { IconSearch, IconWhatsapp } from '@/features/admin/ui/icons';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
 import { num as fnum, type Cell as XCell } from '@/features/admin/export';
 import { dateLabel, monthLabel, todayIso } from '@/features/admin/contabilidad/types';
-import type { Currency, Installment } from '@/features/admin/contabilidad/types';
+import type { CobroTarget, Currency, Installment } from '@/features/admin/contabilidad/types';
+import RegistrarCobroDialog from '@/features/admin/contabilidad/RegistrarCobro';
 import {
   ScopeBar,
   scopeCurrency,
@@ -144,6 +145,10 @@ export default function PlanesClient({
     null,
   );
   const [corriendo, setCorriendo] = useState<{ planId: string; fecha: string } | null>(null);
+  // Cobrar desde el plan mismo: la cuota del mes, o un ABONO A CAPITAL que
+  // amortiza la deuda y rearma el cronograma. Es el mismo diálogo de cobro de
+  // toda la casa — acá solo estaba faltando la puerta.
+  const [cobrando, setCobrando] = useState<CobroTarget | null>(null);
   // Un plan es un acuerdo entre dos personas, y los acuerdos se renegocian:
   // más plazo, otro interés, otra cuota. Eso tiene que poder registrarse.
   const [editando, setEditando] = useState<{
@@ -633,6 +638,28 @@ export default function PlanesClient({
                                     >
                                       <IconWhatsapp className="h-4 w-4" /> WhatsApp
                                     </a>
+                                    {r.estado === 'activo' && Number(r.saldo) > 0 ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setCobrando({
+                                            reservation_id: r.reservation_id,
+                                            project_id: r.project_id,
+                                            tracking_code: r.tracking_code,
+                                            buyer_full_name: r.buyer_full_name,
+                                            buyer_phone: r.buyer_phone,
+                                            saldo: Number(r.saldo),
+                                            currency: 'BOB',
+                                            monto_sugerido: Number(r.monthly_amount) || null,
+                                            tiene_plan: true,
+                                          })
+                                        }
+                                        className="mt-2 ml-2 inline-flex items-center gap-1.5 rounded-lg bg-brand px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-brand-light"
+                                        title="Cobrar la cuota, o abonar directo a capital (amortizar): baja la deuda y el cronograma se rearma."
+                                      >
+                                        Cobrar / Abonar a capital
+                                      </button>
+                                    ) : null}
                                     {/* El papel que el comprador se lleva: su
                                         cronograma cuota por cuota. */}
                                     <a
@@ -816,6 +843,18 @@ export default function PlanesClient({
 
       {ficha ? (
         <FichaClienteDialog ci={ficha.ci} nombre={ficha.nombre} onClose={() => setFicha(null)} />
+      ) : null}
+
+      {/* ---- Cobrar: cuota o abono a capital (amortizar) ---- */}
+      {cobrando ? (
+        <RegistrarCobroDialog
+          cobro={cobrando}
+          onClose={() => setCobrando(null)}
+          onPaid={() => {
+            setCobrando(null);
+            void fetchAll();
+          }}
+        />
       ) : null}
 
       {/* ---- Renegociar el plan entero ---- */}
