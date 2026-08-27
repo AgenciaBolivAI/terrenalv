@@ -41,6 +41,48 @@ import type { PorProyectoRow } from './types';
 
 type Currency = 'USD' | 'BOB';
 
+// Lo que las dimensiones nuevas del libro permiten preguntar: en que se va la
+// plata (centro de costos), a nombre de quien corre el negocio (titular), y
+// cuanto queda de margen una vez descontado el costo.
+interface CentroRow {
+  project_id: string;
+  centro_costo_id: string | null;
+  centro: string;
+  codigo: string | null;
+  movimientos: number;
+  gastado_bob: number;
+}
+
+interface TitularRow {
+  project_id: string;
+  titular: string;
+  a_nombre_de: string;
+  ventas: number;
+  vendido_bob: number;
+  gastado_bob: number;
+  cobrado_bob: number;
+}
+
+interface MargenRow {
+  project_id: string;
+  proyecto: string;
+  ingresos_bob: number;
+  egresos_bob: number;
+  margen_bob: number;
+  costo_sobre_ingreso_pct: number | null;
+}
+
+interface ClienteRow {
+  project_id: string;
+  cliente_ci: string;
+  cliente: string;
+  lotes: number;
+  comprado_bob: number;
+  pagado_bob: number;
+  debe_bob: number;
+  avance_pct: number | null;
+}
+
 function Section({
   title,
   question,
@@ -115,6 +157,10 @@ export default function AnalyticsClient({
   const [scope, setScope] = useState<ProjectScope>(projects.length > 1 ? null : projectId);
   const [dias, setDias] = useState<number | null>(365);
   const [porProyecto, setPorProyecto] = useState<PorProyectoRow[]>([]);
+  const [centros, setCentros] = useState<CentroRow[]>([]);
+  const [titulares, setTitulares] = useState<TitularRow[]>([]);
+  const [margenes, setMargenes] = useState<MargenRow[]>([]);
+  const [clientesTop, setClientesTop] = useState<ClienteRow[]>([]);
 
   const currency: Currency = scopeCurrency(scope, projects);
   const consolidado = scope === null && projects.length > 1;
@@ -154,7 +200,7 @@ export default function AnalyticsClient({
       return (q as unknown as { gte: (c: string, v: string) => T }).gte('mes', mes);
     };
 
-    const [f, t, d, c, a, pr, e, pp] = await Promise.all([
+    const [f, t, d, c, a, pr, e, pp, cc, ti, mg, cl] = await Promise.all([
       desdeMes(alcance(supabase.from('v_an_funnel_mensual').select('*'))).order('mes').limit(24),
       desdeMes(alcance(supabase.from('v_an_tiempos').select('*'))).order('mes').limit(24),
       alcance(supabase.from('v_an_demanda_manzana').select('*')),
@@ -163,6 +209,16 @@ export default function AnalyticsClient({
       alcance(supabase.from('v_an_proyeccion').select('*')).order('mes').limit(18),
       alcance(supabase.from('v_an_equipo').select('*')),
       supabase.from('v_an_por_proyecto').select('*').order('name'),
+      alcance(supabase.from('v_an_por_centro_costo').select('*')).order('gastado_bob', {
+        ascending: false,
+      }),
+      alcance(supabase.from('v_an_por_titular').select('*')),
+      supabase.from('v_an_margen_proyecto').select('*').order('ingresos_bob', {
+        ascending: false,
+      }),
+      alcance(supabase.from('v_an_por_cliente').select('*'))
+        .order('debe_bob', { ascending: false })
+        .limit(15),
     ]);
     setPorProyecto((pp.data ?? []) as unknown as PorProyectoRow[]);
     setFunnel((f.data ?? []) as unknown as FunnelRow[]);
@@ -172,6 +228,10 @@ export default function AnalyticsClient({
     setAging((a.data ?? []) as unknown as AgingRow[]);
     setProyeccion((pr.data ?? []) as unknown as ProyeccionRow[]);
     setEquipo((e.data ?? []) as unknown as EquipoRow[]);
+    setCentros((cc.data ?? []) as unknown as CentroRow[]);
+    setTitulares((ti.data ?? []) as unknown as TitularRow[]);
+    setMargenes((mg.data ?? []) as unknown as MargenRow[]);
+    setClientesTop((cl.data ?? []) as unknown as ClienteRow[]);
     setLoading(false);
   }, [supabase, scope, dias]);
 
@@ -659,6 +719,206 @@ export default function AnalyticsClient({
           </div>
         ) : (
           <EmptyChart msg="Todavía no hay ventas ni verificaciones registradas." />
+        )}
+      </Section>
+
+      {/* ---------------- Margen por urbanización ---------------- */}
+      <Section
+        title="Lo que entra menos lo que sale"
+        question="¿Qué urbanización deja margen de verdad, ya descontado el costo?"
+      >
+        {margenes.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead>
+                <tr className="border-b border-stone-200 text-left">
+                  <th className="py-2 text-xs font-semibold text-stone-500">Urbanización</th>
+                  <th className="py-2 text-right text-xs font-semibold text-stone-500">Ingresos</th>
+                  <th className="py-2 text-right text-xs font-semibold text-stone-500">Egresos</th>
+                  <th className="py-2 text-right text-xs font-semibold text-stone-500">Margen</th>
+                  <th className="py-2 text-right text-xs font-semibold text-stone-500">
+                    Costo / ingreso
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {margenes.map((m) => (
+                  <tr key={m.project_id} className="border-b border-stone-100 last:border-0">
+                    <td className="py-1.5 font-medium text-stone-800">
+                      <Link
+                        href={`/admin/contabilidad?tab=libro`}
+                        className="hover:text-brand hover:underline"
+                      >
+                        {m.proyecto}
+                      </Link>
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums text-stone-600">
+                      {formatMoney(Number(m.ingresos_bob), 'BOB')}
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums text-stone-600">
+                      {formatMoney(Number(m.egresos_bob), 'BOB')}
+                    </td>
+                    <td
+                      className={`py-1.5 text-right font-semibold tabular-nums ${
+                        Number(m.margen_bob) >= 0 ? 'text-brand' : 'text-red-600'
+                      }`}
+                    >
+                      {formatMoney(Number(m.margen_bob), 'BOB')}
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums text-stone-500">
+                      {m.costo_sobre_ingreso_pct == null
+                        ? '—'
+                        : `${Number(m.costo_sobre_ingreso_pct).toFixed(1)}%`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="mt-2 text-xs text-stone-400">
+              El costo sale de los egresos cargados. Mientras no se carguen, el margen se lee
+              optimista: no es que no haya costo, es que todavía no está registrado.
+            </p>
+          </div>
+        ) : (
+          <EmptyChart msg="Sin movimientos en el libro todavía." />
+        )}
+      </Section>
+
+      {/* ---------------- Centros de costo ---------------- */}
+      <Section
+        title="En qué se va la plata"
+        question="¿Qué parte de la obra se está comiendo el presupuesto?"
+        action={
+          <Link href="/admin/contabilidad?tab=gestion" className={btnSecondary}>
+            Administrar centros
+          </Link>
+        }
+      >
+        {centros.length ? (
+          <RankBars
+            rows={centros.slice(0, 12).map((c) => ({
+              label: c.codigo ? `${c.codigo} · ${c.centro}` : c.centro,
+              value: Number(c.gastado_bob),
+              hint: `${c.movimientos} mov.`,
+            }))}
+            format={(n) => bsCorto(n)}
+            color="var(--an-2)"
+          />
+        ) : (
+          <EmptyChart msg="Todavía no hay egresos cargados a un centro de costos. Creá los centros en Contabilidad gerencial → Gestión y elegilos al registrar un egreso." />
+        )}
+      </Section>
+
+      {/* ---------------- Titularidad ---------------- */}
+      <Section
+        title="A nombre de quién corre el negocio"
+        question="¿Cuánto está a nombre de la empresa y cuánto a nombre de terceros?"
+      >
+        {titulares.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[620px] text-sm">
+              <thead>
+                <tr className="border-b border-stone-200 text-left">
+                  <th className="py-2 text-xs font-semibold text-stone-500">A nombre de</th>
+                  <th className="py-2 text-right text-xs font-semibold text-stone-500">Ventas</th>
+                  <th className="py-2 text-right text-xs font-semibold text-stone-500">Vendido</th>
+                  <th className="py-2 text-right text-xs font-semibold text-stone-500">Cobrado</th>
+                  <th className="py-2 text-right text-xs font-semibold text-stone-500">Gastado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {titulares
+                  .slice()
+                  .sort((a, b) => Number(b.vendido_bob) - Number(a.vendido_bob))
+                  .map((t, i) => (
+                    <tr
+                      key={`${t.project_id}-${t.a_nombre_de}-${i}`}
+                      className="border-b border-stone-100 last:border-0"
+                    >
+                      <td className="py-1.5 font-medium text-stone-800">
+                        {t.a_nombre_de}
+                        {t.titular === 'tercero' ? (
+                          <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                            tercero
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="py-1.5 text-right tabular-nums">{t.ventas}</td>
+                      <td className="py-1.5 text-right tabular-nums text-stone-600">
+                        {formatMoney(Number(t.vendido_bob), 'BOB')}
+                      </td>
+                      <td className="py-1.5 text-right tabular-nums text-stone-600">
+                        {formatMoney(Number(t.cobrado_bob), 'BOB')}
+                      </td>
+                      <td className="py-1.5 text-right tabular-nums text-stone-600">
+                        {formatMoney(Number(t.gastado_bob), 'BOB')}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+            <p className="mt-2 text-xs text-stone-400">
+              Lo que está a nombre de un tercero no entra solo a la contabilidad fiscal: hay que
+              decidirlo movimiento por movimiento.
+            </p>
+          </div>
+        ) : (
+          <EmptyChart msg="Sin movimientos todavía." />
+        )}
+      </Section>
+
+      {/* ---------------- Clientes que más pesan ---------------- */}
+      <Section
+        title="Los clientes que más pesan"
+        question="¿Quién debe más, y cuánto lleva pagado de lo suyo?"
+      >
+        {clientesTop.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead>
+                <tr className="border-b border-stone-200 text-left">
+                  <th className="py-2 text-xs font-semibold text-stone-500">Cliente</th>
+                  <th className="py-2 text-right text-xs font-semibold text-stone-500">Lotes</th>
+                  <th className="py-2 text-right text-xs font-semibold text-stone-500">Comprado</th>
+                  <th className="py-2 text-right text-xs font-semibold text-stone-500">Pagado</th>
+                  <th className="py-2 text-right text-xs font-semibold text-stone-500">Debe</th>
+                  <th className="py-2 text-right text-xs font-semibold text-stone-500">Avance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {clientesTop.map((c) => (
+                  <tr
+                    key={`${c.project_id}-${c.cliente_ci}`}
+                    className="border-b border-stone-100 last:border-0"
+                  >
+                    <td className="py-1.5 font-medium text-stone-800">
+                      <Link
+                        href={`/admin/clientes?ci=${encodeURIComponent(c.cliente_ci)}`}
+                        className="hover:text-brand hover:underline"
+                      >
+                        {c.cliente}
+                      </Link>
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums">{c.lotes}</td>
+                    <td className="py-1.5 text-right tabular-nums text-stone-600">
+                      {formatMoney(Number(c.comprado_bob), 'BOB')}
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums text-stone-600">
+                      {formatMoney(Number(c.pagado_bob), 'BOB')}
+                    </td>
+                    <td className="py-1.5 text-right font-semibold tabular-nums text-red-600">
+                      {formatMoney(Number(c.debe_bob), 'BOB')}
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums text-stone-500">
+                      {c.avance_pct == null ? '—' : `${Number(c.avance_pct).toFixed(0)}%`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyChart msg="Todavía no hay ventas." />
         )}
       </Section>
     </div>

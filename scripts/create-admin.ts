@@ -1,6 +1,8 @@
-// Create a team account and give it the admin role.
+// Create a team account and give it a role.
 //
-// Run: NODE_OPTIONS=--experimental-websocket npx tsx scripts/create-admin.ts <correo> <contraseña> "<nombre completo>"
+// Run: NODE_OPTIONS=--experimental-websocket npx tsx scripts/create-admin.ts //        <correo> <contraseña> "<nombre completo>" [rol]
+// (el flag hace falta en Node 20: supabase-js necesita WebSocket nativo)
+//      rol: admin (por defecto) | contabilidad | ventas
 //
 // The normal way to add someone is inviting them from /admin/equipo — that
 // flow audits who invited whom. This exists for the accounts that come before
@@ -25,8 +27,17 @@ async function main() {
   const email = process.argv[2]?.trim().toLowerCase();
   const password = process.argv[3];
   const fullName = process.argv[4]?.trim();
+  // El rol es opcional y por defecto admin, para no cambiarle el
+  // comportamiento a quien ya usaba este script con tres argumentos.
+  const role = (process.argv[5]?.trim() || 'admin') as 'admin' | 'contabilidad' | 'ventas';
   if (!email || !password || !fullName) {
-    console.error('uso: npx tsx scripts/create-admin.ts <correo> <contraseña> "<nombre completo>"');
+    console.error(
+      'uso: npx tsx scripts/create-admin.ts <correo> <contraseña> "<nombre completo>" [rol]',
+    );
+    process.exit(1);
+  }
+  if (!['admin', 'contabilidad', 'ventas'].includes(role)) {
+    console.error(`rol desconocido: ${role} — usá admin, contabilidad o ventas`);
     process.exit(1);
   }
 
@@ -39,7 +50,7 @@ async function main() {
 
   let userId: string;
   if (existing) {
-    console.log('la cuenta ya existía — actualizo contraseña y rol');
+    console.log(`la cuenta ya existía — actualizo contraseña y rol (${role})`);
     const { error } = await admin.auth.admin.updateUserById(existing.id, {
       password,
       email_confirm: true,
@@ -65,12 +76,12 @@ async function main() {
 
   const { error: profErr } = await admin
     .from('profiles')
-    .upsert({ id: userId, full_name: fullName, role: 'admin', is_active: true }, { onConflict: 'id' });
+    .upsert({ id: userId, full_name: fullName, role, is_active: true }, { onConflict: 'id' });
   if (profErr) {
     console.error('no se pudo crear el perfil:', profErr.message);
     process.exit(1);
   }
-  console.log('perfil listo — rol admin, activo');
+  console.log(`perfil listo — rol ${role}, activo`);
   console.log('id:', userId);
 }
 

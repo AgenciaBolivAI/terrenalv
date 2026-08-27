@@ -84,6 +84,9 @@ interface Venta {
    */
   origen: Origen;
   origen_label: string;
+  /** A nombre de quien esta la venta: define si entra a la contabilidad fiscal. */
+  titular: string | null;
+  titular_nombre: string | null;
   origen_declarado: boolean;
   /** Seña aprobada, en Bs. 0 = no reservó: entró directo con la cuota inicial. */
   sena_pagada: number;
@@ -252,6 +255,7 @@ export default function VentasClient({
   const [editar, setEditar] = useState<Venta | null>(null);
   const [anular, setAnular] = useState<Venta | null>(null);
   const [traspasar, setTraspasar] = useState<Venta | null>(null);
+  const [titularDe, setTitularDe] = useState<Venta | null>(null);
   // Elegir a un comprador cambia el MODO de la pantalla: se deja de ver la
   // lista de todas las ventas y se ve SOLO a esa persona — todo lo que compró,
   // reservó, cedió o recibió, con sus pagos y recibos. Volver es un clic.
@@ -873,6 +877,44 @@ export default function VentasClient({
                                       </p>
                                     ) : null}
                                   </div>
+
+                                  {/* A nombre de quien esta la venta. No es un
+                                      detalle: decide si entra o no al libro que
+                                      se declara. */}
+                                  <div className="rounded-lg border border-stone-200 bg-white px-3 py-2">
+                                    <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+                                      A nombre de
+                                    </p>
+                                    <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-stone-700">
+                                      {r.titular === 'tercero' ? (
+                                        <>
+                                          <Badge className="bg-amber-100 text-amber-800">
+                                            un tercero
+                                          </Badge>
+                                          <strong>{r.titular_nombre}</strong>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Badge className="bg-stone-100 text-stone-600">
+                                            la empresa
+                                          </Badge>
+                                          Terrenalv S.R.L.
+                                        </>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => setTitularDe(r)}
+                                        className="ml-auto rounded-lg border border-stone-300 bg-white px-2.5 py-1 text-xs font-semibold text-stone-700 hover:bg-stone-100"
+                                      >
+                                        Cambiar
+                                      </button>
+                                    </p>
+                                    <p className="mt-1 text-xs text-stone-400">
+                                      {r.titular === 'tercero'
+                                        ? 'No entra sola a la contabilidad fiscal: hay que declararla a mano.'
+                                        : 'Entra normalmente a la contabilidad fiscal cuando se importe el período.'}
+                                    </p>
+                                  </div>
                                   {r.traspaso ? (
                                     <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600">
                                       Recibida por traspaso de{' '}
@@ -1120,6 +1162,15 @@ export default function VentasClient({
           }}
         />
       ) : null}
+
+      <TitularDialog
+        venta={titularDe}
+        onClose={() => setTitularDe(null)}
+        onSaved={() => {
+          setTitularDe(null);
+          void fetchAll();
+        }}
+      />
 
       {traspasar ? (
         <TraspasarVentaDialog
@@ -1654,6 +1705,103 @@ function TraspasarVentaDialog({
         </button>
         <button type="button" className={btnPrimary} disabled={busy} onClick={() => void traspasar()}>
           {busy ? 'Traspasando…' : 'Traspasar'}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+/* ========================================================================== */
+
+/**
+ * A nombre de quien esta una venta.
+ *
+ * No es cosmetico: la contabilidad fiscal importa por defecto solo lo que esta
+ * a nombre de la empresa. Marcar una venta como de un tercero la deja fuera de
+ * la importacion automatica — sigue entera en el gerencial, que es la verdad
+ * del negocio.
+ */
+function TitularDialog({
+  venta,
+  onClose,
+  onSaved,
+}: {
+  venta: Venta | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const supabase = useMemo(() => createClient(), []);
+  const { push } = useToast();
+  const [titular, setTitular] = useState<'empresa' | 'tercero'>('empresa');
+  const [nombre, setNombre] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!venta) return;
+    setTitular(venta.titular === 'tercero' ? 'tercero' : 'empresa');
+    setNombre(venta.titular_nombre ?? '');
+  }, [venta]);
+
+  if (!venta) return null;
+
+  return (
+    <Dialog open onClose={onClose} title={`A nombre de — ${venta.tracking_code}`}>
+      <p className="text-sm text-stone-600">
+        Cambia a nombre de quien figura esta venta. El movimiento no se toca: sigue igual en la
+        contabilidad gerencial. Lo que cambia es si entra sola al libro fiscal.
+      </p>
+
+      <label className="mt-3 mb-1 block text-xs text-stone-500">Titular</label>
+      <select
+        value={titular}
+        onChange={(e) => setTitular(e.target.value as 'empresa' | 'tercero')}
+        className={inputClass}
+      >
+        <option value="empresa">La empresa (Terrenalv S.R.L.)</option>
+        <option value="tercero">Un tercero</option>
+      </select>
+
+      {titular === 'tercero' ? (
+        <div className="mt-3">
+          <label className="mb-1 block text-xs text-stone-500">¿A nombre de quién?</label>
+          <input
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            placeholder="ej. Juan Pérez, socio"
+            className={inputClass}
+          />
+          <p className="mt-1 text-xs text-stone-400">
+            Queda escrito. Sin nombre no se guarda: «de un tercero» a secas no le sirve a nadie
+            el día que haya que explicarlo.
+          </p>
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex justify-end gap-2">
+        <button type="button" className={btnSecondary} onClick={onClose}>
+          Volver
+        </button>
+        <button
+          type="button"
+          className={btnPrimary}
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            const { error } = await supabase.rpc('admin_asignar_titular', {
+              p_reservation_id: venta.reservation_id,
+              p_titular: titular,
+              p_titular_nombre: titular === 'tercero' ? nombre.trim() : null,
+            });
+            setBusy(false);
+            if (error) {
+              push(adminErrorCopy(error.message), 'error');
+              return;
+            }
+            push('Titular actualizado.', 'success');
+            onSaved();
+          }}
+        >
+          {busy ? 'Guardando…' : 'Guardar'}
         </button>
       </div>
     </Dialog>
