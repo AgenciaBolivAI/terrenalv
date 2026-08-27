@@ -96,6 +96,13 @@ export default function Gestion({
     void load();
   }, [load]);
 
+  // Lo que trae un plan de cuentas de verdad (el de Las Lomas, estilo
+  // CONTAB): jerarquia con titulares e imputables, moneda por cuenta y la
+  // marca de centro de costos. Una cuenta con padre hereda la naturaleza.
+  const [accParent, setAccParent] = useState('');
+  const [accMoneda, setAccMoneda] = useState<'BOB' | 'USD'>('BOB');
+  const [accCCosto, setAccCCosto] = useState(false);
+
   async function guardarCuenta() {
     setAccError(null);
     if (!accCode.trim() || accName.trim().length < 2) {
@@ -106,10 +113,12 @@ export default function Gestion({
     const { error } = await supabase.rpc('admin_upsert_account', {
       p_code: accCode.trim(),
       p_name: accName.trim(),
-      p_kind: accKind,
+      p_kind: accParent ? null : accKind,
       p_sort_order: null,
-      p_parent_code: null,
+      p_parent_code: accParent || null,
       p_is_active: true,
+      p_moneda: accMoneda,
+      p_usa_centro_costo: accCCosto,
     });
     setBusy(false);
     if (error) {
@@ -460,6 +469,52 @@ export default function Gestion({
             </div>
           </div>
           <input value={accName} onChange={(e) => setAccName(e.target.value)} placeholder="Nombre de la cuenta" className={inputClass} />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs text-stone-500">
+                Cuelga de (titular)
+              </label>
+              <select
+                value={accParent}
+                onChange={(e) => setAccParent(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">— es de primer nivel —</option>
+                {accounts
+                  .filter((a) => a.is_active)
+                  .map((a) => (
+                    <option key={a.code} value={a.code}>
+                      {a.code} · {a.name}
+                    </option>
+                  ))}
+              </select>
+              <p className="mt-1 text-xs text-stone-400">
+                Con padre, hereda su naturaleza. Una cuenta con hijas se vuelve
+                titular: agrupa, pero ya no se asienta en ella.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <div>
+                <label className="mb-1 block text-xs text-stone-500">Moneda</label>
+                <select
+                  value={accMoneda}
+                  onChange={(e) => setAccMoneda(e.target.value as 'BOB' | 'USD')}
+                  className={inputClass}
+                >
+                  <option value="BOB">Bs. — moneda nacional</option>
+                  <option value="USD">$us. — moneda extranjera</option>
+                </select>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-stone-700">
+                <input
+                  type="checkbox"
+                  checked={accCCosto}
+                  onChange={(e) => setAccCCosto(e.target.checked)}
+                />
+                Usa centro de costos
+              </label>
+            </div>
+          </div>
           {accError ? <p className="text-sm text-red-600">{accError}</p> : null}
         </div>
         <div className="mt-4 flex justify-end gap-2">
