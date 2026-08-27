@@ -18,6 +18,7 @@ import { formatMoney } from '@/lib/format';
 import { Badge, EmptyState, Spinner } from '@/features/admin/ui/bits';
 import { dateLabel } from '@/features/admin/contabilidad/types';
 import { EnviarReciboWhatsapp } from '@/features/admin/contabilidad/EnviarReciboWhatsapp';
+import AnularPagoDialog, { type PagoAnulable } from '@/features/admin/contabilidad/AnularPago';
 
 interface Lote {
   reservation_id: string;
@@ -63,6 +64,8 @@ export default function LoteHistorial({ reservationId }: { reservationId: string
   const [l, setL] = useState<Lote | null>(null);
   const [pagos, setPagos] = useState<Pago[]>([]);
   const [loading, setLoading] = useState(true);
+  // El pago que se está por anular: abre el diálogo de anulación/devolución.
+  const [anular, setAnular] = useState<PagoAnulable | null>(null);
 
   const cargar = useCallback(async () => {
     const [a, p] = await Promise.all([
@@ -281,6 +284,21 @@ export default function LoteHistorial({ reservationId }: { reservationId: string
                         />
                       </>
                     ) : null}
+                    {entro ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAnular({
+                            payment_id: p.payment_id,
+                            monto_bob: Number(p.amount_bob),
+                            etiqueta: `${p.tipo} · ${dateLabel(p.fecha ?? p.created_at)}`,
+                          })
+                        }
+                        className="text-xs font-semibold text-red-700 hover:underline"
+                      >
+                        Anular
+                      </button>
+                    ) : null}
                   </div>
                   {p.motivo_rechazo ? (
                     <p className="mt-1 text-xs text-amber-700">{p.motivo_rechazo}</p>
@@ -296,6 +314,8 @@ export default function LoteHistorial({ reservationId }: { reservationId: string
           explicación cuando el comprador dice que ya pagó.
         </p>
       </section>
+
+      <AnularPagoDialog pago={anular} onClose={() => setAnular(null)} onDone={() => void cargar()} />
     </div>
   );
 }

@@ -33,6 +33,7 @@ import { Dialog } from '@/features/admin/ui/dialog';
 import { useToast } from '@/features/admin/ui/toast';
 import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
 import RegistrarCobroDialog from '@/features/admin/contabilidad/RegistrarCobro';
+import AnularPagoDialog, { type PagoAnulable } from '@/features/admin/contabilidad/AnularPago';
 import { HistorialCliente } from '@/features/admin/clientes/HistorialCliente';
 import { ElegirLoteDialog, type LoteElegible } from './ElegirLote';
 import { SellOfflineDialog } from './VenderLoteDialogs';
@@ -254,6 +255,8 @@ export default function VentasClient({
   const [cobrar, setCobrar] = useState<CobroTarget | null>(null);
   const [editar, setEditar] = useState<Venta | null>(null);
   const [anular, setAnular] = useState<Venta | null>(null);
+  // Anular UN pago suelto (una cuota, un abono), no la venta entera.
+  const [anularPago, setAnularPago] = useState<PagoAnulable | null>(null);
   const [traspasar, setTraspasar] = useState<Venta | null>(null);
   const [titularDe, setTitularDe] = useState<Venta | null>(null);
   // Elegir a un comprador cambia el MODO de la pantalla: se deja de ver la
@@ -1132,6 +1135,21 @@ export default function VentasClient({
                                                     <IconWhatsapp className="h-3.5 w-3.5" /> Enviar
                                                   </a>
                                                 ) : null}
+                                                {entro ? (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      setAnularPago({
+                                                        payment_id: p.payment_id,
+                                                        monto_bob: Number(p.amount_bob),
+                                                        etiqueta: `${p.tipo} · ${dateLabel(p.fecha ?? laPazDateOf(p.created_at))}`,
+                                                      })
+                                                    }
+                                                    className="text-xs font-semibold text-red-700 hover:underline"
+                                                  >
+                                                    Anular
+                                                  </button>
+                                                ) : null}
                                               </div>
                                               {/* Un pago en dólares se cobró en dólares pero el libro
                                                   vive en bolivianos: van los dos, con el tipo de cambio
@@ -1180,6 +1198,17 @@ export default function VentasClient({
           </section>
         </>
       )}
+
+      <AnularPagoDialog
+        pago={anularPago}
+        onClose={() => setAnularPago(null)}
+        // Refresca la tabla Y el historial abierto: el pago anulado se apaga
+        // en la lista y la deuda de la fila cambia en el acto.
+        onDone={() => {
+          void fetchAll();
+          if (selected) void refrescarPagos(selected);
+        }}
+      />
 
       {cobrar ? (
         <RegistrarCobroDialog
