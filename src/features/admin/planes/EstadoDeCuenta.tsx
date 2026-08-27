@@ -134,31 +134,57 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
       ) : null}
 
       {d.situacion === 'venta' ? (
-        <section className="mt-5 grid grid-cols-3 gap-3 rounded-lg bg-stone-50 p-4 text-center print:ring-1 print:ring-stone-300">
-          <div>
-            <p className="text-xs text-stone-500">Precio del lote</p>
-            <p className="font-bold tabular-nums">{formatMoney(d.precio, 'BOB')}</p>
-          </div>
-          <div>
-            <p className="text-xs text-stone-500">Pagaste</p>
-            <p className="font-bold tabular-nums text-brand">{formatMoney(entregado, 'BOB')}</p>
-            {interesPagado > 0.01 ? (
-              <p className="text-[11px] text-stone-500">
-                {formatMoney(d.pagado, 'BOB')} al precio + {formatMoney(interesPagado, 'BOB')} de
-                interés
-              </p>
-            ) : null}
-          </div>
-          <div>
-            <p className="text-xs text-stone-500">Te queda</p>
-            <p
-              className={`text-lg font-black tabular-nums ${
-                d.saldo > 0 ? 'text-stone-900' : 'text-brand'
-              }`}
-            >
-              {d.saldo > 0 ? formatMoney(d.saldo, 'BOB') : '¡Pagado!'}
+        <section className="mt-5 rounded-lg bg-stone-50 p-4 print:ring-1 print:ring-stone-300">
+          {/* La cuenta escrita como se hace en papel: precio menos lo que fue
+              al precio, igual lo que falta — con el signo a la vista para
+              poder seguirla con el dedo. Antes las tres cifras estaban
+              sueltas y no había forma de reconciliarlas: «Pagaste 1.046» al
+              lado de «Te queda 24.161,48» sobre un precio de 24.800 invita a
+              restar 1.046, y no da. De esa plata, 407,48 fue interés, y el
+              interés no baja el precio del terreno. */}
+          <div className="flex flex-wrap items-end justify-center gap-x-4 gap-y-2 text-center sm:gap-x-7">
+            <div>
+              <p className="text-xs text-stone-500">Precio del lote</p>
+              <p className="font-bold tabular-nums">{formatMoney(d.precio, 'BOB')}</p>
+            </div>
+            <p aria-hidden className="pb-1 text-lg font-light text-stone-400">
+              −
             </p>
+            <div>
+              <p className="text-xs text-stone-500">Pagado al precio</p>
+              <p className="font-bold tabular-nums text-brand">{formatMoney(d.pagado, 'BOB')}</p>
+            </div>
+            <p aria-hidden className="pb-1 text-lg font-light text-stone-400">
+              =
+            </p>
+            <div>
+              <p className="text-xs text-stone-500">Saldo del lote</p>
+              <p
+                className={`text-lg font-black tabular-nums ${
+                  d.saldo > 0 ? 'text-stone-900' : 'text-brand'
+                }`}
+              >
+                {d.saldo > 0 ? formatMoney(d.saldo, 'BOB') : '¡Pagado!'}
+              </p>
+            </div>
           </div>
+          {/* Lo entregado va aparte, y no dentro de la resta, justamente
+              porque no entra en ella. */}
+          <p className="mt-3 border-t border-stone-200 pt-2 text-center text-xs text-stone-600">
+            Entregaste <strong className="tabular-nums">{formatMoney(entregado, 'BOB')}</strong> en
+            total
+            {interesPagado > 0.01 ? (
+              <>
+                : <strong className="tabular-nums">{formatMoney(d.pagado, 'BOB')}</strong> al precio
+                del lote y{' '}
+                <strong className="tabular-nums">{formatMoney(interesPagado, 'BOB')}</strong> de
+                interés. El interés paga el tiempo del financiamiento, así que no baja el saldo del
+                lote.
+              </>
+            ) : (
+              '.'
+            )}
+          </p>
         </section>
       ) : null}
 
@@ -205,7 +231,14 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
                   <th className="py-2 font-semibold text-stone-500">N°</th>
                   <th className="py-2 font-semibold text-stone-500">Vence</th>
                   <th className="py-2 text-right font-semibold text-stone-500">Cuota</th>
-                  <th className="py-2 text-right font-semibold text-stone-500">Te queda</th>
+                  {/* NO se llama «Te queda»: ese nombre ya es el saldo del
+                      LOTE, allá arriba. Esta columna es otra cosa —lo que
+                      falta pagar del PLAN, con el interés de los meses que
+                      vienen— y son dos números muy distintos: en una venta
+                      real, 24.161,48 contra 38.172,84. Dos cifras con el
+                      mismo nombre en el mismo papel es lo que hacía
+                      imposible cuadrarlo. */}
+                  <th className="py-2 text-right font-semibold text-stone-500">Saldo del plan</th>
                   <th className="py-2 text-center font-semibold text-stone-500">Estado</th>
                 </tr>
               </thead>
@@ -244,6 +277,15 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
               </tbody>
             </table>
           </div>
+          <p className="mt-2 text-[11px] text-stone-500">
+            «Saldo del plan» es todo lo que falta pagar en cuotas, con el interés de los meses que
+            vienen incluido. El <strong>saldo del lote</strong> de arriba es solo lo que falta del
+            precio del terreno: por eso son distintos
+            {totalInteres > 0.01 ? (
+              <> — la diferencia es el interés ({formatMoney(totalInteres, 'BOB')} en todo el plan)</>
+            ) : null}
+            . Si adelantás capital, el interés que falta baja y el plan se rearma.
+          </p>
         </>
       ) : d.situacion === 'venta' ? (
         <p className="mt-5 rounded-lg bg-stone-50 p-3 text-xs text-stone-600">

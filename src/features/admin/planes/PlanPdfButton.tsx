@@ -67,12 +67,14 @@ export async function bajarPlanPdf(p: PlanPdfDatos): Promise<string> {
   const condiciones =
     `Lote: Mz ${p.manzana ?? '—'}, Lote ${p.lote ?? '—'} — ${p.proyecto}   ·   ` +
     `Precio ${formatMoney(Number(p.precio), 'BOB')}   ·   ` +
-    `Pagado ${formatMoney(entregado, 'BOB')}` +
+    `Entregado ${formatMoney(entregado, 'BOB')}` +
     (interesPagado > 0.01
       ? ` (${formatMoney(Number(p.pagado), 'BOB')} al precio + ${formatMoney(interesPagado, 'BOB')} de interés)`
       : '') +
     `   ·   ` +
-    `Saldo ${formatMoney(Number(p.saldo), 'BOB')}` +
+    // La resta, escrita entera: precio menos lo que fue al precio da el saldo.
+    `Saldo del lote ${formatMoney(Number(p.precio), 'BOB')} − ${formatMoney(Number(p.pagado), 'BOB')}` +
+    ` = ${formatMoney(Number(p.saldo), 'BOB')}` +
     (p.plan
       ? `   ·   ${terminosDelPlan(p.plan, (n) => formatMoney(n, 'BOB'))}`
       : '') +
@@ -99,7 +101,10 @@ export async function bajarPlanPdf(p: PlanPdfDatos): Promise<string> {
       { header: 'N°', align: 'right', width: 28 },
       { header: 'Vence' },
       { header: 'Cuota', align: 'right' },
-      { header: 'Le queda', align: 'right' },
+      // «Saldo del plan», no «Le queda»: lo que falta del PLAN (con el
+      // interés que viene) no es lo que falta del LOTE, y llamarlos igual en
+      // el mismo papel es lo que impedía cuadrarlo.
+      { header: 'Saldo del plan', align: 'right' },
       { header: 'Estado' },
     ],
     filas,
