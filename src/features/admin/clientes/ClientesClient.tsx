@@ -49,6 +49,8 @@ interface Cliente {
   traspasos_cedidos: number;
   traspasos_recibidos: number;
   proyectos: number;
+  /** Valor de venta acordado de los lotes que compro. */
+  comprado_total: number;
   pagado_total: number;
   saldo_total: number;
   con_plan: number;
@@ -325,6 +327,7 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
       conSaldo: rows.filter((r) => Number(r.saldo_total) > 0).length,
       enMora: rows.filter((r) => Number(r.cuotas_vencidas) > 0).length,
       conReservas: rows.filter((r) => Number(r.lotes_reservados) > 0).length,
+      comprado: rows.reduce((s, r) => s + Number(r.comprado_total ?? 0), 0),
       pagado: rows.reduce((s, r) => s + Number(r.pagado_total), 0),
       saldo: rows.reduce((s, r) => s + Number(r.saldo_total), 0),
     }),
@@ -430,13 +433,14 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
               subtitle: 'Terrenalv S.R.L. — todas las urbanizaciones',
               filename: `clientes-${new Date().toISOString().slice(0, 10)}`,
               footnote:
-                'Pagado incluye lo abonado en el sistema anterior. Saldo y mora, de las ventas vivas.',
+                'Valor acordado: el precio de los lotes que conserva. Pagado incluye lo abonado en el sistema anterior y lo pagado en lotes que despu\u00e9s cedi\u00f3 por traspaso \u2014 por eso en esos casos pagado puede superar al valor acordado. Saldo y mora, de las ventas vivas.',
             }}
             columns={[
               { header: 'Cliente' },
               { header: 'CI' },
               { header: 'Teléfono' },
               { header: 'Comprados', align: 'right' },
+              { header: 'Valor acordado', align: 'right' },
               { header: 'Reservados', align: 'right' },
               { header: 'Pagado', align: 'right' },
               { header: 'Saldo', align: 'right' },
@@ -449,6 +453,7 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
                 r.buyer_ci,
                 r.buyer_phone,
                 fnum(Number(r.lotes_comprados), 0),
+                fnum(Number(r.comprado_total ?? 0)),
                 fnum(Number(r.lotes_reservados), 0),
                 fnum(Number(r.pagado_total)),
                 fnum(Number(r.saldo_total)),
@@ -483,6 +488,9 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
                     Reservados
                   </th>
                   <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">
+                    Valor acordado
+                  </th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">
                     Pagado
                   </th>
                   <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">
@@ -515,8 +523,24 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
                           '—'
                         )}
                       </td>
+                      <td className="px-3 py-2 text-right font-medium tabular-nums text-stone-800">
+                        {Number(r.comprado_total ?? 0) > 0
+                          ? formatMoney(Number(r.comprado_total), 'BOB')
+                          : '\u2014'}
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums text-stone-600">
                         {formatMoney(Number(r.pagado_total), 'BOB')}
+                        {/* Si cedio un lote, lo que pago incluye plata de un
+                            lote que ya no es suyo: sin esta marca, la fila
+                            parece un sobrepago. */}
+                        {Number(r.traspasos_cedidos) > 0 ? (
+                          <span
+                            className="ml-1 cursor-help text-[11px] text-amber-700"
+                            title={`Incluye lo pagado en ${r.traspasos_cedidos} lote(s) que despu\u00e9s cedi\u00f3 por traspaso.`}
+                          >
+                            +ced.
+                          </span>
+                        ) : null}
                       </td>
                       <td
                         className={`px-3 py-2 text-right font-semibold tabular-nums ${
@@ -541,7 +565,7 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
 
                     {abierto === r.ci_norm ? (
                       <tr ref={detailRef} className="border-b border-stone-100 bg-stone-50/70 last:border-0">
-                        <td colSpan={7} className="px-4 py-4">
+                        <td colSpan={8} className="px-4 py-4">
                           <div className="mb-3 flex flex-wrap items-center gap-3">
                             <div>
                               <p className="text-sm font-bold text-stone-900">{r.buyer_full_name}</p>
