@@ -69,10 +69,19 @@ const GRUPOS: { titulo: string; items: NavItem[] }[] = [
       // Contabilidad y Planes de pago van juntos porque son las dos mitades de
       // lo mismo: allá se registra el cobro, acá se ve el cronograma que ese
       // cobro va tachando.
+      // Dos libros, dos entradas. El gerencial es la verdad del negocio; el
+      // fiscal es lo que se declara, y se sirve del gerencial sin que el
+      // gerencial sepa que existe.
       {
         href: '/admin/contabilidad',
-        label: 'Contabilidad',
+        label: 'Contabilidad gerencial',
         icon: IconLedger,
+        roles: ['admin', 'contabilidad'],
+      },
+      {
+        href: '/admin/fiscal',
+        label: 'Contabilidad fiscal',
+        icon: IconScroll,
         roles: ['admin', 'contabilidad'],
       },
       {

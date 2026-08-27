@@ -200,6 +200,14 @@ export interface LedgerLine {
   haber: number;
   origen: 'pago' | 'egreso';
   origen_id: string;
+  // Las dimensiones con las que se segrega el libro: de quien es el
+  // movimiento, a que centro carga, y a nombre de quien esta.
+  cliente_ci: string | null;
+  cliente: string | null;
+  centro_costo_id: string | null;
+  centro_costo: string | null;
+  titular: string | null;
+  titular_nombre: string | null;
 }
 
 /** One account's totals, as projected by v_libro_mayor. */

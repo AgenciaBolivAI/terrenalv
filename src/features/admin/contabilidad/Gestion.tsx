@@ -15,6 +15,7 @@ import { useToast } from '@/features/admin/ui/toast';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
 import { num, type Cell } from '@/features/admin/export';
 import { dateLabel, todayIso } from './types';
+import CentrosCosto from './CentrosCosto';
 import type { Account } from './Comprobantes';
 
 interface Period {
@@ -245,6 +246,9 @@ export default function Gestion({
 
   return (
     <div className="space-y-5">
+      {/* ------------------------------ CENTROS DE COSTO ------------------ */}
+      <CentrosCosto projectId={projectId} projectName={projectName} />
+
       {/* ------------------------------ PLAN DE CUENTAS ------------------- */}
       <section className="rounded-xl border border-stone-200 bg-white">
         <div className="flex flex-wrap items-center gap-3 border-b border-stone-200 px-4 py-3">

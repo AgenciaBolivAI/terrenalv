@@ -21,7 +21,8 @@ export const SECCIONES: { clave: string; etiqueta: string; grupo: string }[] = [
   { clave: 'clientes', etiqueta: 'Clientes', grupo: 'Mostrador' },
   { clave: 'notificaciones', etiqueta: 'Notificaciones', grupo: 'Mostrador' },
   { clave: 'mi-cuenta', etiqueta: 'Mi cuenta', grupo: 'Mostrador' },
-  { clave: 'contabilidad', etiqueta: 'Contabilidad', grupo: 'Cobranza' },
+  { clave: 'contabilidad', etiqueta: 'Contabilidad gerencial', grupo: 'Cobranza' },
+  { clave: 'fiscal', etiqueta: 'Contabilidad fiscal', grupo: 'Cobranza' },
   { clave: 'planes', etiqueta: 'Planes de pago', grupo: 'Cobranza' },
   { clave: 'comisiones', etiqueta: 'Comisiones', grupo: 'Cobranza' },
   { clave: 'financiamiento', etiqueta: 'Financiamiento', grupo: 'Cobranza' },
@@ -49,6 +50,9 @@ export function seccionDe(pathname: string): string {
   const primera = resto.split('/')[0];
   if (primera === 'plan') return 'planes';
   if (primera === 'recibo') return 'contabilidad';
+  // El fiscal es su propia seccion: se puede dar el gerencial sin dar el
+  // fiscal, y al reves.
+  if (primera === 'fiscal') return 'fiscal';
   if (primera === 'contrato') return 'ventas';
   return primera;
 }

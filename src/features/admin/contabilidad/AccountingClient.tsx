@@ -163,6 +163,11 @@ export default function AccountingClient({
   const [hasta, setHasta] = useState(todayIso);
   const [mayor, setMayor] = useState<LedgerAccount[] | null>(null);
   const [diario, setDiario] = useState<LedgerLine[] | null>(null);
+  // Segregar el libro por cliente y por centro de costos. '__sin__' en el
+  // centro trae lo que no carga a ninguno, que es justo lo que hay que
+  // repartir cuando se cierra el mes.
+  const [clienteFiltro, setClienteFiltro] = useState('');
+  const [centroFiltro, setCentroFiltro] = useState('');
   const [libroBusy, setLibroBusy] = useState(false);
   /** Set by clicking a row of the libro mayor: shows only that account. */
   const [cuentaFiltro, setCuentaFiltro] = useState<string | null>(null);
@@ -408,7 +413,10 @@ export default function AccountingClient({
       alcance(
         supabase
           .from('v_libro_diario')
-          .select('fecha, comprobante, glosa, cuenta, debe, haber, origen, origen_id'),
+          .select(
+            'fecha, comprobante, glosa, cuenta, debe, haber, origen, origen_id, ' +
+              'cliente_ci, cliente, centro_costo_id, centro_costo, titular, titular_nombre',
+          ),
       )
         .gte('fecha', desde)
         .lte('fecha', hasta)
@@ -446,8 +454,28 @@ export default function AccountingClient({
   const diarioFiltrado = (diario ?? []).filter(
     (l) =>
       (!cuentaFiltro || l.cuenta === cuentaFiltro || l.cuenta.startsWith(`${cuentaFiltro}.`)) &&
-      (!formaFiltro || l.glosa.includes(`por ${formaFiltro}`)),
+      (!formaFiltro || l.glosa.includes(`por ${formaFiltro}`)) &&
+      (!clienteFiltro || l.cliente_ci === clienteFiltro) &&
+      (!centroFiltro ||
+        (centroFiltro === '__sin__' ? !l.centro_costo_id : l.centro_costo_id === centroFiltro)),
   );
+
+  // Con que se puede segregar el libro, sacado de lo que el libro mismo trae:
+  // si manana hay un centro nuevo aparece solo, sin tocar codigo.
+  const clientesDelLibro = Array.from(
+    new Map(
+      (diario ?? [])
+        .filter((l) => l.cliente_ci)
+        .map((l) => [l.cliente_ci as string, l.cliente ?? l.cliente_ci] as [string, string]),
+    ),
+  ).sort((a, b) => a[1].localeCompare(b[1]));
+  const centrosDelLibro = Array.from(
+    new Map(
+      (diario ?? [])
+        .filter((l) => l.centro_costo_id)
+        .map((l) => [l.centro_costo_id as string, l.centro_costo ?? '—'] as [string, string]),
+    ),
+  ).sort((a, b) => a[1].localeCompare(b[1]));
 
 
 
@@ -1298,6 +1326,39 @@ export default function AccountingClient({
               <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
                 Libro diario
               </h2>
+              {/* Segregar por cliente y por centro de costos: las dos preguntas
+                  que el libro no sabia contestar. */}
+              {clientesDelLibro.length ? (
+                <select
+                  value={clienteFiltro}
+                  onChange={(e) => setClienteFiltro(e.target.value)}
+                  className="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs"
+                  aria-label="Filtrar por cliente"
+                >
+                  <option value="">Todos los clientes</option>
+                  {clientesDelLibro.map(([ci, nombre]) => (
+                    <option key={ci} value={ci}>
+                      {nombre}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              {centrosDelLibro.length ? (
+                <select
+                  value={centroFiltro}
+                  onChange={(e) => setCentroFiltro(e.target.value)}
+                  className="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs"
+                  aria-label="Filtrar por centro de costos"
+                >
+                  <option value="">Todos los centros</option>
+                  <option value="__sin__">— sin centro asignado —</option>
+                  {centrosDelLibro.map(([id, nombre]) => (
+                    <option key={id} value={id}>
+                      {nombre}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
               {formaFiltro ? (
                 <button
                   type="button"
@@ -1886,6 +1947,26 @@ function ExpenseDialog({
   const [cuentaId, setCuentaId] = useState('');
   const [contactId, setContactId] = useState('');
 
+  // A que centro carga y a nombre de quien esta. El titular es un dato del
+  // negocio —saber de quien es la factura sirve igual— y ademas es lo que
+  // despues decide si esto se declara o no.
+  const [centros, setCentros] = useState<{ id: string; codigo: string; nombre: string }[]>([]);
+  const [centroId, setCentroId] = useState('');
+  const [titular, setTitular] = useState<'empresa' | 'tercero'>('empresa');
+  const [titularNombre, setTitularNombre] = useState('');
+
+  useEffect(() => {
+    void (async () => {
+      const { data } = await supabase
+        .from('centros_costo')
+        .select('id, codigo, nombre, project_id')
+        .eq('is_active', true)
+        .or(`project_id.eq.${projectId},project_id.is.null`)
+        .order('codigo');
+      setCentros((data ?? []) as { id: string; codigo: string; nombre: string }[]);
+    })();
+  }, [supabase, projectId]);
+
   async function save() {
     setError(null);
     if (!description.trim()) {
@@ -1895,6 +1976,10 @@ function ExpenseDialog({
     const a = Number(amount);
     if (!(a > 0)) {
       setError('El monto debe ser mayor a cero.');
+      return;
+    }
+    if (titular === 'tercero' && !titularNombre.trim()) {
+      setError('Si el gasto esta a nombre de un tercero, decinos de quien.');
       return;
     }
     setBusy(true);
@@ -1910,6 +1995,10 @@ function ExpenseDialog({
       p_note: note.trim() || null,
       p_treasury_account_id: cuentaId || null,
       p_contact_id: contactId || null,
+      p_centro_costo_id: centroId || null,
+      p_titular: titular,
+      p_titular_nombre: titular === 'tercero' ? titularNombre.trim() : null,
+      p_reservation_id: null,
     });
     setBusy(false);
     if (err) {
@@ -1984,6 +2073,50 @@ function ExpenseDialog({
             placeholder="…o escribí el proveedor a mano si no está en el directorio"
             className={inputClass}
           />
+        ) : null}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Centro de costos</label>
+            <select
+              value={centroId}
+              onChange={(e) => setCentroId(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">— sin centro —</option>
+              {centros.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.codigo} · {c.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">A nombre de</label>
+            <select
+              value={titular}
+              onChange={(e) => setTitular(e.target.value as 'empresa' | 'tercero')}
+              className={inputClass}
+            >
+              <option value="empresa">La empresa</option>
+              <option value="tercero">Un tercero</option>
+            </select>
+          </div>
+        </div>
+
+        {titular === 'tercero' ? (
+          <div>
+            <input
+              value={titularNombre}
+              onChange={(e) => setTitularNombre(e.target.value)}
+              placeholder="¿A nombre de quién? (ej. Juan Pérez, socio)"
+              className={inputClass}
+            />
+            <p className="mt-1 text-xs text-stone-400">
+              Queda registrado en el gerencial igual que cualquier gasto. No entra solo a la
+              contabilidad fiscal: ahí hay que decidirlo a mano.
+            </p>
+          </div>
         ) : null}
 
         <CuentaSelect
