@@ -209,13 +209,19 @@ html[data-theme='dark'] .admin-scope {
      fondos hondos con el texto claro, o el banner queda blanco radiante. */
   --color-green-50: #052e16;
   --color-green-100: #14532d;
+  --color-green-200: #166534;
+  --color-green-300: #15803d;
+  --color-green-800: #bbf7d0;
+  --color-green-900: #dcfce7;
   --color-green-500: #22c55e;
   --color-green-600: #16a34a;
   --color-green-700: #86efac;
 
   --color-red-50: #3f1212;
   --color-red-100: #7f1d1d;
+  --color-red-200: #991b1b;
   --color-red-300: #991b1b;
+  --color-red-900: #fee2e2;
   --color-red-600: #f87171;
   --color-red-700: #fca5a5;
   --color-red-800: #fecaca;
@@ -230,8 +236,30 @@ html[data-theme='dark'] .admin-scope {
   --color-amber-800: #fde68a;
   --color-amber-900: #fef3c7;
 
+  --color-orange-100: #7c2d12;
   --color-orange-400: #fb923c;
   --color-orange-600: #fdba74;
+  --color-orange-800: #fed7aa;
+
+  --color-blue-50: #172554;
+  --color-blue-200: #1e40af;
+  --color-blue-900: #dbeafe;
+
+  --color-violet-50: #2e1065;
+  --color-violet-100: #4c1d95;
+  --color-violet-200: #5b21b6;
+  --color-violet-800: #ddd6fe;
+  --color-violet-900: #ede9fe;
+
+  --color-sky-100: #0c4a6e;
+  --color-sky-800: #bae6fd;
+
+  /* El texto HEREDADO: body pinta color: var(--foreground) (#1c1917), y todo
+     lo que no lleva clase text-* lo hereda tal cual — letras negras sobre el
+     panel oscuro. El scope lo voltea una vez y la herencia reparte el resto. */
+  --background: var(--color-stone-100);
+  --foreground: var(--color-stone-900);
+  color: var(--foreground);
 
   color-scheme: dark;
 }
@@ -262,6 +290,19 @@ html[data-theme='dark'] .admin-scope .admin-logo {
    ambos temas y conserva la translucidez sobre la que actúa el backdrop-blur. */
 .admin-scope .admin-topbar {
   background-color: color-mix(in oklab, var(--color-white) 95%, transparent);
+}
+
+/* Las filas de detalle y las notas usaban bg-stone-50/70 y bg-white/70, que
+   compilan a un literal con alfa y no siguen al token. En oscuro quedaban
+   placas casi blancas. Mismo remedio que la barra. */
+.admin-scope .bg-stone-50\/70 {
+  background-color: color-mix(in oklab, var(--color-stone-50) 70%, transparent);
+}
+.admin-scope .bg-stone-50\/60 {
+  background-color: color-mix(in oklab, var(--color-stone-50) 60%, transparent);
+}
+.admin-scope .bg-white\/70 {
+  background-color: color-mix(in oklab, var(--color-white) 70%, transparent);
 }
 
 /* ---------------------------------------------------------------------------
