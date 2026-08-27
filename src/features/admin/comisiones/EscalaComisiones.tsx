@@ -126,9 +126,10 @@ export default function EscalaComisiones() {
           Escala de comisiones — gestión {gestion}
         </h2>
         <p className="mt-1 text-xs text-stone-500">
-          El porcentaje sale de cuántas ventas lleva el asesor y de cómo vendió. Es{' '}
-          <strong>retroactiva</strong>: al alcanzar un tramo, ese porcentaje se aplica a todas sus
-          ventas del período, no sólo a la que lo desbloqueó.
+          El porcentaje sale de cuántas ventas lleva el asesor y de cómo vendió, y se aplica{' '}
+          <strong>sobre el valor de cada lote</strong> — por eso 1% de un lote de Bs 1.000 y 1% de
+          uno de Bs 10.000 no son lo mismo. Es <strong>retroactiva</strong>: al alcanzar un tramo,
+          ese porcentaje se aplica a todas sus ventas del período, no sólo a la que lo desbloqueó.
         </p>
       </div>
 
@@ -165,10 +166,10 @@ export default function EscalaComisiones() {
                     {m === 'plazo' ? (
                       <>
                         <th className="px-2 py-2 text-right text-xs font-semibold text-stone-500">
-                          Inicial
+                          Al completar la inicial
                         </th>
                         <th className="px-2 py-2 text-right text-xs font-semibold text-stone-500">
-                          Reintegro
+                          Al completar la {pol?.cuota_reintegro ?? 4}ª
                         </th>
                       </>
                     ) : null}
@@ -299,7 +300,8 @@ export default function EscalaComisiones() {
                       </p>
                     ) : (
                       <p className="mt-1 text-xs text-stone-400">
-                        Se cobra entera al momento de la venta.
+                        Paga todo de una, así que la comisión se cobra entera a la firma del
+                        contrato.
                       </p>
                     )}
                   </>
@@ -404,7 +406,9 @@ export default function EscalaComisiones() {
             </div>
             <div>
               <label className="mb-1 block text-xs text-stone-500">
-                % {edit.modalidad === 'plazo' ? 'a la firma' : 'de la venta'}
+                {edit.modalidad === 'plazo'
+                  ? '% al completar la cuota inicial'
+                  : '% a la firma del contrato'}
               </label>
               <input
                 type="number"
@@ -417,7 +421,9 @@ export default function EscalaComisiones() {
             </div>
             {edit.modalidad === 'plazo' ? (
               <div>
-                <label className="mb-1 block text-xs text-stone-500">% de reintegro</label>
+                <label className="mb-1 block text-xs text-stone-500">
+                  % al completar la cuota {pol?.cuota_reintegro ?? 4}
+                </label>
                 <input
                   type="number"
                   min={0}
