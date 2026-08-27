@@ -620,7 +620,8 @@ export default function VentasClient({
                   { header: 'Manzana' },
                   { header: 'Lote' },
                   { header: 'Sup. m²', align: 'right' },
-                  { header: 'Fecha' },
+                  { header: 'Fecha compra' },
+                  { header: 'Fecha últ. pago' },
                   { header: 'Modalidad' },
                   { header: 'Monto venta', align: 'right' },
                   { header: 'Moneda' },
@@ -653,6 +654,7 @@ export default function VentasClient({
                     lote: string | null;
                     sup_m2: number | null;
                     fecha_venta: string;
+                    fecha_ultimo_pago: string | null;
                     modalidad: string;
                     monto_venta: number;
                     moneda: string;
@@ -677,6 +679,7 @@ export default function VentasClient({
                     r.lote ?? '',
                     r.sup_m2 == null ? '' : Number(r.sup_m2),
                     dateLabel(r.fecha_venta),
+                    r.fecha_ultimo_pago ? dateLabel(r.fecha_ultimo_pago) : '',
                     r.modalidad,
                     Number(r.monto_venta),
                     r.moneda,
