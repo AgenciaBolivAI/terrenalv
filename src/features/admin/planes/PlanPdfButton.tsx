@@ -40,6 +40,16 @@ export async function bajarPlanPdf(p: PlanPdfDatos): Promise<string> {
   // El saldo corriente: lo que le queda DESPUÉS de cada cuota. La cuenta
   // vive en cuentas.ts, la misma que usa la pantalla, con sus tests.
   const saldos = saldosCorridos(cuotas);
+
+  // «Pagado» en el PDF es la PLATA ENTREGADA (los mismos recibos), no solo el
+  // capital: misma regla que la pantalla del estado de cuenta.
+  const entregado =
+    Math.round(
+      p.pagos
+        .filter((x) => x.estado === 'aprobado')
+        .reduce((s, x) => s + Number(x.amount_bob), 0) * 100,
+    ) / 100;
+  const interesPagado = Math.max(0, Math.round((entregado - Number(p.pagado)) * 100) / 100);
   const filas: Cell[][] = cuotas.map((c, i) => {
     return [
       c.number,
@@ -57,7 +67,11 @@ export async function bajarPlanPdf(p: PlanPdfDatos): Promise<string> {
   const condiciones =
     `Lote: Mz ${p.manzana ?? '—'}, Lote ${p.lote ?? '—'} — ${p.proyecto}   ·   ` +
     `Precio ${formatMoney(Number(p.precio), 'BOB')}   ·   ` +
-    `Pagado ${formatMoney(Number(p.pagado), 'BOB')}   ·   ` +
+    `Pagado ${formatMoney(entregado, 'BOB')}` +
+    (interesPagado > 0.01
+      ? ` (${formatMoney(Number(p.pagado), 'BOB')} al precio + ${formatMoney(interesPagado, 'BOB')} de interés)`
+      : '') +
+    `   ·   ` +
     `Saldo ${formatMoney(Number(p.saldo), 'BOB')}` +
     (p.plan
       ? `   ·   ${terminosDelPlan(p.plan, (n) => formatMoney(n, 'BOB'))}`

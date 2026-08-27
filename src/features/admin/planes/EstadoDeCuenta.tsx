@@ -26,6 +26,18 @@ function fecha(iso: string | null): string {
 export function EstadoDeCuenta({ d }: { d: Datos }) {
   const totalCuotas = d.plan ? d.plan.cuotas.reduce((s, c) => s + Number(c.amount), 0) : 0;
   const totalInteres = d.plan ? d.plan.cuotas.reduce((s, c) => s + Number(c.interes), 0) : 0;
+  // «Pagaste» es la PLATA ENTREGADA, sumada de los mismos pagos que se listan
+  // abajo — así el número de arriba y los recibos de abajo jamás se
+  // contradicen. d.pagado (v_ventas) es solo el capital: lo que fue al precio
+  // del lote; la diferencia es el interés del plan. Un comprador pagó 646 +
+  // 400 y arriba decía 638,52: era el capital, sin decirlo.
+  const entregado =
+    Math.round(
+      d.pagos
+        .filter((p) => p.estado === 'aprobado')
+        .reduce((s, p) => s + Number(p.amount_bob), 0) * 100,
+    ) / 100;
+  const interesPagado = Math.max(0, Math.round((entregado - d.pagado) * 100) / 100);
   // El «te queda» de cada fila sale de cuentas.ts — la misma cuenta que usa
   // el PDF, con sus tests. Dos copias de esta aritmética ya se contradijeron
   // una vez en producción.
@@ -129,7 +141,13 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
           </div>
           <div>
             <p className="text-xs text-stone-500">Pagaste</p>
-            <p className="font-bold tabular-nums text-brand">{formatMoney(d.pagado, 'BOB')}</p>
+            <p className="font-bold tabular-nums text-brand">{formatMoney(entregado, 'BOB')}</p>
+            {interesPagado > 0.01 ? (
+              <p className="text-[11px] text-stone-500">
+                {formatMoney(d.pagado, 'BOB')} al precio + {formatMoney(interesPagado, 'BOB')} de
+                interés
+              </p>
+            ) : null}
           </div>
           <div>
             <p className="text-xs text-stone-500">Te queda</p>
