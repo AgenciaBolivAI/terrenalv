@@ -42,64 +42,80 @@ export function ElegirLoteDialog({
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
 
-  const cargar = useCallback(async () => {
-    if (!projectId) {
+  const [sinPrecio, setSinPrecio] = useState(0);
+
+  // La busqueda es DEL SERVIDOR, no del navegador. Antes se bajaban hasta
+  // 2.000 lotes para mostrar 60: con el cliente sentado enfrente, el dialogo
+  // se quedaba cargando un rato largo. Ahora se piden solo los 60 que se van
+  // a mostrar, y cada letra que se escribe pregunta de nuevo (con un respiro
+  // de 250 ms para no preguntar por tecla). Abrir es instantaneo y da igual
+  // que la urbanizacion tenga dos mil lotes o veinte mil.
+  const buscar = useCallback(
+    async (texto: string) => {
+      if (!projectId) {
+        setLoading(false);
+        return;
+      }
+      let consulta = supabase
+        .from('v_lotes_elegibles')
+        .select('id, project_id, number, area_m2, manzana, precio')
+        .eq('project_id', projectId)
+        .not('precio', 'is', null);
+
+      const t = texto.trim();
+      if (t) {
+        // «M-47 5», «47-5» o «lote 5»: cada pedazo tiene que aparecer en la
+        // manzana o en el numero.
+        for (const parte of t.split(/[\s-]+/).filter(Boolean).slice(0, 3)) {
+          consulta = consulta.or(`number.ilike.%${parte}%,manzana.ilike.%${parte}%`);
+        }
+      }
+
+      const { data } = await consulta.order('manzana').order('number').limit(60);
+      const lista = (data ?? []) as unknown as {
+        id: string;
+        project_id: string;
+        number: string;
+        area_m2: number | null;
+        manzana: string | null;
+        precio: number | null;
+      }[];
+      setRows(
+        lista.map((l) => ({
+          id: l.id,
+          project_id: l.project_id,
+          number: l.number,
+          manzana: l.manzana ?? '—',
+          area_m2: l.area_m2 == null ? null : Number(l.area_m2),
+          precio: l.precio == null ? null : Number(l.precio),
+        })),
+      );
       setLoading(false);
-      return;
-    }
-    // Una sola pregunta: el lote y su precio juntos. Antes el precio se pedía
-    // de a uno —hasta 2.000 llamadas sueltas, en tandas de seis— y el diálogo
-    // tardaba una eternidad en abrir con el cliente sentado enfrente. La
-    // cuenta del precio es la misma que usa el mapa público, hecha en la
-    // vista, así que el mostrador y la web nunca cotizan distinto.
-    const { data } = await supabase
-      .from('v_lotes_elegibles')
-      .select('id, project_id, number, area_m2, manzana, precio')
-      .eq('project_id', projectId)
-      .order('number')
-      .limit(2000);
+    },
+    [supabase, projectId],
+  );
 
-    const lista = (data ?? []) as unknown as {
-      id: string;
-      project_id: string;
-      number: string;
-      area_m2: number | null;
-      manzana: string | null;
-      precio: number | null;
-    }[];
-
-    setRows(
-      lista.map((l) => ({
-        id: l.id,
-        project_id: l.project_id,
-        number: l.number,
-        manzana: l.manzana ?? '—',
-        area_m2: l.area_m2 == null ? null : Number(l.area_m2),
-        precio: l.precio == null ? null : Number(l.precio),
-      })),
-    );
-    setLoading(false);
-  }, [supabase, projectId]);
-
+  // Primer pintado + cuantos disponibles quedaron afuera por no tener precio.
   useEffect(() => {
-    void cargar();
-  }, [cargar]);
+    void buscar('');
+    void (async () => {
+      if (!projectId) return;
+      const { count } = await supabase
+        .from('v_lotes_elegibles')
+        .select('id', { count: 'exact', head: true })
+        .eq('project_id', projectId)
+        .is('precio', null);
+      setSinPrecio(count ?? 0);
+    })();
+  }, [buscar, supabase, projectId]);
 
-  const visibles = useMemo(() => {
-    const t = q.trim().toLowerCase();
-    const base = rows.filter((r) => r.precio !== null);
-    if (!t) return base.slice(0, 60);
-    return base
-      .filter(
-        (r) =>
-          r.number.toLowerCase().includes(t) ||
-          r.manzana.toLowerCase().includes(t) ||
-          `${r.manzana}-${r.number}`.toLowerCase().includes(t),
-      )
-      .slice(0, 60);
-  }, [rows, q]);
+  // La busqueda respira 250 ms: se consulta cuando se deja de tipear.
+  useEffect(() => {
+    const timer = setTimeout(() => void buscar(q), 250);
+    return () => clearTimeout(timer);
+  }, [q, buscar]);
 
-  const sinPrecio = rows.filter((r) => r.precio === null).length;
+  const visibles = rows;
 
   return (
     <Dialog open onClose={onClose} wide title={titulo}>

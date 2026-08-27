@@ -137,6 +137,35 @@ export default function ComisionesClient() {
   const [vista, setVista] = useState<'equipo' | 'movimientos' | 'escala'>('equipo');
   const [movs, setMovs] = useState<Movimiento[]>([]);
   const [filtroEmpleado, setFiltroEmpleado] = useState<string>('');
+  // El reporte por empleado que pidio el dueno: semana, mes, ano o el rango
+  // que sea. El periodo recorta los movimientos y arma el resumen de arriba.
+  const [periodo, setPeriodo] = useState<'semana' | 'mes' | 'anio' | 'todo' | 'rango'>('mes');
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
+
+  const rangoActivo = useMemo((): [string, string] | null => {
+    const hoy = new Date();
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    if (periodo === 'todo') return null;
+    if (periodo === 'semana') {
+      const d = new Date(hoy);
+      d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // lunes
+      return [iso(d), iso(hoy)];
+    }
+    if (periodo === 'mes') return [iso(new Date(hoy.getFullYear(), hoy.getMonth(), 1)), iso(hoy)];
+    if (periodo === 'anio') return [iso(new Date(hoy.getFullYear(), 0, 1)), iso(hoy)];
+    if (desde && hasta) return [desde, hasta];
+    return null;
+  }, [periodo, desde, hasta]);
+
+  const enPeriodo = useCallback(
+    (cuando: string | null) => {
+      if (!rangoActivo || !cuando) return rangoActivo === null;
+      const f = cuando.slice(0, 10);
+      return f >= rangoActivo[0] && f <= rangoActivo[1];
+    },
+    [rangoActivo],
+  );
 
   const cargar = useCallback(async () => {
     const [v, d, mv, rg] = await Promise.all([
@@ -287,11 +316,82 @@ export default function ComisionesClient() {
                 </option>
               ))}
             </select>
+            <div className="flex gap-1 rounded-lg border border-stone-200 bg-stone-50 p-1">
+              {(
+                [
+                  ['semana', 'Semana'],
+                  ['mes', 'Mes'],
+                  ['anio', 'Año'],
+                  ['todo', 'Todo'],
+                  ['rango', 'Rango'],
+                ] as ['semana' | 'mes' | 'anio' | 'todo' | 'rango', string][]
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setPeriodo(id)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium ${
+                    periodo === id ? 'bg-white text-brand shadow-sm' : 'text-stone-600'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {periodo === 'rango' ? (
+              <>
+                <input
+                  type="date"
+                  value={desde}
+                  onChange={(e) => setDesde(e.target.value)}
+                  className={`${inputClass} w-auto`}
+                />
+                <input
+                  type="date"
+                  value={hasta}
+                  onChange={(e) => setHasta(e.target.value)}
+                  className={`${inputClass} w-auto`}
+                />
+              </>
+            ) : null}
             <p className="text-xs text-stone-500">
               Quién tomó qué reserva, qué venta cerró y cuándo se le pagó.
             </p>
           </div>
-          {movs.filter((m) => !filtroEmpleado || m.profile_id === filtroEmpleado).length === 0 ? (
+          {(() => {
+            const visibles = movs.filter(
+              (m) => (!filtroEmpleado || m.profile_id === filtroEmpleado) && enPeriodo(m.cuando),
+            );
+            const ventas = visibles.filter((m) => m.tipo === 'venta');
+            const resumen = {
+              ventas: ventas.length,
+              monto: ventas.reduce((t, m) => t + Number(m.monto), 0),
+              comision: ventas.reduce((t, m) => t + Number(m.comision), 0),
+              pagado: visibles
+                .filter((m) => m.tipo === 'pago_comision')
+                .reduce((t, m) => t + Number(m.comision), 0),
+              reservas: visibles.filter((m) => m.tipo === 'reserva').length,
+            };
+            return (
+              <>
+                {/* El resumen del periodo: lo que un jefe mira antes que la lista. */}
+                <div className="grid grid-cols-2 gap-3 border-b border-stone-200 px-4 py-3 sm:grid-cols-5">
+                  {(
+                    [
+                      ['Ventas cerradas', String(resumen.ventas)],
+                      ['Monto vendido', formatMoney(resumen.monto, 'BOB')],
+                      ['Comisión generada', formatMoney(resumen.comision, 'BOB')],
+                      ['Comisión pagada', formatMoney(resumen.pagado, 'BOB')],
+                      ['Reservas tomadas', String(resumen.reservas)],
+                    ] as [string, string][]
+                  ).map(([l, v]) => (
+                    <div key={l}>
+                      <p className="text-[11px] tracking-wide text-stone-500 uppercase">{l}</p>
+                      <p className="text-base font-bold tabular-nums text-stone-900">{v}</p>
+                    </div>
+                  ))}
+                </div>
+                {visibles.length === 0 ? (
             <div className="px-4 py-8">
               <EmptyState
                 title="Sin movimientos"
@@ -300,9 +400,7 @@ export default function ComisionesClient() {
             </div>
           ) : (
             <ul className="divide-y divide-stone-100">
-              {movs
-                .filter((m) => !filtroEmpleado || m.profile_id === filtroEmpleado)
-                .map((m) => {
+              {visibles.map((m) => {
                   const b = MOV_BADGE[m.tipo];
                   return (
                     <li
@@ -356,6 +454,9 @@ export default function ComisionesClient() {
                 })}
             </ul>
           )}
+              </>
+            );
+          })()}
           <p className="border-t border-stone-100 px-4 py-2 text-xs text-stone-400">
             Los últimos 500 movimientos. Una venta aparece con la comisión que generó; un pago,
             con lo que salió de caja.
