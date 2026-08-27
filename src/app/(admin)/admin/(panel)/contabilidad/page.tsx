@@ -26,7 +26,10 @@ export default async function ContabilidadPage({
   }
   // Los egresos (sueldos, comisiones) están restringidos en la RLS a admin y
   // contabilidad; la página sigue la misma regla.
-  if (!isAccounting(ctx.profile.role)) {
+  // Manda el acceso resuelto por la base (rol + permisos por persona), no el
+  // rol a secas: un permiso concedido a mano abre la puerta, y un recorte la
+  // cierra. Sin permiso explícito, el rol decide como siempre.
+  if ((ctx.acceso?.['contabilidad'] ?? (isAccounting(ctx.profile.role) ? 'edita' : 'no')) === 'no') {
     return (
       <EmptyState
         title="Sección restringida"

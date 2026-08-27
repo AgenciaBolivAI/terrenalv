@@ -14,7 +14,10 @@ export default async function RrhhPage() {
     if (ctx.reason === 'auth') redirect('/admin/login');
     return null;
   }
-  if (!isAccounting(ctx.profile.role)) {
+  // Manda el acceso resuelto por la base (rol + permisos por persona), no el
+  // rol a secas: un permiso concedido a mano abre la puerta, y un recorte la
+  // cierra. Sin permiso explícito, el rol decide como siempre.
+  if ((ctx.acceso?.['rrhh'] ?? (isAccounting(ctx.profile.role) ? 'edita' : 'no')) === 'no') {
     return <EmptyState title="Sección restringida" hint="Recursos Humanos lo manejan Administración y Contabilidad." />;
   }
   return <RrhhClient />;
