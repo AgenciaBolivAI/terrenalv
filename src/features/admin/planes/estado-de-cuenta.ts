@@ -40,6 +40,9 @@ export interface PagoEstado {
   tiene_recibo: boolean;
   de_comprador_anterior: boolean;
   pagado_por: string;
+  /** Para qué fue el pago. La comisión del mercado la paga el VENDEDOR: no es
+   *  plata que el comprador entregó por su lote, así que no suma en su hoja. */
+  purpose: string;
   /** Lo que este pago pagó de interés del plan. */
   interes_bob: number;
   /** Lo que este pago bajó del precio del lote. Suman amount_bob entre los dos. */
@@ -251,7 +254,7 @@ export async function cargarEstadoDeCuenta(
     .from('v_historial_pagos_cadena')
     .select(
       'payment_id, fecha, created_at, tipo, forma, amount, currency, amount_bob, estado, ' +
-        'tiene_recibo, de_comprador_anterior, buyer_full_name, interes_bob, capital_bob',
+        'tiene_recibo, de_comprador_anterior, buyer_full_name, interes_bob, capital_bob, purpose',
     )
     .eq('venta_id', r.id)
     .order('created_at', { ascending: false });
@@ -271,6 +274,7 @@ export async function cargarEstadoDeCuenta(
       tiene_recibo: x.tiene_recibo,
       de_comprador_anterior: x.de_comprador_anterior,
       pagado_por: x.buyer_full_name,
+      purpose: String(x.purpose ?? ''),
       interes_bob: Number(x.interes_bob ?? 0),
       capital_bob: Number(x.capital_bob ?? x.amount_bob),
     };

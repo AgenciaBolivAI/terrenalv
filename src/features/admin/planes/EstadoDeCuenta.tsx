@@ -26,18 +26,36 @@ function fecha(iso: string | null): string {
 export function EstadoDeCuenta({ d }: { d: Datos }) {
   const totalCuotas = d.plan ? d.plan.cuotas.reduce((s, c) => s + Number(c.amount), 0) : 0;
   const totalInteres = d.plan ? d.plan.cuotas.reduce((s, c) => s + Number(c.interes), 0) : 0;
-  // «Pagaste» es la PLATA ENTREGADA, sumada de los mismos pagos que se listan
-  // abajo — así el número de arriba y los recibos de abajo jamás se
-  // contradicen. d.pagado (v_ventas) es solo el capital: lo que fue al precio
-  // del lote; la diferencia es el interés del plan. Un comprador pagó 646 +
-  // 400 y arriba decía 638,52: era el capital, sin decirlo.
+  // Lo que ESTE comprador entregó por SU lote, y cuánto de eso fue interés.
+  //
+  // Las dos cifras se LEEN de los pagos, una por una. Deducir el interés por
+  // resta (entregado − capital) parecía equivalente y no lo era: en un lote
+  // traspasado, la cadena de pagos incluye la «Comisión del mercado» que pagó
+  // el VENDEDOR, y esa resta se la imprimía al comprador nuevo como interés
+  // suyo — Bs 5.400 de interés en un plan al 0%, en una venta que ni siquiera
+  // tenía plan. La comisión sigue apareciendo en la lista de recibos (con su
+  // marca de quién la pagó), pero no cuenta como plata entregada por él.
+  const suyos = d.pagos.filter((p) => p.estado === 'aprobado' && p.purpose !== 'comision');
+  // PAGASTE: la plata que entregó, tal cual. Si puso 646, pagó 646.
   const entregado =
-    Math.round(
-      d.pagos
-        .filter((p) => p.estado === 'aprobado')
-        .reduce((s, p) => s + Number(p.amount_bob), 0) * 100,
-    ) / 100;
-  const interesPagado = Math.max(0, Math.round((entregado - d.pagado) * 100) / 100);
+    Math.round(suyos.reduce((s, p) => s + Number(p.amount_bob), 0) * 100) / 100;
+  // TE QUEDA: lo que todavía tiene que entregar. Las cuotas ya llevan el
+  // interés adentro, así que esto es plata contante — la misma cifra que ve
+  // el equipo en Planes. Sin plan, el precio menos lo entregado.
+  const faltaDelPlan = d.plan
+    ? Math.round(
+        d.plan.cuotas
+          .filter((c) => c.status !== 'pagada')
+          .reduce((s, c) => s + Number(c.amount) - Number(c.amount_paid), 0) * 100,
+      ) / 100
+    : null;
+  const teQueda =
+    faltaDelPlan == null
+      ? Math.max(0, Math.round((d.precio - entregado) * 100) / 100)
+      : faltaDelPlan;
+  // Todo lo que va a pagar por el lote. Con financiamiento es más que el
+  // precio; decirlo una vez acá evita tener que explicar cada pago.
+  const totalAPagar = Math.round((entregado + teQueda) * 100) / 100;
   // El «te queda» de cada fila sale de cuentas.ts — la misma cuenta que usa
   // el PDF, con sus tests. Dos copias de esta aritmética ya se contradijeron
   // una vez en producción.
@@ -135,56 +153,38 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
 
       {d.situacion === 'venta' ? (
         <section className="mt-5 rounded-lg bg-stone-50 p-4 print:ring-1 print:ring-stone-300">
-          {/* La cuenta escrita como se hace en papel: precio menos lo que fue
-              al precio, igual lo que falta — con el signo a la vista para
-              poder seguirla con el dedo. Antes las tres cifras estaban
-              sueltas y no había forma de reconciliarlas: «Pagaste 1.046» al
-              lado de «Te queda 24.161,48» sobre un precio de 24.800 invita a
-              restar 1.046, y no da. De esa plata, 407,48 fue interés, y el
-              interés no baja el precio del terreno. */}
-          <div className="flex flex-wrap items-end justify-center gap-x-4 gap-y-2 text-center sm:gap-x-7">
+          {/* Tres cifras y nada en el medio: cuánto vale el lote, cuánto
+              entregó y cuánto le falta entregar. */}
+          <div className="grid grid-cols-3 gap-3 text-center">
             <div>
               <p className="text-xs text-stone-500">Precio del lote</p>
               <p className="font-bold tabular-nums">{formatMoney(d.precio, 'BOB')}</p>
             </div>
-            <p aria-hidden className="pb-1 text-lg font-light text-stone-400">
-              −
-            </p>
             <div>
-              <p className="text-xs text-stone-500">Pagado al precio</p>
-              <p className="font-bold tabular-nums text-brand">{formatMoney(d.pagado, 'BOB')}</p>
+              <p className="text-xs text-stone-500">Pagaste</p>
+              <p className="font-bold tabular-nums text-brand">{formatMoney(entregado, 'BOB')}</p>
             </div>
-            <p aria-hidden className="pb-1 text-lg font-light text-stone-400">
-              =
-            </p>
             <div>
-              <p className="text-xs text-stone-500">Saldo del lote</p>
+              <p className="text-xs text-stone-500">Te queda</p>
               <p
                 className={`text-lg font-black tabular-nums ${
-                  d.saldo > 0 ? 'text-stone-900' : 'text-brand'
+                  teQueda > 0 ? 'text-stone-900' : 'text-brand'
                 }`}
               >
-                {d.saldo > 0 ? formatMoney(d.saldo, 'BOB') : '¡Pagado!'}
+                {teQueda > 0 ? formatMoney(teQueda, 'BOB') : '¡Pagado!'}
               </p>
             </div>
           </div>
-          {/* Lo entregado va aparte, y no dentro de la resta, justamente
-              porque no entra en ella. */}
-          <p className="mt-3 border-t border-stone-200 pt-2 text-center text-xs text-stone-600">
-            Entregaste <strong className="tabular-nums">{formatMoney(entregado, 'BOB')}</strong> en
-            total
-            {interesPagado > 0.01 ? (
-              <>
-                : <strong className="tabular-nums">{formatMoney(d.pagado, 'BOB')}</strong> al precio
-                del lote y{' '}
-                <strong className="tabular-nums">{formatMoney(interesPagado, 'BOB')}</strong> de
-                interés. El interés paga el tiempo del financiamiento, así que no baja el saldo del
-                lote.
-              </>
-            ) : (
-              '.'
-            )}
-          </p>
+          {/* La única línea sobre el financiamiento, y en plata: por qué el
+              total a pagar es mayor que el precio, y cómo cierra la resta. */}
+          {totalAPagar > d.precio + 0.01 ? (
+            <p className="mt-3 border-t border-stone-200 pt-2 text-center text-xs text-stone-600">
+              Con el financiamiento, el total a pagar es{' '}
+              <strong className="tabular-nums">{formatMoney(totalAPagar, 'BOB')}</strong> en cuotas:{' '}
+              {formatMoney(totalAPagar, 'BOB')} − {formatMoney(entregado, 'BOB')} ={' '}
+              {formatMoney(teQueda, 'BOB')}.
+            </p>
+          ) : null}
         </section>
       ) : null}
 
@@ -231,14 +231,10 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
                   <th className="py-2 font-semibold text-stone-500">N°</th>
                   <th className="py-2 font-semibold text-stone-500">Vence</th>
                   <th className="py-2 text-right font-semibold text-stone-500">Cuota</th>
-                  {/* NO se llama «Te queda»: ese nombre ya es el saldo del
-                      LOTE, allá arriba. Esta columna es otra cosa —lo que
-                      falta pagar del PLAN, con el interés de los meses que
-                      vienen— y son dos números muy distintos: en una venta
-                      real, 24.161,48 contra 38.172,84. Dos cifras con el
-                      mismo nombre en el mismo papel es lo que hacía
-                      imposible cuadrarlo. */}
-                  <th className="py-2 text-right font-semibold text-stone-500">Saldo del plan</th>
+                  {/* Ahora las dos miden lo mismo —lo que falta entregar—:
+                      el recuadro de arriba hoy, y esta columna después de
+                      cada cuota. */}
+                  <th className="py-2 text-right font-semibold text-stone-500">Te queda</th>
                   <th className="py-2 text-center font-semibold text-stone-500">Estado</th>
                 </tr>
               </thead>
@@ -278,13 +274,8 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
             </table>
           </div>
           <p className="mt-2 text-[11px] text-stone-500">
-            «Saldo del plan» es todo lo que falta pagar en cuotas, con el interés de los meses que
-            vienen incluido. El <strong>saldo del lote</strong> de arriba es solo lo que falta del
-            precio del terreno: por eso son distintos
-            {totalInteres > 0.01 ? (
-              <> — la diferencia es el interés ({formatMoney(totalInteres, 'BOB')} en todo el plan)</>
-            ) : null}
-            . Si adelantás capital, el interés que falta baja y el plan se rearma.
+            «Te queda» es lo que falta entregar después de pagar cada cuota. Si adelantás capital,
+            el plan se rearma y el total a pagar baja.
           </p>
         </>
       ) : d.situacion === 'venta' ? (
@@ -298,19 +289,7 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
       <h2 className="mt-6 text-xs font-bold tracking-wide text-stone-500 uppercase">
         Tus pagos — {d.pagos.filter((p) => p.estado === 'aprobado').length}
       </h2>
-      {/* LA REGLA, dicha. Cada pago cubre primero el interés del mes y recién
-          el sobrante baja el precio; por eso la columna «al precio» suma menos
-          que lo entregado, y por eso una cuota pagada de menos descuenta del
-          capital y no del interés. Verificado contra el motor: pagando de a
-          poco sobre una cuota de 646,99 con 407,48 de interés, los primeros
-          407,48 fueron íntegros a interés y el saldo del lote no se movió. */}
-      {interesPagado > 0.01 ? (
-        <p className="mt-1 text-[11px] text-stone-500">
-          Cada pago cubre primero el interés del mes; lo que sobra baja el precio del lote. Por eso
-          la columna «al precio» suma {formatMoney(d.pagado, 'BOB')} y no{' '}
-          {formatMoney(entregado, 'BOB')}.
-        </p>
-      ) : null}
+
       {d.pagos.length === 0 ? (
         <p className="mt-2 text-sm text-stone-500">Todavía no hay pagos registrados.</p>
       ) : (
@@ -342,14 +321,7 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
               >
                 {formatMoney(p.amount, p.currency)}
               </span>
-              {/* El reparto de ESTE pago. Sin esto, el comprador suma sus
-                  recibos, resta del precio, y le da otro saldo. */}
-              {p.estado === 'aprobado' && p.interes_bob > 0.01 ? (
-                <span className="w-full pl-0 text-[11px] text-stone-500 sm:w-auto sm:basis-full sm:text-right">
-                  {formatMoney(p.capital_bob, 'BOB')} al precio · {formatMoney(p.interes_bob, 'BOB')}{' '}
-                  de interés
-                </span>
-              ) : null}
+
               {p.tiene_recibo && !p.de_comprador_anterior ? (
                 <Link
                   href={`/reserva/${encodeURIComponent(d.tracking_code)}/recibo/${p.payment_id}`}

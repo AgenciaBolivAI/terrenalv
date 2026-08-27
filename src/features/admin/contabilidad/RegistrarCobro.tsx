@@ -71,8 +71,31 @@ export default function RegistrarCobroDialog({
   // la cajera elige entre dos cosas muy distintas a ciegas.
   const [plan, setPlan] = useState<{
     cuota: number;
+    /** La tasa mensual del plan: sin ella no se puede replicar al motor. */
+    tasa: number;
+    /** El CAPITAL que falta: la misma cuenta que hace admin_register_cuota_payment. */
+    capitalPendiente: number;
     pendientes: { numero: number; vence: string; falta: number }[];
   } | null>(null);
+  // El saldo del LOTE, preguntado acá y no recibido de quien abrió el diálogo:
+  // Planes pasaba la deuda del plan y Ventas el saldo del lote, así que el
+  // mismo botón mostraba dos «saldo actual» distintos para la misma venta.
+  const [saldoLote, setSaldoLote] = useState<number | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    void (async () => {
+      const { data } = await supabase
+        .from('v_ventas')
+        .select('saldo')
+        .eq('reservation_id', cobro.reservation_id)
+        .maybeSingle();
+      if (vivo && data) setSaldoLote(Number((data as { saldo: number }).saldo));
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [supabase, cobro.reservation_id]);
 
   useEffect(() => {
     if (!cobro.tiene_plan) return;
@@ -80,28 +103,46 @@ export default function RegistrarCobroDialog({
     void (async () => {
       const { data: pl } = await supabase
         .from('installment_plans')
-        .select('id, monthly_amount')
+        .select('id, monthly_amount, monthly_interest_pct')
         .eq('reservation_id', cobro.reservation_id)
         .eq('status', 'activo')
         .maybeSingle();
       if (!vivo || !pl) return;
       const { data: cs } = await supabase
         .from('installments')
-        .select('number, due_date, amount, amount_paid, status')
+        .select('number, due_date, amount, amount_paid, interes, status')
         .eq('plan_id', (pl as { id: string }).id)
         .in('status', ['pendiente', 'parcial'])
         .order('number');
       if (!vivo) return;
+      const filas = (cs ?? []) as unknown as {
+        number: number;
+        due_date: string;
+        amount: number;
+        amount_paid: number;
+        interes: number | null;
+      }[];
       setPlan({
         cuota: Number((pl as { monthly_amount: number }).monthly_amount),
-        pendientes: (cs ?? []).map((c) => {
-          const r = c as { number: number; due_date: string; amount: number; amount_paid: number };
-          return {
-            numero: Number(r.number),
-            vence: r.due_date,
-            falta: Number(r.amount) - Number(r.amount_paid),
-          };
-        }),
+        tasa: Number((pl as { monthly_interest_pct: number | null }).monthly_interest_pct ?? 0),
+        // Igual que el motor: capital de las cuotas vivas menos el capital ya
+        // pagado dentro de ellas. NO es la suma de las cuotas: eso lleva el
+        // interés de los meses que vienen.
+        capitalPendiente:
+          Math.round(
+            filas.reduce(
+              (t, r) =>
+                t +
+                (Number(r.amount) - Number(r.interes ?? 0)) -
+                Math.max(0, Number(r.amount_paid) - Number(r.interes ?? 0)),
+              0,
+            ) * 100,
+          ) / 100,
+        pendientes: filas.map((r) => ({
+          numero: Number(r.number),
+          vence: r.due_date,
+          falta: Number(r.amount) - Number(r.amount_paid),
+        })),
       });
     })();
     return () => {
@@ -156,7 +197,9 @@ export default function RegistrarCobroDialog({
     const bs = moneda === 'USD' ? Math.round(bruto * (Number(cambio) || 0) * 100) / 100 : bruto;
     if (bs <= 0) return null;
 
-    const saldoAntes = Number(cobro.saldo);
+    // El saldo del LOTE mientras se sepa; si la consulta aún no volvió, lo que
+    // trajo quien abrió el diálogo, para no quedarse sin nada que decir.
+    const saldoAntes = saldoLote ?? Number(cobro.saldo);
     const saldoDespues = Math.max(0, Math.round((saldoAntes - bs) * 100) / 100);
     const excede = bs > saldoAntes + 0.01;
 
@@ -199,33 +242,77 @@ export default function RegistrarCobroDialog({
       };
     }
 
-    // Abono a capital: baja la deuda y rearma lo que falta.
-    const pendienteDespues = Math.round((pendienteAntes - bs) * 100) / 100;
-    if (pendienteDespues <= 0.01) {
+    // ABONO A CAPITAL. Acá el diálogo PROMETE: hay que replicar al motor al
+    // centavo, no aproximar. El motor (admin_register_cuota_payment) anula las
+    // cuotas pendientes y rearma el cronograma sobre el CAPITAL nuevo — así
+    // que también muere el interés de los meses que ya no van a existir. Antes
+    // esta cuenta le restaba el abono a la deuda del plan como si fuera
+    // lineal, y prometía una cuota que el cronograma después no decía.
+    const i = plan.tasa / 100;
+    const capitalNuevo = Math.round((plan.capitalPendiente - bs) * 100) / 100;
+    if (capitalNuevo <= 0.01) {
       return { bs, saldoAntes, saldoDespues, excede, modo: 'capital' as const, cancela: true };
     }
-    const hoy = new Date().toISOString().slice(0, 10);
-    const futuras = plan.pendientes.filter((c) => c.vence >= hoy).length || 1;
     const mesesAntes = plan.pendientes.length;
+
+    // La cuota francesa sobre un capital y un plazo, igual que la base.
+    const cuotaFrancesa = (capital: number, meses: number) =>
+      i > 0
+        ? Math.round(((capital * i) / (1 - Math.pow(1 + i, -meses))) * 100) / 100
+        : Math.round((capital / meses) * 100) / 100;
+
+    let meses: number;
     if (recalculo === 'plazo') {
-      const meses = Math.max(1, Math.ceil(pendienteDespues / plan.cuota));
-      return {
-        bs,
-        saldoAntes,
-        saldoDespues,
-        excede,
-        modo: 'capital' as const,
-        cancela: false,
-        recalc: 'plazo' as const,
-        mesesAntes,
-        mesesDespues: meses,
-        cuotaAntes: plan.cuota,
-        cuotaDespues: plan.cuota,
-        pendienteAntes,
-        pendienteDespues,
-      };
+      // Conservar la cuota y acortar: el motor despeja n de la francesa.
+      const cuota = plan.cuota;
+      if (i > 0 && cuota <= capitalNuevo * i) {
+        // La cuota no cubriría ni el interés: el motor rebota con
+        // CUOTA_NO_CUBRE_INTERES, así que acá tampoco se promete nada.
+        return {
+          bs,
+          saldoAntes,
+          saldoDespues,
+          excede,
+          modo: 'capital' as const,
+          cancela: false,
+          recalc: 'plazo' as const,
+          noAmortiza: true,
+          mesesAntes,
+          mesesDespues: mesesAntes,
+          cuotaAntes: plan.cuota,
+          cuotaDespues: plan.cuota,
+          capitalAntes: plan.capitalPendiente,
+          capitalDespues: capitalNuevo,
+          pendienteAntes,
+          pendienteDespues: pendienteAntes,
+        };
+      }
+      meses =
+        i > 0
+          ? Math.min(
+              480,
+              Math.max(
+                1,
+                Math.round(
+                  Math.log(cuota / (cuota - capitalNuevo * i)) / Math.log(1 + i),
+                ),
+              ),
+            )
+          : Math.min(480, Math.max(1, Math.round(capitalNuevo / cuota)));
+    } else {
+      // Conservar el plazo: quedan las mismas cuotas que había.
+      meses = Math.max(1, mesesAntes);
     }
-    const nueva = Math.ceil((pendienteDespues / futuras) * 100) / 100;
+
+    // La cuota se recalcula SIEMPRE, en los dos modos: el motor usa la cuota
+    // vieja solo para despejar cuántos meses quedan, y después reparte parejo
+    // sobre el capital nuevo. Prometer la cuota vieja en el modo «termina
+    // antes» era otra promesa que el cronograma no cumplía.
+    const cuotaNueva = cuotaFrancesa(capitalNuevo, meses);
+    // Lo que va a decir el cronograma nuevo, que es lo que el comprador va a
+    // ver: la suma de las cuotas que quedan.
+    const pendienteReal = Math.round(cuotaNueva * meses * 100) / 100;
+
     return {
       bs,
       saldoAntes,
@@ -233,15 +320,18 @@ export default function RegistrarCobroDialog({
       excede,
       modo: 'capital' as const,
       cancela: false,
-      recalc: 'cuota' as const,
+      recalc: recalculo,
+      noAmortiza: false,
       mesesAntes,
-      mesesDespues: futuras,
+      mesesDespues: meses,
       cuotaAntes: plan.cuota,
-      cuotaDespues: nueva,
+      cuotaDespues: cuotaNueva,
+      capitalAntes: plan.capitalPendiente,
+      capitalDespues: capitalNuevo,
       pendienteAntes,
-      pendienteDespues,
+      pendienteDespues: pendienteReal,
     };
-  }, [amount, moneda, cambio, cobro.saldo, cobro.tiene_plan, plan, destino, recalculo]);
+  }, [amount, moneda, cambio, cobro.saldo, saldoLote, cobro.tiene_plan, plan, destino, recalculo]);
 
   async function register() {
     setError(null);
@@ -298,7 +388,7 @@ export default function RegistrarCobroDialog({
     } else {
       const extra =
         Number(r?.sobrante ?? 0) > 0
-          ? ` Sobran ${formatMoney(Number(r?.sobrante), cobro.currency)} sin aplicar: el plan ya no tiene cuotas pendientes.`
+          ? ` Sobran ${formatMoney(Number(r?.sobrante), 'BOB')} sin aplicar: el plan ya no tiene cuotas pendientes.`
           : '';
       push(`Pago registrado en ${r?.cuotas_afectadas ?? 0} cuota(s).${extra}`, 'success');
     }
@@ -338,7 +428,13 @@ export default function RegistrarCobroDialog({
                 cobro.buyer_phone,
                 `Hola ${cobro.buyer_full_name}, aquí está el recibo de tu ${
                   hecho.tipo === 'abono' ? 'abono' : 'pago'
-                } de ${formatMoney(Number(amount), cobro.currency)}: ${
+                  // La moneda del PAGO, no la de la venta: un cobro de $us 100
+                  // se le anunciaba al comprador como «Bs 100».
+                } de ${formatMoney(Number(amount), moneda)}${
+                  moneda === 'BOB'
+                    ? ''
+                    : ` (${formatMoney(Math.round(Number(amount) * Number(cambio) * 100) / 100, 'BOB')})`
+                }: ${
                   typeof window === 'undefined' ? '' : window.location.origin
                 }${enlace}`,
               )}
@@ -371,7 +467,10 @@ export default function RegistrarCobroDialog({
     >
       <div className="space-y-3">
         <p className="rounded-lg bg-stone-50 p-3 text-sm text-stone-600">
-          Saldo actual <strong>{formatMoney(cobro.saldo, cobro.currency)}</strong>.{' '}
+          {/* «Saldo del lote», con nombre: es el capital que falta del precio.
+              La deuda del plan —que lleva el interés de los meses que vienen—
+              es otro número y se muestra aparte, abajo. */}
+          Saldo del lote <strong>{formatMoney(saldoLote ?? cobro.saldo, 'BOB')}</strong>.{' '}
           {cobro.tiene_plan
             ? 'Elegí abajo si este pago va a las cuotas o al capital.'
             : 'Esta venta no tiene plan de cuotas: el pago entra como abono y baja el saldo.'}
@@ -519,15 +618,47 @@ export default function RegistrarCobroDialog({
 
                 {efecto.modo === 'capital' && !efecto.cancela ? (
                   <div className="mt-1.5 space-y-1 text-xs text-stone-600">
+                    {/* Las DOS deudas, con su nombre: la del lote (capital) y
+                        la del plan (capital + interés que falta). Antes se
+                        mostraba una sola, mal nombrada. */}
                     <p>
-                      Deuda del plan{' '}
+                      Capital del lote{' '}
+                      <strong className="tabular-nums">
+                        {formatMoney(Number(efecto.capitalAntes), 'BOB')}
+                      </strong>{' '}
+                      →{' '}
+                      <strong className="tabular-nums">
+                        {formatMoney(Number(efecto.capitalDespues), 'BOB')}
+                      </strong>
+                    </p>
+                    <p>
+                      Deuda del plan (con el interés que falta){' '}
                       <strong className="tabular-nums">
                         {formatMoney(Number(efecto.pendienteAntes), 'BOB')}
                       </strong>{' '}
-                      → <strong className="tabular-nums">
+                      →{' '}
+                      <strong className="tabular-nums">
                         {formatMoney(Number(efecto.pendienteDespues), 'BOB')}
                       </strong>
+                      {Number(efecto.pendienteAntes) - Number(efecto.pendienteDespues) > efecto.bs + 0.01 ? (
+                        <span className="text-stone-500">
+                          {' '}
+                          — baja{' '}
+                          {formatMoney(
+                            Number(efecto.pendienteAntes) - Number(efecto.pendienteDespues),
+                            'BOB',
+                          )}{' '}
+                          con un abono de {formatMoney(efecto.bs, 'BOB')}, porque también se ahorra el
+                          interés de los meses que ya no van a existir
+                        </span>
+                      ) : null}
                     </p>
+                    {efecto.noAmortiza ? (
+                      <p className="font-semibold text-red-700">
+                        Con esa cuota y ese capital el plan no amortizaría: la cuota no cubriría ni
+                        el interés del mes. Elegí «paga menos por mes» o cambiá el monto.
+                      </p>
+                    ) : null}
                     {efecto.recalc === 'plazo' ? (
                       <p>
                         Sigue pagando{' '}

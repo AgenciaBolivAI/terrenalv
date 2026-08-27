@@ -40,41 +40,58 @@ export async function bajarPlanPdf(p: PlanPdfDatos): Promise<string> {
   // El saldo corriente: lo que le queda DESPUÉS de cada cuota. La cuenta
   // vive en cuentas.ts, la misma que usa la pantalla, con sus tests.
   const saldos = saldosCorridos(cuotas);
+  const hoyIso = new Date().toISOString().slice(0, 10);
 
   // «Pagado» en el PDF es la PLATA ENTREGADA (los mismos recibos), no solo el
   // capital: misma regla que la pantalla del estado de cuenta.
-  const entregado =
-    Math.round(
-      p.pagos
-        .filter((x) => x.estado === 'aprobado')
-        .reduce((s, x) => s + Number(x.amount_bob), 0) * 100,
-    ) / 100;
-  const interesPagado = Math.max(0, Math.round((entregado - Number(p.pagado)) * 100) / 100);
+  // Las mismas cuentas que la pantalla: lo que entregó y lo que le falta
+  // entregar. La comisión del mercado la paga el vendedor, así que no es
+  // plata de este comprador.
+  const suyos = p.pagos.filter((x) => x.estado === 'aprobado' && x.purpose !== 'comision');
+  const entregado = Math.round(suyos.reduce((s, x) => s + Number(x.amount_bob), 0) * 100) / 100;
+  const faltaDelPlan = cuotas.length
+    ? Math.round(
+        cuotas
+          .filter((c) => c.status !== 'pagada')
+          .reduce((s, c) => s + Number(c.amount) - Number(c.amount_paid), 0) * 100,
+      ) / 100
+    : null;
+  const teQueda =
+    faltaDelPlan == null
+      ? Math.max(0, Math.round((Number(p.precio) - entregado) * 100) / 100)
+      : faltaDelPlan;
+  const totalAPagar = Math.round((entregado + teQueda) * 100) / 100;
+  // La resta del saldo solo existe si hay VENTA: en una reserva en curso, en
+  // una cedida o en una cerrada, `saldo` nunca se calcula y queda en 0 — el
+  // PDF llegó a imprimir «Bs 24.800 − Bs 400 = Bs 0», o sea que no debía nada.
+  // La pantalla ya tenía este guardián; el papel no.
+  const esVenta = p.situacion === 'venta';
   const filas: Cell[][] = cuotas.map((c, i) => {
     return [
       c.number,
       fecha(c.due_date),
       fnum(Number(c.amount)),
       fnum(saldos[i]),
+      // «Vencida» también en el papel: la pantalla la pinta en rojo y el PDF
+      // decía «Pendiente», que es justo la palabra que el moroso quiere leer.
       c.status === 'pagada'
         ? 'Pagada'
         : Number(c.amount_paid) > 0
           ? `Parcial ${fnum(Number(c.amount_paid))}`
-          : 'Pendiente',
+          : c.due_date < hoyIso
+            ? 'VENCIDA'
+            : 'Pendiente',
     ];
   });
 
   const condiciones =
     `Lote: Mz ${p.manzana ?? '—'}, Lote ${p.lote ?? '—'} — ${p.proyecto}   ·   ` +
     `Precio ${formatMoney(Number(p.precio), 'BOB')}   ·   ` +
-    `Entregado ${formatMoney(entregado, 'BOB')}` +
-    (interesPagado > 0.01
-      ? ` (${formatMoney(Number(p.pagado), 'BOB')} al precio + ${formatMoney(interesPagado, 'BOB')} de interés)`
+    `Pagado ${formatMoney(entregado, 'BOB')}` +
+    (esVenta ? `   ·   Saldo ${formatMoney(teQueda, 'BOB')}` : '') +
+    (esVenta && totalAPagar > Number(p.precio) + 0.01
+      ? `   ·   Total a pagar con financiamiento ${formatMoney(totalAPagar, 'BOB')}`
       : '') +
-    `   ·   ` +
-    // La resta, escrita entera: precio menos lo que fue al precio da el saldo.
-    `Saldo del lote ${formatMoney(Number(p.precio), 'BOB')} − ${formatMoney(Number(p.pagado), 'BOB')}` +
-    ` = ${formatMoney(Number(p.saldo), 'BOB')}` +
     (p.plan
       ? `   ·   ${terminosDelPlan(p.plan, (n) => formatMoney(n, 'BOB'))}`
       : '') +
