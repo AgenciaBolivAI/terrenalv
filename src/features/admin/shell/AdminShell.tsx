@@ -85,10 +85,24 @@ const GRUPOS: { titulo: string; items: NavItem[] }[] = [
         roles: ['admin', 'contabilidad'],
       },
       {
+        href: '/admin/inventario',
+        label: 'Inventario de terrenos',
+        icon: IconLayers,
+        roles: ['admin', 'contabilidad'],
+      },
+      {
+        href: '/admin/activos',
+        label: 'Activos fijos',
+        icon: IconGrid,
+        roles: ['admin', 'contabilidad'],
+      },
+      {
         href: '/admin/planes',
         label: 'Planes de pago',
         icon: IconRotate,
-        roles: ['admin', 'contabilidad'],
+        // El vendedor tambien: ve e imprime el plan de su cliente. Editar y
+        // cobrar lo frenan el rol y el candado de la base, no el menu.
+        roles: ['admin', 'contabilidad', 'ventas'],
       },
       {
         href: '/admin/comisiones',
@@ -106,7 +120,8 @@ const GRUPOS: { titulo: string; items: NavItem[] }[] = [
         href: '/admin/analitica',
         label: 'Analítica',
         icon: IconChart,
-        roles: ['admin', 'contabilidad'],
+        // El vendedor entra y ve LA SUYA (mi_analitica filtra en la base).
+        roles: ['admin', 'contabilidad', 'ventas'],
       },
     ],
   },
@@ -129,6 +144,12 @@ const GRUPOS: { titulo: string; items: NavItem[] }[] = [
     titulo: 'Empresa',
     items: [
       { href: '/admin/equipo', label: 'Equipo', icon: IconUsers, roles: ['admin'] },
+      {
+        href: '/admin/rrhh',
+        label: 'Recursos Humanos',
+        icon: IconUsers,
+        roles: ['admin', 'contabilidad'],
+      },
       { href: '/admin/configuracion', label: 'Configuración', icon: IconSettings, roles: ['admin'] },
       { href: '/admin/auditoria', label: 'Auditoría', icon: IconScroll, roles: ['admin'] },
     ],

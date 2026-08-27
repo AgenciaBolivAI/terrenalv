@@ -28,11 +28,14 @@ export default async function PlanesPage({
     if (ctx.reason === 'auth') redirect('/admin/login');
     return null;
   }
-  if (!isAccounting(ctx.profile.role)) {
+  // El vendedor VE los planes de sus clientes —imprimirlos, mandarlos— aunque
+  // cobrar y editar siga siendo de contabilidad. Manda el acceso resuelto por
+  // la base, no el rol a secas; 'no' solo si el dueño lo recortó a mano.
+  if ((ctx.acceso?.['planes'] ?? (isAccounting(ctx.profile.role) ? 'edita' : 've')) === 'no') {
     return (
       <EmptyState
         title="Sección restringida"
-        hint="Los planes de pago muestran precios, financiamiento e interés: no están disponibles para el rol de ventas."
+        hint="Tu cuenta no tiene habilitados los planes de pago. Pedilos en Equipo."
       />
     );
   }
