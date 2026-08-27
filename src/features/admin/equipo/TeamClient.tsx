@@ -36,6 +36,11 @@ export default function TeamClient({ selfId }: { selfId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [permisosDe, setPermisosDe] = useState<ProfileRow | null>(null);
+  // Dos formas de sumar a alguien: mandarle un correo, o crearle la cuenta
+  // lista con una contrasena. La segunda no depende de que el correo llegue.
+  const [modo, setModo] = useState<'invitar' | 'crear'>('invitar');
+  const [password, setPassword] = useState('');
+  const [verPassword, setVerPassword] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,12 +105,65 @@ export default function TeamClient({ selfId }: { selfId: string }) {
     }
   }
 
+  async function crearConPassword() {
+    setError(null);
+    if (!EMAIL_RE.test(email.trim())) {
+      setError('Correo invalido.');
+      return;
+    }
+    if (fullName.trim().length < 3) {
+      setError('Escribe el nombre completo.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('La contrase\u00f1a necesita al menos 8 caracteres.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch('/api/admin/crear-cuenta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          full_name: fullName.trim(),
+          role,
+          password,
+        }),
+      });
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) {
+        setError(body?.error ?? 'No se pudo crear la cuenta.');
+        return;
+      }
+      push(`Cuenta creada para ${email.trim()}. Ya puede entrar.`, 'success');
+      setInviteOpen(false);
+      setEmail('');
+      setFullName('');
+      setPassword('');
+      setRole('ventas');
+      void load();
+    } catch {
+      setError('No se pudo crear la cuenta. Revisa tu conexion.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-4xl">
       <div className="mb-3 flex items-center justify-between">
         <h1 className="text-lg font-bold text-stone-900">Equipo</h1>
-        <button type="button" className={btnPrimary} onClick={() => setInviteOpen(true)}>
-          Invitar
+        <button
+          type="button"
+          className={btnPrimary}
+          onClick={() => {
+            setError(null);
+            setPassword('');
+            setInviteOpen(true);
+          }}
+        >
+          Sumar a alguien
         </button>
       </div>
 
@@ -178,8 +236,37 @@ export default function TeamClient({ selfId }: { selfId: string }) {
         />
       ) : null}
 
-      <Dialog open={inviteOpen} onClose={() => setInviteOpen(false)} title="Invitar al equipo">
+      <Dialog open={inviteOpen} onClose={() => setInviteOpen(false)} title="Sumar a alguien al equipo">
         <div className="space-y-3">
+          {/* Dos caminos. El de la contrasena existe porque el correo a veces
+              no llega, o la persona todavia no controla esa casilla. */}
+          <div className="flex gap-1 rounded-xl border border-stone-200 bg-stone-50 p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setModo('invitar');
+                setError(null);
+              }}
+              className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium ${
+                modo === 'invitar' ? 'bg-white text-brand shadow-sm' : 'text-stone-600'
+              }`}
+            >
+              Invitar por correo
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setModo('crear');
+                setError(null);
+              }}
+              className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium ${
+                modo === 'crear' ? 'bg-white text-brand shadow-sm' : 'text-stone-600'
+              }`}
+            >
+              Crear con contrase\u00f1a
+            </button>
+          </div>
+
           <input
             type="email"
             value={email}
@@ -203,17 +290,58 @@ export default function TeamClient({ selfId }: { selfId: string }) {
           {/* Qué implica el rol elegido, ahí mismo: elegir entre tres nombres
               sin saber qué abre cada uno es cómo se reparte de más por las dudas. */}
           <p className="rounded-lg bg-stone-50 p-2.5 text-xs text-stone-600">{ROLE_HINT[role]}</p>
+
+          {modo === 'crear' ? (
+            <div>
+              <div className="flex gap-2">
+                <input
+                  type={verPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Contrase\u00f1a inicial"
+                  autoComplete="new-password"
+                  className={inputClass}
+                />
+                <button
+                  type="button"
+                  onClick={() => setVerPassword((v) => !v)}
+                  className="shrink-0 rounded-lg border border-stone-200 px-3 text-xs font-medium text-stone-600 hover:bg-stone-50"
+                >
+                  {verPassword ? 'Ocultar' : 'Ver'}
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-stone-400">
+                M\u00ednimo 8 caracteres. Se la ten\u00e9s que pasar vos por un medio seguro \u2014 el
+                sistema no la guarda en ning\u00fan lado ni la vuelve a mostrar.
+              </p>
+            </div>
+          ) : null}
+
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
+
           <p className="text-xs text-stone-400">
-            Recibirá un correo con un enlace para crear su contraseña y entrar al panel.
+            {modo === 'invitar'
+              ? 'Recibir\u00e1 un correo con un enlace para crear su contrase\u00f1a y entrar al panel.'
+              : 'La cuenta queda lista al instante: entra con ese correo y esa contrase\u00f1a, sin esperar ning\u00fan mail. Convien\u00e9 que la cambie en cuanto entre.'}
           </p>
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <button type="button" className={btnSecondary} onClick={() => setInviteOpen(false)}>
             Volver
           </button>
-          <button type="button" disabled={busy} className={btnPrimary} onClick={() => void invite()}>
-            {busy ? 'Enviando…' : 'Enviar invitación'}
+          <button
+            type="button"
+            disabled={busy}
+            className={btnPrimary}
+            onClick={() => void (modo === 'crear' ? crearConPassword() : invite())}
+          >
+            {busy
+              ? modo === 'crear'
+                ? 'Creando…'
+                : 'Enviando…'
+              : modo === 'crear'
+                ? 'Crear cuenta'
+                : 'Enviar invitación'}
           </button>
         </div>
       </Dialog>
