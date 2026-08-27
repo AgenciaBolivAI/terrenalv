@@ -11,7 +11,17 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { formatMoney } from '@/lib/format';
-import { Badge, EmptyState, Spinner } from '@/features/admin/ui/bits';
+import {
+  Badge,
+  EmptyState,
+  Spinner,
+  btnPrimary,
+  btnSecondary,
+  inputClass,
+} from '@/features/admin/ui/bits';
+import { Dialog } from '@/features/admin/ui/dialog';
+import { useToast } from '@/features/admin/ui/toast';
+import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
 import { dateLabel } from '@/features/admin/contabilidad/types';
 
 interface Venta {
@@ -58,6 +68,10 @@ interface Cuenta {
 
 export default function MiCuentaClient() {
   const supabase = useMemo(() => createClient(), []);
+  const { push } = useToast();
+  // Cada uno corrige su nombre y su teléfono. El rol y los permisos no: eso
+  // lo decide el administrador.
+  const [editarPerfil, setEditarPerfil] = useState<{ nombre: string; tel: string } | null>(null);
   const [c, setC] = useState<Cuenta | null>(null);
   const [cargado, setCargado] = useState(false);
 
@@ -90,12 +104,66 @@ export default function MiCuentaClient() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
-      <div>
-        <h1 className="text-lg font-bold text-stone-900">Mi cuenta</h1>
-        <p className="text-xs text-stone-500">
-          {c.nombre} · {c.rol} — tus ventas y tus comisiones.
-        </p>
+      <div className="flex flex-wrap items-baseline gap-3">
+        <div>
+          <h1 className="text-lg font-bold text-stone-900">Mi cuenta</h1>
+          <p className="text-xs text-stone-500">
+            {c.nombre} · {c.rol} — tus ventas y tus comisiones.
+          </p>
+        </div>
+        <button
+          type="button"
+          className={`${btnSecondary} ml-auto`}
+          onClick={() => setEditarPerfil({ nombre: c.nombre, tel: '' })}
+        >
+          Editar mi perfil
+        </button>
       </div>
+
+      {editarPerfil ? (
+        <Dialog open onClose={() => setEditarPerfil(null)} title="Mi perfil">
+          <p className="text-sm text-stone-600">
+            Corregí tu nombre y tu teléfono. El rol y los permisos los maneja el administrador.
+          </p>
+          <label className="mt-3 mb-1 block text-xs text-stone-500">Nombre completo</label>
+          <input
+            value={editarPerfil.nombre}
+            onChange={(e) => setEditarPerfil({ ...editarPerfil, nombre: e.target.value })}
+            className={inputClass}
+          />
+          <label className="mt-3 mb-1 block text-xs text-stone-500">Teléfono</label>
+          <input
+            value={editarPerfil.tel}
+            onChange={(e) => setEditarPerfil({ ...editarPerfil, tel: e.target.value })}
+            placeholder="70000000"
+            className={inputClass}
+          />
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" className={btnSecondary} onClick={() => setEditarPerfil(null)}>
+              Volver
+            </button>
+            <button
+              type="button"
+              className={btnPrimary}
+              onClick={async () => {
+                const { error } = await supabase.rpc('actualizar_mi_perfil', {
+                  p_full_name: editarPerfil.nombre,
+                  p_phone: editarPerfil.tel || null,
+                });
+                if (error) {
+                  push(adminErrorCopy(error.message), 'error');
+                  return;
+                }
+                push('Perfil actualizado.', 'success');
+                setEditarPerfil(null);
+                window.location.reload();
+              }}
+            >
+              Guardar
+            </button>
+          </div>
+        </Dialog>
+      ) : null}
 
       {/* ---- Lo mío, de un vistazo ---- */}
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
