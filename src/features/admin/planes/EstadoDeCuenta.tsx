@@ -298,6 +298,19 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
       <h2 className="mt-6 text-xs font-bold tracking-wide text-stone-500 uppercase">
         Tus pagos — {d.pagos.filter((p) => p.estado === 'aprobado').length}
       </h2>
+      {/* LA REGLA, dicha. Cada pago cubre primero el interés del mes y recién
+          el sobrante baja el precio; por eso la columna «al precio» suma menos
+          que lo entregado, y por eso una cuota pagada de menos descuenta del
+          capital y no del interés. Verificado contra el motor: pagando de a
+          poco sobre una cuota de 646,99 con 407,48 de interés, los primeros
+          407,48 fueron íntegros a interés y el saldo del lote no se movió. */}
+      {interesPagado > 0.01 ? (
+        <p className="mt-1 text-[11px] text-stone-500">
+          Cada pago cubre primero el interés del mes; lo que sobra baja el precio del lote. Por eso
+          la columna «al precio» suma {formatMoney(d.pagado, 'BOB')} y no{' '}
+          {formatMoney(entregado, 'BOB')}.
+        </p>
+      ) : null}
       {d.pagos.length === 0 ? (
         <p className="mt-2 text-sm text-stone-500">Todavía no hay pagos registrados.</p>
       ) : (
@@ -329,6 +342,14 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
               >
                 {formatMoney(p.amount, p.currency)}
               </span>
+              {/* El reparto de ESTE pago. Sin esto, el comprador suma sus
+                  recibos, resta del precio, y le da otro saldo. */}
+              {p.estado === 'aprobado' && p.interes_bob > 0.01 ? (
+                <span className="w-full pl-0 text-[11px] text-stone-500 sm:w-auto sm:basis-full sm:text-right">
+                  {formatMoney(p.capital_bob, 'BOB')} al precio · {formatMoney(p.interes_bob, 'BOB')}{' '}
+                  de interés
+                </span>
+              ) : null}
               {p.tiene_recibo && !p.de_comprador_anterior ? (
                 <Link
                   href={`/reserva/${encodeURIComponent(d.tracking_code)}/recibo/${p.payment_id}`}

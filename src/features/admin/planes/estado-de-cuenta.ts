@@ -40,6 +40,10 @@ export interface PagoEstado {
   tiene_recibo: boolean;
   de_comprador_anterior: boolean;
   pagado_por: string;
+  /** Lo que este pago pagó de interés del plan. */
+  interes_bob: number;
+  /** Lo que este pago bajó del precio del lote. Suman amount_bob entre los dos. */
+  capital_bob: number;
 }
 
 export interface EstadoDeCuenta {
@@ -247,7 +251,7 @@ export async function cargarEstadoDeCuenta(
     .from('v_historial_pagos_cadena')
     .select(
       'payment_id, fecha, created_at, tipo, forma, amount, currency, amount_bob, estado, ' +
-        'tiene_recibo, de_comprador_anterior, buyer_full_name',
+        'tiene_recibo, de_comprador_anterior, buyer_full_name, interes_bob, capital_bob',
     )
     .eq('venta_id', r.id)
     .order('created_at', { ascending: false });
@@ -267,6 +271,8 @@ export async function cargarEstadoDeCuenta(
       tiene_recibo: x.tiene_recibo,
       de_comprador_anterior: x.de_comprador_anterior,
       pagado_por: x.buyer_full_name,
+      interes_bob: Number(x.interes_bob ?? 0),
+      capital_bob: Number(x.capital_bob ?? x.amount_bob),
     };
   });
 
