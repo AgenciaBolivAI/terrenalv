@@ -59,6 +59,23 @@ export default function Estados({
 }) {
   const supabase = useMemo(() => createClient(), []);
   const [tab, setTab] = useState<Estado>('sumas');
+  // El bimonetario de CONTAB: cada estado con su columna $us al tipo de
+  // cambio configurado. La conversion es DE LECTURA — el libro es en Bs; el
+  // $us es la misma cifra dividida por el TC, y el TC usado queda impreso.
+  const [tc, setTc] = useState<number | null>(null);
+  const [verUsd, setVerUsd] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      const { data } = await supabase.rpc('get_exchange_rate', {
+        p_project_id: projectId,
+      });
+      const n = Number(data);
+      setTc(Number.isFinite(n) && n > 0 ? n : 6.96);
+    })();
+  }, [supabase, projectId]);
+
+  const usd = (v: number) => (tc ? Math.round((v / tc) * 100) / 100 : 0);
   const [desde, setDesde] = useState(monthStartIso);
   const [hasta, setHasta] = useState(todayIso);
   const [loading, setLoading] = useState(true);
@@ -123,6 +140,10 @@ export default function Estados({
             </button>
           ))}
         </div>
+        <label className="ml-auto flex items-center gap-2 text-xs text-stone-600">
+          <input type="checkbox" checked={verUsd} onChange={(e) => setVerUsd(e.target.checked)} />
+          Ver también en $us{tc ? ` (TC ${tc})` : ''}
+        </label>
         <label className="flex items-center gap-2 text-xs text-stone-500">
           Desde
           <input
@@ -288,6 +309,11 @@ export default function Estados({
                           <td className="py-1.5 font-mono text-xs text-stone-500">{r.cuenta}</td>
                           <td className="py-1.5 text-stone-800">{r.cuenta_nombre}</td>
                           <td className="py-1.5 text-right"><Money v={Number(r.monto)} /></td>
+                          {verUsd ? (
+                            <td className="py-1.5 text-right text-stone-500">
+                              <Money v={usd(Number(r.monto))} />
+                            </td>
+                          ) : null}
                         </tr>
                       ))}
                       <tr className="border-t border-stone-300">
@@ -295,6 +321,11 @@ export default function Estados({
                           Total {titulo.toLowerCase()}
                         </td>
                         <td className="py-2 text-right"><Money v={total} bold /></td>
+                        {verUsd ? (
+                          <td className="py-2 text-right text-stone-500">
+                            <Money v={usd(total)} bold />
+                          </td>
+                        ) : null}
                       </tr>
                     </tbody>
                   </table>
@@ -362,6 +393,11 @@ export default function Estados({
                             <td className="py-1.5 font-mono text-xs text-stone-500">{r.cuenta}</td>
                             <td className="py-1.5 text-stone-800">{r.cuenta_nombre}</td>
                             <td className="py-1.5 text-right"><Money v={Number(r.monto)} /></td>
+                          {verUsd ? (
+                            <td className="py-1.5 text-right text-stone-500">
+                              <Money v={usd(Number(r.monto))} />
+                            </td>
+                          ) : null}
                           </tr>
                         ))}
                         <tr className="border-t border-stone-300">

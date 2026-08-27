@@ -32,6 +32,7 @@ import { dateLabel } from '@/features/admin/contabilidad/types';
 import { useAdmin } from '@/features/admin/shell/AdminContext';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
 import { num as fnum, type Cell as XCell } from '@/features/admin/export';
+import LibroIva from './LibroIva';
 
 interface Pendiente {
   project_id: string;
@@ -69,7 +70,7 @@ const ORIGEN_LABEL: Record<string, string> = {
   comprobante: 'Comprobante',
 };
 
-type Vista = 'pendiente' | 'libro' | 'excluidos';
+type Vista = 'pendiente' | 'libro' | 'excluidos' | 'iva';
 
 export default function FiscalClient() {
   const supabase = useMemo(() => createClient(), []);
@@ -222,6 +223,7 @@ export default function FiscalClient() {
             ['pendiente', `Por declarar (${porImportar.length})`],
             ['libro', `Libro fiscal (${comprobantes})`],
             ['excluidos', `Afuera (${excluidos.length})`],
+            ['iva', 'Compras y ventas IVA'],
           ] as [Vista, string][]
         ).map(([id, label]) => (
           <button
@@ -236,6 +238,8 @@ export default function FiscalClient() {
           </button>
         ))}
       </div>
+
+      {vista === 'iva' ? <LibroIva /> : null}
 
       {/* ---------- por declarar ---------- */}
       {vista === 'pendiente' ? (
