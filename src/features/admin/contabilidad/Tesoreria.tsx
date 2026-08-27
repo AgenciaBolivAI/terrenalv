@@ -49,6 +49,8 @@ export interface TreasuryAccount {
   saldo: number;
   ultimo_movimiento: string | null;
   movimientos: number;
+  /** 'fiscal' = lo que pasa por acá se propone declarar; 'gerencial' = no. */
+  ambito: 'gerencial' | 'fiscal';
 }
 
 export interface Contact {
@@ -391,6 +393,41 @@ export default function Tesoreria({
                       {r.is_active ? null : (
                         <Badge className="ml-1 bg-stone-200 text-stone-600">Inactiva</Badge>
                       )}
+                      {/* A qué libro pertenece. Todo está siempre en el
+                          gerencial; esto decide si además se declara. */}
+                      <button
+                        type="button"
+                        title={
+                          r.ambito === 'fiscal'
+                            ? 'Lo que pasa por esta cuenta se propone declarar. Tocá para sacarla del libro fiscal.'
+                            : 'Lo que pasa por esta cuenta NO se declara solo. Tocá para incluirla en el libro fiscal.'
+                        }
+                        onClick={async (ev) => {
+                          ev.stopPropagation();
+                          const { error } = await supabase.rpc('admin_cuenta_ambito', {
+                            p_id: r.id,
+                            p_ambito: r.ambito === 'fiscal' ? 'gerencial' : 'fiscal',
+                          });
+                          if (error) {
+                            push(adminErrorCopy(error.message), 'error');
+                            return;
+                          }
+                          push(
+                            r.ambito === 'fiscal'
+                              ? 'La cuenta sale del libro fiscal: lo suyo ya no se declara solo.'
+                              : 'La cuenta entra al libro fiscal: lo suyo se propone declarar.',
+                            'success',
+                          );
+                          void load();
+                        }}
+                        className={`ml-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                          r.ambito === 'fiscal'
+                            ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                            : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                        }`}
+                      >
+                        {r.ambito === 'fiscal' ? 'declara' : 'no declara'}
+                      </button>
                     </td>
                     <td className="px-3 py-2 text-stone-500">
                       {r.bank_name ?? '—'}

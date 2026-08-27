@@ -1203,7 +1203,17 @@ export default function AccountingClient({
                       <td className="px-3 py-2 text-right font-semibold tabular-nums text-stone-900">
                         {formatMoney(Number(e.amount), e.currency)}
                       </td>
-                      <td className="px-3 py-2 text-right">
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        {/* Un egreso sin comprobante es plata que salió y nadie
+                            firmó. Se emite desde acá, con las firmas al pie. */}
+                        <a
+                          href={`/admin/egreso/${e.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mr-2 rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-stone-700 hover:bg-stone-100"
+                        >
+                          Comprobante
+                        </a>
                         <button
                           type="button"
                           className={btnSecondary}
@@ -1952,6 +1962,10 @@ function ExpenseDialog({
   // despues decide si esto se declara o no.
   const [centros, setCentros] = useState<{ id: string; codigo: string; nombre: string }[]>([]);
   const [centroId, setCentroId] = useState('');
+  // El catálogo de conceptos: «Uniformes», «Luz», «Combustible». Cada uno sabe
+  // en qué cuenta del plan cae, así que agregar uno no toca el libro.
+  const [conceptos, setConceptos] = useState<{ id: string; nombre: string }[]>([]);
+  const [conceptId, setConceptId] = useState('');
   const [titular, setTitular] = useState<'empresa' | 'tercero'>('empresa');
   const [titularNombre, setTitularNombre] = useState('');
 
@@ -1964,6 +1978,12 @@ function ExpenseDialog({
         .or(`project_id.eq.${projectId},project_id.is.null`)
         .order('codigo');
       setCentros((data ?? []) as { id: string; codigo: string; nombre: string }[]);
+      const { data: cs } = await supabase
+        .from('expense_concepts')
+        .select('id, nombre, sort_order')
+        .eq('is_active', true)
+        .order('sort_order');
+      setConceptos((cs ?? []) as { id: string; nombre: string }[]);
     })();
   }, [supabase, projectId]);
 
@@ -1999,6 +2019,7 @@ function ExpenseDialog({
       p_titular: titular,
       p_titular_nombre: titular === 'tercero' ? titularNombre.trim() : null,
       p_reservation_id: null,
+      p_concept_id: conceptId || null,
     });
     setBusy(false);
     if (err) {
@@ -2076,6 +2097,26 @@ function ExpenseDialog({
         ) : null}
 
         <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">Concepto</label>
+            <select
+              value={conceptId}
+              onChange={(e) => setConceptId(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">— sin concepto —</option>
+              {conceptos.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-stone-400">
+              El concepto decide en qué cuenta contable cae el gasto. Sin concepto manda la
+              categoría, que es más gruesa.
+            </p>
+          </div>
+
           <div>
             <label className="mb-1 block text-xs text-stone-500">Centro de costos</label>
             <select
