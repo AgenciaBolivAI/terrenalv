@@ -4,7 +4,7 @@
 // de salir, el test lo canta antes de que lo cante un comprador.
 
 import { describe, expect, it } from 'vitest';
-import { saldosCorridos, terminosDelPlan } from './cuentas';
+import { cuentaDelComprador, saldosCorridos, terminosDelPlan } from './cuentas';
 
 const bs = (n: number) => `Bs ${n.toLocaleString('es-BO')}`;
 
@@ -78,5 +78,80 @@ describe('terminosDelPlan', () => {
         bs,
       ),
     ).toBe('6 cuotas de Bs 2.625');
+  });
+});
+
+describe('cuentaDelComprador', () => {
+  // EDS-684B-B2SS, de producción. Lote Bs 24.800, entregó Bs 400 antes del
+  // plan, así que se financian 24.400 al 1,67% mensual en 60 cuotas de
+  // 646,99. Pagó 646 de la primera (le faltaron 0,99).
+  const PAGOS = [
+    { estado: 'aprobado', purpose: 'abono', amount_bob: 400 },
+    { estado: 'aprobado', purpose: 'cuota', amount_bob: 646 },
+  ];
+  const PLAN = {
+    estado: 'activo',
+    cuotas: [
+      { amount: 646.99, amount_paid: 646, status: 'parcial' },
+      ...Array.from({ length: 58 }, () => ({
+        amount: 646.99,
+        amount_paid: 0,
+        status: 'pendiente',
+      })),
+      { amount: 647.42, amount_paid: 0, status: 'pendiente' },
+    ],
+  };
+
+  it('EDS-684B-B2SS: pagó lo que entregó, y la resta cierra', () => {
+    const c = cuentaDelComprador(24800, PAGOS, PLAN);
+    expect(c.entregado).toBe(1046); // 400 + 646, sin repartir en nada
+    expect(c.teQueda).toBe(38173.83); // la misma cifra que ve el equipo en Planes
+    expect(c.totalAPagar).toBe(39219.83);
+    // Las dos comprobaciones que la hoja imprime:
+    expect(c.totalAPagar - c.entregado).toBeCloseTo(c.teQueda, 2);
+    expect(24800 + c.interes).toBeCloseTo(c.totalAPagar, 2);
+    // Y el interés es el del cronograma sobre los 24.400 financiados.
+    expect(c.interes).toBe(14419.83);
+  });
+
+  it('la comisión del mercado no es plata del comprador', () => {
+    // Un lote recibido por traspaso arrastra la comisión que pagó el VENDEDOR.
+    // Contarla le imprimía al comprador nuevo Bs 5.400 que nunca puso.
+    const conComision = [
+      { estado: 'aprobado', purpose: 'cuota', amount_bob: 7500 },
+      { estado: 'aprobado', purpose: 'comision', amount_bob: 5400 },
+    ];
+    const c = cuentaDelComprador(30000, conComision, null);
+    expect(c.entregado).toBe(7500);
+    expect(c.teQueda).toBe(22500);
+    expect(c.interes).toBe(0); // sin plan no hay interés que inventar
+  });
+
+  it('un plan cancelado no manda: se mide contra el precio', () => {
+    // Sus cuotas quedan anuladas y la suma daría cero; la hoja llegaría a
+    // decirle «¡Pagado!» a alguien que debe 20.000.
+    const muerto = { estado: 'cancelado', cuotas: [] };
+    const c = cuentaDelComprador(30000, [
+      { estado: 'aprobado', purpose: 'cuota', amount_bob: 10000 },
+    ], muerto);
+    expect(c.teQueda).toBe(20000);
+    expect(c.totalAPagar).toBe(30000);
+  });
+
+  it('los pagos que no entraron no cuentan', () => {
+    const c = cuentaDelComprador(10000, [
+      { estado: 'aprobado', purpose: 'reserva', amount_bob: 1000 },
+      { estado: 'rechazado', purpose: 'cuota', amount_bob: 5000 },
+      { estado: 'cancelado', purpose: 'cuota', amount_bob: 2000 },
+    ], null);
+    expect(c.entregado).toBe(1000);
+    expect(c.teQueda).toBe(9000);
+  });
+
+  it('pagado de más no deja saldo negativo', () => {
+    const c = cuentaDelComprador(10000, [
+      { estado: 'aprobado', purpose: 'cuota', amount_bob: 12000 },
+    ], null);
+    expect(c.teQueda).toBe(0);
   });
 });

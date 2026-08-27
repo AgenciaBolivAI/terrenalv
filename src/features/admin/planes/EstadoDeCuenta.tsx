@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { formatMoney } from '@/lib/format';
-import { saldosCorridos } from './cuentas';
+import { cuentaDelComprador, saldosCorridos } from './cuentas';
 import { Logo } from '@/components/Logo';
 import type { EstadoDeCuenta as Datos } from './estado-de-cuenta';
 
@@ -35,27 +35,15 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
   // suyo — Bs 5.400 de interés en un plan al 0%, en una venta que ni siquiera
   // tenía plan. La comisión sigue apareciendo en la lista de recibos (con su
   // marca de quién la pagó), pero no cuenta como plata entregada por él.
-  const suyos = d.pagos.filter((p) => p.estado === 'aprobado' && p.purpose !== 'comision');
-  // PAGASTE: la plata que entregó, tal cual. Si puso 646, pagó 646.
-  const entregado =
-    Math.round(suyos.reduce((s, p) => s + Number(p.amount_bob), 0) * 100) / 100;
-  // TE QUEDA: lo que todavía tiene que entregar. Las cuotas ya llevan el
-  // interés adentro, así que esto es plata contante — la misma cifra que ve
-  // el equipo en Planes. Sin plan, el precio menos lo entregado.
-  const faltaDelPlan = d.plan
-    ? Math.round(
-        d.plan.cuotas
-          .filter((c) => c.status !== 'pagada')
-          .reduce((s, c) => s + Number(c.amount) - Number(c.amount_paid), 0) * 100,
-      ) / 100
-    : null;
-  const teQueda =
-    faltaDelPlan == null
-      ? Math.max(0, Math.round((d.precio - entregado) * 100) / 100)
-      : faltaDelPlan;
-  // Todo lo que va a pagar por el lote. Con financiamiento es más que el
-  // precio; decirlo una vez acá evita tener que explicar cada pago.
-  const totalAPagar = Math.round((entregado + teQueda) * 100) / 100;
+  // La cuenta del comprador vive en cuentas.ts, con sus tests, y la usan
+  // TAMBIÉN el PDF: dos copias de esta resta ya se contradijeron dos veces
+  // en un mismo día.
+  const {
+    entregado,
+    teQueda,
+    totalAPagar,
+    interes: interesDelTotal,
+  } = cuentaDelComprador(d.precio, d.pagos, d.plan);
   // El «te queda» de cada fila sale de cuentas.ts — la misma cuenta que usa
   // el PDF, con sus tests. Dos copias de esta aritmética ya se contradijeron
   // una vez en producción.
@@ -179,9 +167,13 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
               total a pagar es mayor que el precio, y cómo cierra la resta. */}
           {totalAPagar > d.precio + 0.01 ? (
             <p className="mt-3 border-t border-stone-200 pt-2 text-center text-xs text-stone-600">
-              Con el financiamiento, el total a pagar es{' '}
-              <strong className="tabular-nums">{formatMoney(totalAPagar, 'BOB')}</strong> en cuotas:{' '}
-              {formatMoney(totalAPagar, 'BOB')} − {formatMoney(entregado, 'BOB')} ={' '}
+              El lote cuesta{' '}
+              <strong className="tabular-nums">{formatMoney(d.precio, 'BOB')}</strong> y el
+              financiamiento agrega{' '}
+              <strong className="tabular-nums">{formatMoney(interesDelTotal, 'BOB')}</strong> de
+              interés: en total pagás{' '}
+              <strong className="tabular-nums">{formatMoney(totalAPagar, 'BOB')}</strong>. Menos los{' '}
+              {formatMoney(entregado, 'BOB')} que ya pagaste, te quedan{' '}
               {formatMoney(teQueda, 'BOB')}.
             </p>
           ) : null}
@@ -215,9 +207,13 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
             {Number(d.plan.monthly_interest_pct) > 0 ? (
               <>
                 {' '}
-                con {Number(d.plan.monthly_interest_pct)}% de interés mensual sobre saldo · interés
-                total {formatMoney(totalInteres, 'BOB')} · pagás{' '}
-                {formatMoney(totalCuotas, 'BOB')} en total
+                con {Number(d.plan.monthly_interest_pct)}% mensual sobre el saldo financiado, que
+                arrancó en{' '}
+                <strong className="tabular-nums">
+                  {formatMoney(Number(d.plan.financed_amount), 'BOB')}
+                </strong>{' '}
+                · las cuotas suman {formatMoney(totalCuotas, 'BOB')} ({formatMoney(totalInteres, 'BOB')}{' '}
+                de interés)
               </>
             ) : null}
             . Llevás {d.plan.cuotas_pagadas} de {d.plan.cuotas_totales} cuotas

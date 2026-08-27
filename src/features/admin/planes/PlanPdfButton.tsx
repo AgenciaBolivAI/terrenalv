@@ -15,7 +15,7 @@
 
 import { useState } from 'react';
 import { exportPdf, num as fnum, type Cell } from '@/features/admin/export';
-import { saldosCorridos, terminosDelPlan } from './cuentas';
+import { cuentaDelComprador, saldosCorridos, terminosDelPlan } from './cuentas';
 import type { EstadoDeCuenta } from './estado-de-cuenta';
 import { formatMoney, waLink } from '@/lib/format';
 import { IconWhatsapp } from '@/features/admin/ui/icons';
@@ -44,23 +44,13 @@ export async function bajarPlanPdf(p: PlanPdfDatos): Promise<string> {
 
   // «Pagado» en el PDF es la PLATA ENTREGADA (los mismos recibos), no solo el
   // capital: misma regla que la pantalla del estado de cuenta.
-  // Las mismas cuentas que la pantalla: lo que entregó y lo que le falta
-  // entregar. La comisión del mercado la paga el vendedor, así que no es
-  // plata de este comprador.
-  const suyos = p.pagos.filter((x) => x.estado === 'aprobado' && x.purpose !== 'comision');
-  const entregado = Math.round(suyos.reduce((s, x) => s + Number(x.amount_bob), 0) * 100) / 100;
-  const faltaDelPlan = cuotas.length
-    ? Math.round(
-        cuotas
-          .filter((c) => c.status !== 'pagada')
-          .reduce((s, c) => s + Number(c.amount) - Number(c.amount_paid), 0) * 100,
-      ) / 100
-    : null;
-  const teQueda =
-    faltaDelPlan == null
-      ? Math.max(0, Math.round((Number(p.precio) - entregado) * 100) / 100)
-      : faltaDelPlan;
-  const totalAPagar = Math.round((entregado + teQueda) * 100) / 100;
+  // La MISMA cuenta que la pantalla, del mismo archivo: el papel impreso y lo
+  // que se ve en la web no pueden decir cifras distintas del mismo lote.
+  const { entregado, teQueda, totalAPagar } = cuentaDelComprador(
+    Number(p.precio),
+    p.pagos,
+    p.plan,
+  );
   // La resta del saldo solo existe si hay VENTA: en una reserva en curso, en
   // una cedida o en una cerrada, `saldo` nunca se calcula y queda en 0 — el
   // PDF llegó a imprimir «Bs 24.800 − Bs 400 = Bs 0», o sea que no debía nada.
@@ -90,15 +80,17 @@ export async function bajarPlanPdf(p: PlanPdfDatos): Promise<string> {
     `Pagado ${formatMoney(entregado, 'BOB')}` +
     (esVenta ? `   ·   Saldo ${formatMoney(teQueda, 'BOB')}` : '') +
     (esVenta && totalAPagar > Number(p.precio) + 0.01
-      ? `   ·   Total a pagar con financiamiento ${formatMoney(totalAPagar, 'BOB')}`
+      ? `   ·   Precio ${formatMoney(Number(p.precio), 'BOB')} + interés ` +
+        `${formatMoney(Math.round((totalAPagar - Number(p.precio)) * 100) / 100, 'BOB')} = ` +
+        `total a pagar ${formatMoney(totalAPagar, 'BOB')}`
       : '') +
     (p.plan
       ? `   ·   ${terminosDelPlan(p.plan, (n) => formatMoney(n, 'BOB'))}`
       : '') +
     (Number(p.plan?.monthly_interest_pct ?? 0) > 0
-      ? `   ·   Interés ${Number(p.plan?.monthly_interest_pct)}% mensual sobre saldo   ·   ` +
-        `Interés total ${formatMoney(totalInteres, 'BOB')}   ·   ` +
-        `Total a pagar ${formatMoney(totalCuotas, 'BOB')}`
+      ? `   ·   Interés ${Number(p.plan?.monthly_interest_pct)}% mensual sobre el saldo financiado ` +
+        `de ${formatMoney(Number(p.plan?.financed_amount ?? 0), 'BOB')}   ·   ` +
+        `Las cuotas suman ${formatMoney(totalCuotas, 'BOB')} (${formatMoney(totalInteres, 'BOB')} de interés)`
       : '');
 
   const filename = `plan-de-pago-${p.tracking_code}`;
