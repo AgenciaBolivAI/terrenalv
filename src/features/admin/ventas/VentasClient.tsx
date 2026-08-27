@@ -941,9 +941,17 @@ export default function VentasClient({
                                 </div>
 
                                 <div>
-                                  <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
-                                    Historial de pagos de este lote
-                                  </p>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+                                      Historial de pagos de este lote
+                                    </p>
+                                    <a
+                                      href={`/admin/lote/${r.reservation_id}`}
+                                      className="ml-auto rounded-lg border border-stone-300 bg-white px-2.5 py-1 text-xs font-semibold text-stone-700 hover:bg-stone-100"
+                                    >
+                                      Abrir Mz {r.manzana ?? '—'}, Lote {r.lote ?? '—'} en pantalla completa →
+                                    </a>
+                                  </div>
                                   {pagos === null || resumen === null ? (
                                     <div className="mt-3">
                                       <Spinner />

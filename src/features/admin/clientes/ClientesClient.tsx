@@ -52,6 +52,10 @@ interface Cliente {
   /** Valor de venta acordado de los lotes que compro. */
   comprado_total: number;
   pagado_total: number;
+  /** Lo que fue contra el precio del lote. Es lo que baja el saldo. */
+  pagado_capital: number;
+  /** Precio del tiempo, no del terreno: no baja el saldo. */
+  pagado_interes: number;
   saldo_total: number;
   con_plan: number;
   cuotas_vencidas: number;
@@ -328,7 +332,8 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
       enMora: rows.filter((r) => Number(r.cuotas_vencidas) > 0).length,
       conReservas: rows.filter((r) => Number(r.lotes_reservados) > 0).length,
       comprado: rows.reduce((s, r) => s + Number(r.comprado_total ?? 0), 0),
-      pagado: rows.reduce((s, r) => s + Number(r.pagado_total), 0),
+      pagado: rows.reduce((s, r) => s + Number(r.pagado_capital ?? r.pagado_total), 0),
+      interes: rows.reduce((s, r) => s + Number(r.pagado_interes ?? 0), 0),
       saldo: rows.reduce((s, r) => s + Number(r.saldo_total), 0),
     }),
     [rows],
@@ -433,7 +438,7 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
               subtitle: 'Terrenalv S.R.L. — todas las urbanizaciones',
               filename: `clientes-${new Date().toISOString().slice(0, 10)}`,
               footnote:
-                'Valor acordado: el precio de los lotes que conserva. Pagado incluye lo abonado en el sistema anterior y lo pagado en lotes que despu\u00e9s cedi\u00f3 por traspaso \u2014 por eso en esos casos pagado puede superar al valor acordado. Saldo y mora, de las ventas vivas.',
+                'Valor acordado: el precio de los lotes que conserva. Pagado es CAPITAL — lo que fue contra el precio del lote, incluido lo abonado en el sistema anterior — así que acordado menos pagado da el saldo. El interés va en su propia columna porque no baja el saldo: es precio del tiempo, no del terreno. En quien cedió un lote por traspaso, lo pagado incluye plata de un lote que ya no es suyo. Saldo y mora, de las ventas vivas.',
             }}
             columns={[
               { header: 'Cliente' },
@@ -442,7 +447,8 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
               { header: 'Comprados', align: 'right' },
               { header: 'Valor acordado', align: 'right' },
               { header: 'Reservados', align: 'right' },
-              { header: 'Pagado', align: 'right' },
+              { header: 'Pagado (capital)', align: 'right' },
+              { header: 'Interés', align: 'right' },
               { header: 'Saldo', align: 'right' },
               { header: 'Cuotas vencidas', align: 'right' },
               { header: 'Última actividad' },
@@ -455,7 +461,8 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
                 fnum(Number(r.lotes_comprados), 0),
                 fnum(Number(r.comprado_total ?? 0)),
                 fnum(Number(r.lotes_reservados), 0),
-                fnum(Number(r.pagado_total)),
+                fnum(Number(r.pagado_capital ?? r.pagado_total)),
+                fnum(Number(r.pagado_interes ?? 0)),
                 fnum(Number(r.saldo_total)),
                 fnum(Number(r.cuotas_vencidas), 0),
                 r.ultima_actividad ? dateLabel(r.ultima_actividad) : '—',
@@ -494,6 +501,9 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
                     Pagado
                   </th>
                   <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">
+                    Interés
+                  </th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">
                     Saldo
                   </th>
                   <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Mora</th>
@@ -526,21 +536,29 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
                       <td className="px-3 py-2 text-right font-medium tabular-nums text-stone-800">
                         {Number(r.comprado_total ?? 0) > 0
                           ? formatMoney(Number(r.comprado_total), 'BOB')
-                          : '\u2014'}
+                          : '—'}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-stone-600">
-                        {formatMoney(Number(r.pagado_total), 'BOB')}
+                        {formatMoney(Number(r.pagado_capital ?? r.pagado_total), 'BOB')}
                         {/* Si cedio un lote, lo que pago incluye plata de un
                             lote que ya no es suyo: sin esta marca, la fila
                             parece un sobrepago. */}
                         {Number(r.traspasos_cedidos) > 0 ? (
                           <span
                             className="ml-1 cursor-help text-[11px] text-amber-700"
-                            title={`Incluye lo pagado en ${r.traspasos_cedidos} lote(s) que despu\u00e9s cedi\u00f3 por traspaso.`}
+                            title={`Incluye lo pagado en ${r.traspasos_cedidos} lote(s) que después cedió por traspaso.`}
                           >
                             +ced.
                           </span>
                         ) : null}
+                      </td>
+                      <td
+                        className="px-3 py-2 text-right tabular-nums text-stone-400"
+                        title="Interés de financiamiento cobrado. No baja el saldo: es precio del tiempo, no del terreno."
+                      >
+                        {Number(r.pagado_interes ?? 0) > 0
+                          ? formatMoney(Number(r.pagado_interes), 'BOB')
+                          : '—'}
                       </td>
                       <td
                         className={`px-3 py-2 text-right font-semibold tabular-nums ${
@@ -565,7 +583,7 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
 
                     {abierto === r.ci_norm ? (
                       <tr ref={detailRef} className="border-b border-stone-100 bg-stone-50/70 last:border-0">
-                        <td colSpan={8} className="px-4 py-4">
+                        <td colSpan={9} className="px-4 py-4">
                           <div className="mb-3 flex flex-wrap items-center gap-3">
                             <div>
                               <p className="text-sm font-bold text-stone-900">{r.buyer_full_name}</p>

@@ -378,9 +378,19 @@ export function HistorialCliente({ ci }: { ci: string }) {
                         ) : null}
                       </div>
 
-                      <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
-                        Pagos y recibos de este lote
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+                          Pagos y recibos de este lote
+                        </p>
+                        {/* En pantalla propia y con el codigo del lote arriba:
+                            revisar un lote metido entre otros es confundirse. */}
+                        <a
+                          href={`/admin/lote/${m.reservation_id}`}
+                          className="ml-auto rounded-lg border border-stone-300 bg-white px-2.5 py-1 text-xs font-semibold text-stone-700 hover:bg-stone-100"
+                        >
+                          Abrir Mz {m.manzana ?? '—'}, Lote {m.lote ?? '—'} en pantalla completa →
+                        </a>
+                      </div>
                       {suyos.length === 0 ? (
                         <p className="mt-1 text-sm text-stone-500">
                           Sin pagos registrados en este sistema para este lote.
