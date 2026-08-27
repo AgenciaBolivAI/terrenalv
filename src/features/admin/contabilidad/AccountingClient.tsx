@@ -1545,7 +1545,12 @@ export default function AccountingClient({
       ) : null}
 
       {!escrituraBloqueada && tab === 'comprobantes' ? (
-        <Comprobantes projectId={scope ?? projectId} projectName={projectName} accounts={plan} />
+        <Comprobantes
+          projectId={scope}
+          createProjectId={projectId}
+          projectName={scope === null ? 'Todas las urbanizaciones' : projectName}
+          accounts={plan}
+        />
       ) : null}
 
       {!escrituraBloqueada && tab === 'gestion' ? (

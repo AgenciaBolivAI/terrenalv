@@ -64,10 +64,14 @@ const EMPTY_LINE: DraftLine = { account_code: '', debe: '', haber: '', glosa: ''
 
 export default function Comprobantes({
   projectId,
+  createProjectId,
   projectName,
   accounts,
 }: {
-  projectId: string;
+  /** Qué se LISTA: null = todas las urbanizaciones («Todos»). */
+  projectId: string | null;
+  /** Dónde se CREA un comprobante nuevo: siempre una urbanización concreta. */
+  createProjectId: string;
   projectName: string;
   accounts: Account[];
 }) {
@@ -89,12 +93,13 @@ export default function Comprobantes({
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
+    // En «Todos» se listan los comprobantes de TODAS las urbanizaciones: un
+    // filtro que se aplica solo cuando hay urbanización elegida.
+    let q = supabase
       .from('journal_entries')
-      .select('id, number, kind, entry_date, glosa, status, is_automatic, journal_lines(account_code, debe, haber, glosa)')
-      .eq('project_id', projectId)
-      .order('entry_date', { ascending: false })
-      .limit(500);
+      .select('id, number, kind, entry_date, glosa, status, is_automatic, project_id, journal_lines(account_code, debe, haber, glosa)');
+    if (projectId !== null) q = q.eq('project_id', projectId);
+    const { data } = await q.order('entry_date', { ascending: false }).limit(500);
     setRows((data ?? []) as unknown as EntryRow[]);
     setLoading(false);
   }, [supabase, projectId]);
@@ -169,7 +174,7 @@ export default function Comprobantes({
 
     setBusy(true);
     const { error: err } = await supabase.rpc('admin_save_voucher', {
-      p_project_id: projectId,
+      p_project_id: createProjectId,
       p_entry_date: fecha,
       p_kind: kind,
       p_glosa: glosa.trim(),
