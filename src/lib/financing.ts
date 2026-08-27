@@ -278,3 +278,23 @@ export function formatTerm(months: number): string {
 export function formatPct(pct: number): string {
   return `${new Intl.NumberFormat('es-BO', { maximumFractionDigits: 1 }).format(pct)}%`;
 }
+
+/**
+ * El interés se PACTA anual y se COBRA mensual sobre el saldo.
+ *
+ * La conversión es la nominal —anual / 12—, que es como se habla en plaza y
+ * como lo pactaba el sistema anterior («Tasa Int 20»). Se guardan SEIS
+ * decimales, igual que la base: con tres, 20/12 caía en 1,667 y sobre
+ * Bs 24.400 a 60 meses la cuota salía Bs 646,51 en vez de Bs 646,45 —
+ * centavos por mes multiplicados por todo el plan.
+ */
+export function mensualDesdeAnual(anual: number): number {
+  if (!Number.isFinite(anual) || anual <= 0) return 0;
+  return Math.round((anual / 12) * 1_000_000) / 1_000_000;
+}
+
+/** El camino de vuelta, para mostrar en anual lo que está guardado en mensual. */
+export function anualDesdeMensual(mensual: number): number {
+  if (!Number.isFinite(mensual) || mensual <= 0) return 0;
+  return Math.round(mensual * 12 * 1_000_000) / 1_000_000;
+}

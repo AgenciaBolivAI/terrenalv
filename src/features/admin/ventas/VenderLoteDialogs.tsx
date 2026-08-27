@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { cuotaDelPlan } from '@/lib/financing';
+import { cuotaDelPlan, anualDesdeMensual, mensualDesdeAnual } from '@/lib/financing';
 import { formatMoney } from '@/lib/format';
 import { ciSchema, phoneSchema } from '@/lib/validation';
 import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
@@ -146,7 +146,11 @@ export function SellOfflineDialog({
     interes_mensual_pct: number;
     max_meses: number;
   } | null>(null);
-  const [interes, setInteres] = useState('0');
+  // Lo que TIPEA el vendedor es la tasa ANUAL; la mensual la calcula el
+  // sistema. Antes el campo pedía la mensual y alguien que escribiera «20»
+  // pensando en el año pactaba 20 % POR MES — 240 % anual.
+  const [interesAnual, setInteresAnual] = useState('0');
+  const interes = String(mensualDesdeAnual(Number(interesAnual) || 0));
   const [primerVenc, setPrimerVenc] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() + 1);
@@ -194,6 +198,7 @@ export function SellOfflineDialog({
     const total = Math.round(c * m * 100) / 100;
     return { inicialBs, financiar, meses: m, cuota: c, total, interesTotal: Math.round((total - financiar) * 100) / 100 };
   }, [amount, moneda, cambio, precioEfectivo, meses, interes]);
+  void interesAnual;
   useEffect(() => {
     let vivo = true;
     void supabase
@@ -211,7 +216,8 @@ export function SellOfflineDialog({
           max_meses: number;
         } | null;
         setCond(c);
-        if (c) setInteres(String(c.interes_mensual_pct));
+        // La condición del lote viene en mensual; el campo habla en anual.
+        if (c) setInteresAnual(String(anualDesdeMensual(Number(c.interes_mensual_pct) || 0)));
       });
     return () => {
       vivo = false;
@@ -447,7 +453,8 @@ export function SellOfflineDialog({
                     >
                       {formatMoney(Number(cond.inicial_sugerida), 'BOB')}
                     </button>{' '}
-                    ({cond.inicial_pct}%), interés {cond.interes_mensual_pct}% mensual, hasta{' '}
+                    ({cond.inicial_pct}%), interés{' '}
+                    {anualDesdeMensual(Number(cond.interes_mensual_pct) || 0)}% anual, hasta{' '}
                     {cond.max_meses} meses.
                   </p>
                 ) : (
@@ -458,16 +465,21 @@ export function SellOfflineDialog({
                 )}
                 <div className="grid grid-cols-4 gap-3">
                   <div>
-                    <label className="mb-1 block text-xs text-stone-500">Interés mensual (%)</label>
+                    <label className="mb-1 block text-xs text-stone-500">Interés anual (%)</label>
                     <input
                       type="number"
                       min={0}
-                      max={20}
+                      max={240}
                       step="0.1"
-                      value={interes}
-                      onChange={(e) => setInteres(e.target.value)}
+                      value={interesAnual}
+                      onChange={(e) => setInteresAnual(e.target.value)}
                       className={inputClass}
                     />
+                    {Number(interesAnual) > 0 ? (
+                      <p className="mt-1 text-[11px] text-stone-500">
+                        = {interes} % mensual sobre saldo
+                      </p>
+                    ) : null}
                   </div>
                   <div>
                     <label className="mb-1 block text-xs text-stone-500">Plazo (meses)</label>
@@ -549,7 +561,7 @@ export function SellOfflineDialog({
                       </div>
                       <div>
                         <p className="text-[11px] text-stone-500">
-                          Interés ({interes}% × {plan.meses} m)
+                          Interés ({interesAnual}% anual · {plan.meses} m)
                         </p>
                         <p className="text-sm font-bold tabular-nums text-amber-700">
                           {formatMoney(plan.interesTotal, 'BOB')}

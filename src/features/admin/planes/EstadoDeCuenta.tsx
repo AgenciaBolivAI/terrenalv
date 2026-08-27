@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { formatMoney } from '@/lib/format';
-import { cuentaDelComprador, saldosCorridos } from './cuentas';
+import { cuentaDelComprador } from './cuentas';
 import { Logo } from '@/components/Logo';
 import type { EstadoDeCuenta as Datos } from './estado-de-cuenta';
 
@@ -11,6 +11,16 @@ import type { EstadoDeCuenta as Datos } from './estado-de-cuenta';
 // también si cedió el lote. Se arma desde la base en cada visita, así que el
 // enlace nunca queda viejo: el pago que registró la oficina hace diez minutos
 // ya está acá.
+
+/** Un dato con su etiqueta, igual que en la pantalla de Planes de pago. */
+function Dato({ label, valor }: { label: string; valor: string }) {
+  return (
+    <div>
+      <dt className="text-stone-500">{label}</dt>
+      <dd className="font-semibold tabular-nums text-stone-900">{valor}</dd>
+    </div>
+  );
+}
 
 function fecha(iso: string | null): string {
   if (!iso) return '—';
@@ -25,7 +35,6 @@ function fecha(iso: string | null): string {
 
 export function EstadoDeCuenta({ d }: { d: Datos }) {
   const totalCuotas = d.plan ? d.plan.cuotas.reduce((s, c) => s + Number(c.amount), 0) : 0;
-  const totalInteres = d.plan ? d.plan.cuotas.reduce((s, c) => s + Number(c.interes), 0) : 0;
   // Lo que ESTE comprador entregó por SU lote, y cuánto de eso fue interés.
   //
   // Las dos cifras se LEEN de los pagos, una por una. Deducir el interés por
@@ -38,16 +47,21 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
   // La cuenta del comprador vive en cuentas.ts, con sus tests, y la usan
   // TAMBIÉN el PDF: dos copias de esta resta ya se contradijeron dos veces
   // en un mismo día.
-  const {
-    entregado,
-    teQueda,
-    totalAPagar,
-    interes: interesDelTotal,
-  } = cuentaDelComprador(d.precio, d.pagos, d.plan);
+  const { entregado, teQueda, totalAPagar } = cuentaDelComprador(d.precio, d.pagos, d.plan);
+  // Lo que entregó antes de que existiera el plan: es lo que explica que el
+  // precio y lo financiado no sean el mismo número. Sale por diferencia,
+  // así que cierra siempre — precio − inicial − esto = financiado.
+  const antesDelPlan = d.plan
+    ? Math.max(
+        0,
+        Math.round(
+          (d.precio - Number(d.plan.down_payment) - Number(d.plan.financed_amount)) * 100,
+        ) / 100,
+      )
+    : 0;
   // El «te queda» de cada fila sale de cuentas.ts — la misma cuenta que usa
   // el PDF, con sus tests. Dos copias de esta aritmética ya se contradijeron
   // una vez en producción.
-  const saldos = d.plan ? saldosCorridos(d.plan.cuotas) : [];
 
   return (
     <article className="rounded-2xl border border-stone-300 bg-white p-6 text-sm sm:p-8 print:rounded-none print:border-0 print:p-0">
@@ -149,11 +163,11 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
               <p className="font-bold tabular-nums">{formatMoney(d.precio, 'BOB')}</p>
             </div>
             <div>
-              <p className="text-xs text-stone-500">Pagaste</p>
+              <p className="text-xs text-stone-500">Pagado a la fecha</p>
               <p className="font-bold tabular-nums text-brand">{formatMoney(entregado, 'BOB')}</p>
             </div>
             <div>
-              <p className="text-xs text-stone-500">Te queda</p>
+              <p className="text-xs text-stone-500">Saldo</p>
               <p
                 className={`text-lg font-black tabular-nums ${
                   teQueda > 0 ? 'text-stone-900' : 'text-brand'
@@ -163,19 +177,40 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
               </p>
             </div>
           </div>
-          {/* La única línea sobre el financiamiento, y en plata: por qué el
-              total a pagar es mayor que el precio, y cómo cierra la resta. */}
-          {totalAPagar > d.precio + 0.01 ? (
-            <p className="mt-3 border-t border-stone-200 pt-2 text-center text-xs text-stone-600">
-              El lote cuesta{' '}
-              <strong className="tabular-nums">{formatMoney(d.precio, 'BOB')}</strong> y el
-              financiamiento agrega{' '}
-              <strong className="tabular-nums">{formatMoney(interesDelTotal, 'BOB')}</strong> de
-              interés: en total pagás{' '}
-              <strong className="tabular-nums">{formatMoney(totalAPagar, 'BOB')}</strong>. Menos los{' '}
-              {formatMoney(entregado, 'BOB')} que ya pagaste, te quedan{' '}
-              {formatMoney(teQueda, 'BOB')}.
-            </p>
+          {/* Las condiciones, con las MISMAS palabras que ve el equipo en
+              Planes de pago: si el comprador llama preguntando, los dos están
+              mirando la misma tabla. */}
+          {d.plan ? (
+            <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 border-t border-stone-200 pt-3 text-xs sm:grid-cols-3">
+              <Dato label="Precio total" valor={formatMoney(d.precio, 'BOB')} />
+              <Dato label="Cuota inicial" valor={formatMoney(Number(d.plan.down_payment), 'BOB')} />
+              {/* Lo que entregó ANTES de armar el plan. Sin esta fila,
+                  «24.800 − 0 = 24.400» no resta y nadie sabe dónde fueron
+                  los 400. */}
+              {antesDelPlan > 0.01 ? (
+                <Dato label="Entregado antes del plan" valor={formatMoney(antesDelPlan, 'BOB')} />
+              ) : null}
+              <Dato
+                label="Financiado"
+                valor={formatMoney(Number(d.plan.financed_amount), 'BOB')}
+              />
+              <Dato label="Cuotas" valor={`${d.plan.months} mensuales`} />
+              <Dato
+                label="Cuota mensual"
+                valor={formatMoney(Number(d.plan.monthly_amount), 'BOB')}
+              />
+              <Dato
+                label="Interés mensual"
+                valor={
+                  Number(d.plan.monthly_interest_pct) > 0
+                    ? `${Number(d.plan.monthly_interest_pct)} % sobre saldo`
+                    : 'Sin interés'
+                }
+              />
+              <Dato label="Primera cuota" valor={fecha(d.plan.first_due_date)} />
+              <Dato label="Las cuotas suman" valor={formatMoney(totalCuotas, 'BOB')} />
+              <Dato label="Total a pagar" valor={formatMoney(totalAPagar, 'BOB')} />
+            </dl>
           ) : null}
         </section>
       ) : null}
@@ -184,41 +219,8 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
       {d.plan ? (
         <>
           <h2 className="mt-6 text-xs font-bold tracking-wide text-stone-500 uppercase">
-            Tu plan de cuotas
-            {d.plan.estado !== 'activo' ? ` · ${d.plan.estado}` : ''}
+            Cronograma
           </h2>
-          <p className="mt-1 text-xs text-stone-600">
-            {Number(d.plan.cuotas_totales) === Number(d.plan.months) ? (
-              <>
-                {d.plan.months} cuotas de{' '}
-                <strong>{formatMoney(Number(d.plan.monthly_amount), 'BOB')}</strong>
-              </>
-            ) : (
-              // El plan se reprogramó, así que las cuotas ya pagadas fueron de
-              // otro monto. Decir «8 cuotas de Bs 5.156» al lado de «llevás 1
-              // de 9» se contradice solo: son ocho las que faltan, no ocho las
-              // que hay. Se nombra el total y se aclara qué queda.
-              <>
-                {d.plan.cuotas_totales} cuotas · las{' '}
-                {Number(d.plan.cuotas_totales) - Number(d.plan.cuotas_pagadas)} que faltan son de{' '}
-                <strong>{formatMoney(Number(d.plan.monthly_amount), 'BOB')}</strong>
-              </>
-            )}
-            {Number(d.plan.monthly_interest_pct) > 0 ? (
-              <>
-                {' '}
-                con {Number(d.plan.monthly_interest_pct)}% mensual sobre el saldo financiado, que
-                arrancó en{' '}
-                <strong className="tabular-nums">
-                  {formatMoney(Number(d.plan.financed_amount), 'BOB')}
-                </strong>{' '}
-                · las cuotas suman {formatMoney(totalCuotas, 'BOB')} ({formatMoney(totalInteres, 'BOB')}{' '}
-                de interés)
-              </>
-            ) : null}
-            . Llevás {d.plan.cuotas_pagadas} de {d.plan.cuotas_totales} cuotas
-            {d.plan.proxima_cuota ? ` · la próxima vence el ${fecha(d.plan.proxima_cuota)}` : ''}.
-          </p>
 
           <div className="mt-3 overflow-x-auto">
             <table className="w-full border-collapse text-xs">
@@ -226,16 +228,16 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
                 <tr className="border-y border-stone-300 text-left">
                   <th className="py-2 font-semibold text-stone-500">N°</th>
                   <th className="py-2 font-semibold text-stone-500">Vence</th>
-                  <th className="py-2 text-right font-semibold text-stone-500">Cuota</th>
-                  {/* Ahora las dos miden lo mismo —lo que falta entregar—:
-                      el recuadro de arriba hoy, y esta columna después de
-                      cada cuota. */}
-                  <th className="py-2 text-right font-semibold text-stone-500">Te queda</th>
+                  {/* Las MISMAS columnas que el cronograma de Planes:
+                      Importe y Pagado. La vieja columna «Te queda» era la que
+                      chocaba con el «Te queda» del recuadro de arriba. */}
+                  <th className="py-2 text-right font-semibold text-stone-500">Importe</th>
+                  <th className="py-2 text-right font-semibold text-stone-500">Pagado</th>
                   <th className="py-2 text-center font-semibold text-stone-500">Estado</th>
                 </tr>
               </thead>
               <tbody>
-                {d.plan.cuotas.map((c, i) => {
+                {d.plan.cuotas.map((c) => {
                   const hoy = new Date().toISOString().slice(0, 10);
                   const vencida = c.status !== 'pagada' && c.due_date < hoy;
                   return (
@@ -247,8 +249,8 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
                       <td className="py-1.5 text-right font-semibold tabular-nums">
                         {formatMoney(Number(c.amount), 'BOB')}
                       </td>
-                      <td className="py-1.5 text-right tabular-nums text-stone-600">
-                        {formatMoney(saldos[i], 'BOB')}
+                      <td className="py-1.5 text-right tabular-nums text-stone-500">
+                        {Number(c.amount_paid) > 0 ? formatMoney(Number(c.amount_paid), 'BOB') : '—'}
                       </td>
                       <td className="py-1.5 text-center">
                         {c.status === 'pagada' ? (
@@ -269,10 +271,6 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
               </tbody>
             </table>
           </div>
-          <p className="mt-2 text-[11px] text-stone-500">
-            «Te queda» es lo que falta entregar después de pagar cada cuota. Si adelantás capital,
-            el plan se rearma y el total a pagar baja.
-          </p>
         </>
       ) : d.situacion === 'venta' ? (
         <p className="mt-5 rounded-lg bg-stone-50 p-3 text-xs text-stone-600">

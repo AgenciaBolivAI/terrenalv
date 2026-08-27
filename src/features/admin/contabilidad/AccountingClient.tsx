@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { formatMoney, waLink } from '@/lib/format';
-import { cuotaDelPlan } from '@/lib/financing';
+import { cuotaDelPlan, mensualDesdeAnual } from '@/lib/financing';
 import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
 import { Badge, EmptyState, Kpi, Spinner, btnPrimary, btnSecondary, inputClass } from '@/features/admin/ui/bits';
 import { Dialog } from '@/features/admin/ui/dialog';
@@ -1798,7 +1798,9 @@ function CreatePlanDialog({
     d.setMonth(d.getMonth() + 1);
     return d.toISOString().slice(0, 10);
   });
-  const [interest, setInterest] = useState('0');
+  // Igual que en la venta: se pacta ANUAL, se cobra mensual sobre el saldo.
+  const [interestAnual, setInterestAnual] = useState('0');
+  const interest = String(mensualDesdeAnual(Number(interestAnual) || 0));
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1828,9 +1830,11 @@ function CreatePlanDialog({
       p_monthly_amount: q,
       p_down_payment: Number(down) || 0,
       p_first_due_date: first,
-      p_annual_interest_pct: 0,
       p_note: note.trim() || null,
-      p_monthly_interest_pct: Number(interest) || 0,
+      // Se manda la ANUAL y la base deriva la mensual: una sola fuente para
+      // la conversión, así el papel y el motor no pueden discrepar.
+      p_annual_interest_pct: Number(interestAnual) || 0,
+      p_monthly_interest_pct: null,
     });
     setBusy(false);
     if (err) {
@@ -1905,8 +1909,18 @@ function CreatePlanDialog({
             <input type="date" value={first} onChange={(e) => setFirst(e.target.value)} className={inputClass} />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-stone-500">Interés mensual %</label>
-            <input type="number" min={0} step="0.01" value={interest} onChange={(e) => setInterest(e.target.value)} className={inputClass} />
+            <label className="mb-1 block text-xs text-stone-500">Interés anual %</label>
+            <input
+              type="number"
+              min={0}
+              step="0.1"
+              value={interestAnual}
+              onChange={(e) => setInterestAnual(e.target.value)}
+              className={inputClass}
+            />
+            {Number(interestAnual) > 0 ? (
+              <p className="mt-1 text-[11px] text-stone-500">= {interest} % mensual sobre saldo</p>
+            ) : null}
           </div>
         </div>
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Nota (opcional)" className={inputClass} />
