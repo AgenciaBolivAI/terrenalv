@@ -48,17 +48,6 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
   // TAMBIÉN el PDF: dos copias de esta resta ya se contradijeron dos veces
   // en un mismo día.
   const { entregado, teQueda, totalAPagar } = cuentaDelComprador(d.precio, d.pagos, d.plan);
-  // Lo que entregó antes de que existiera el plan: es lo que explica que el
-  // precio y lo financiado no sean el mismo número. Sale por diferencia,
-  // así que cierra siempre — precio − inicial − esto = financiado.
-  const antesDelPlan = d.plan
-    ? Math.max(
-        0,
-        Math.round(
-          (d.precio - Number(d.plan.down_payment) - Number(d.plan.financed_amount)) * 100,
-        ) / 100,
-      )
-    : 0;
   // El «te queda» de cada fila sale de cuentas.ts — la misma cuenta que usa
   // el PDF, con sus tests. Dos copias de esta aritmética ya se contradijeron
   // una vez en producción.
@@ -183,13 +172,10 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
           {d.plan ? (
             <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 border-t border-stone-200 pt-3 text-xs sm:grid-cols-3">
               <Dato label="Precio total" valor={formatMoney(d.precio, 'BOB')} />
-              <Dato label="Cuota inicial" valor={formatMoney(Number(d.plan.down_payment), 'BOB')} />
-              {/* Lo que entregó ANTES de armar el plan. Sin esta fila,
-                  «24.800 − 0 = 24.400» no resta y nadie sabe dónde fueron
-                  los 400. */}
-              {antesDelPlan > 0.01 ? (
-                <Dato label="Entregado antes del plan" valor={formatMoney(antesDelPlan, 'BOB')} />
-              ) : null}
+              {/* La cuota inicial es TODO lo que se puso antes de financiar
+                  —la seña y lo que se entregó al firmar—, no solo el campo
+                  down_payment. Así precio − inicial = financiado cierra. */}
+              <Dato label="Cuota inicial" valor={formatMoney(Number(d.plan.cuota_inicial), 'BOB')} />
               <Dato
                 label="Financiado"
                 valor={formatMoney(Number(d.plan.financed_amount), 'BOB')}

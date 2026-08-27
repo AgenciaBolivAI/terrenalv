@@ -79,6 +79,8 @@ export interface EstadoDeCuenta {
     estado: string;
     total_price: number;
     down_payment: number;
+    /** Lo que se puso al principio: precio − financiado. Lo calcula v_planes. */
+    cuota_inicial: number;
     financed_amount: number;
     months: number;
     monthly_amount: number;
@@ -204,7 +206,7 @@ export async function cargarEstadoDeCuenta(
     .select(
       'plan_id, estado, total_price, down_payment, financed_amount, months, monthly_amount, ' +
         'monthly_interest_pct, annual_interest_pct, first_due_date, cuotas_pagadas, cuotas_totales, ' +
-        'proxima_cuota',
+        'proxima_cuota, cuota_inicial',
     )
     .eq('reservation_id', r.id)
     .order('estado');
@@ -219,6 +221,7 @@ export async function cargarEstadoDeCuenta(
     monthly_amount: number;
     monthly_interest_pct: number | null;
     annual_interest_pct: number | null;
+    cuota_inicial: number | null;
     first_due_date: string;
     cuotas_pagadas: number;
     cuotas_totales: number;
@@ -240,6 +243,7 @@ export async function cargarEstadoDeCuenta(
       ...elegido,
       monthly_interest_pct: Number(elegido.monthly_interest_pct ?? 0),
       annual_interest_pct: Number(elegido.annual_interest_pct ?? 0),
+      cuota_inicial: Number(elegido.cuota_inicial ?? 0),
       cuotas: (cs ?? []).map((c) => {
         const x = c as CuotaEstado;
         return {

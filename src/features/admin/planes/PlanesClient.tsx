@@ -67,6 +67,7 @@ interface Plan {
   monthly_amount: number;
   /** Null en los planes sin interés, que son la mayoría. */
   annual_interest_pct: number | null;
+  cuota_inicial: number;
   /** Interés MENSUAL sobre saldo — el que se pacta acá. */
   monthly_interest_pct: number | null;
   first_due_date: string;
@@ -587,41 +588,12 @@ export default function PlanesClient({
                                       />
                                       <Dato
                                         label="Cuota inicial"
-                                        valor={formatMoney(Number(r.down_payment), r.currency)}
+                                        valor={formatMoney(Number(r.cuota_inicial), r.currency)}
                                       />
                                       {Number(r.sena_pagada) > 0 ? (
                                         <Dato
-                                          label="Seña / reserva"
+                                          label="— de los cuales, seña"
                                           valor={formatMoney(Number(r.sena_pagada), r.currency)}
-                                        />
-                                      ) : null}
-                                      {/* Lo que entregó ANTES de armar el plan
-                                          (entra como abono, no como cuota
-                                          inicial). Sin esta fila, «Precio
-                                          24.800 · Inicial 0 · Financiado
-                                          24.400» no resta y los 400 no
-                                          aparecen en ningún lado. */}
-                                      {Math.round(
-                                        (Number(r.total_price) -
-                                          Number(r.down_payment) -
-                                          Number(r.sena_pagada) -
-                                          Number(r.financed_amount)) *
-                                          100,
-                                      ) /
-                                        100 >
-                                      0.01 ? (
-                                        <Dato
-                                          label="Entregado antes del plan"
-                                          valor={formatMoney(
-                                            Math.round(
-                                              (Number(r.total_price) -
-                                                Number(r.down_payment) -
-                                                Number(r.sena_pagada) -
-                                                Number(r.financed_amount)) *
-                                                100,
-                                            ) / 100,
-                                            r.currency,
-                                          )}
                                         />
                                       ) : null}
                                       <Dato
