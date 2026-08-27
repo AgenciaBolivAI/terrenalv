@@ -636,6 +636,7 @@ export default function VentasClient({
                   { header: 'Saldo', align: 'right' },
                   { header: 'Cuotas pag.', align: 'right' },
                   { header: 'Día de pago', align: 'right' },
+                  { header: 'Cobro del mes', align: 'right' },
                   { header: 'Próx. vence' },
                   { header: 'Cuotas venc.', align: 'right' },
                   { header: 'Estado' },
@@ -673,6 +674,7 @@ export default function VentasClient({
                     cuotas_pagadas: number;
                     dia_de_pago: number | null;
                     proxima_cuota: string | null;
+                    proximo_cobro: number | null;
                     cuotas_vencidas: number;
                     estado_cartera: string;
                     promotor: string | null;
@@ -700,6 +702,7 @@ export default function VentasClient({
                     Number(r.saldo),
                     Number(r.cuotas_pagadas),
                     r.dia_de_pago ?? '',
+                    r.proximo_cobro == null ? '' : Number(r.proximo_cobro),
                     r.proxima_cuota ? dateLabel(r.proxima_cuota) : '',
                     Number(r.cuotas_vencidas),
                     r.estado_cartera,

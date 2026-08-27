@@ -13,6 +13,8 @@ const ADMIN_ERROR_COPY: Record<string, string> = {
   PAYMENT_NOT_REVIEWABLE: 'Este comprobante ya fue revisado por otra persona. Actualiza la lista.',
   RESERVATION_NOT_IN_REVIEW: 'La reserva ya no está en verificación. Actualiza la lista.',
   NOTE_REQUIRED: 'La nota es obligatoria para esta acción.',
+  ABONO_CON_CUOTA_DEL_MES:
+    'Primero la cuota del mes: no se abona a capital debiendo la cuota corriente ni las vencidas. Cobrala y después amortizá.',
   INVALID_HOURS: 'Cantidad de horas inválida (entre 1 y 720).',
   RESERVATION_NOT_CONFIRMED: 'La reserva no está confirmada; no hay venta que revertir.',
   RESERVATION_NOT_REINSTATABLE: 'Solo se pueden reactivar reservas expiradas o canceladas.',

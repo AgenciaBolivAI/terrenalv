@@ -111,6 +111,42 @@ export default function RegistrarCobroDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // La cuota que toca AHORA, con el arrastre incluido: las vencidas y la del
+  // mes, menos lo ya adelantado. Un pago parcial deja su diferencia aquí; un
+  // pago de más la descuenta de la siguiente. Misma cuenta que v_cartera.
+  const cobroDelMes = useMemo(() => {
+    if (!plan || plan.pendientes.length === 0) return null;
+    const hoy = new Date();
+    const finDeMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0)
+      .toISOString()
+      .slice(0, 10);
+    const alDia =
+      Math.round(
+        plan.pendientes
+          .filter((c) => c.vence <= finDeMes)
+          .reduce((t, c) => t + c.falta, 0) * 100,
+      ) / 100;
+    const monto = alDia > 0 ? alDia : plan.pendientes[0].falta;
+    return { alDia, monto, arrastre: Math.round((monto - plan.cuota) * 100) / 100 };
+  }, [plan]);
+
+  // El monto arranca en lo que toca cobrar, no en la cuota de tabla: si el mes
+  // pasado pagó de menos, la diferencia ya viene sumada; si pagó de más, ya
+  // viene descontada. La cajera puede escribir otro monto (pago parcial).
+  const [precargado, setPrecargado] = useState(false);
+  useEffect(() => {
+    if (precargado || !cobroDelMes || destino !== 'cuota') return;
+    setAmount(String(cobroDelMes.monto));
+    setPrecargado(true);
+  }, [cobroDelMes, destino, precargado]);
+
+  // Amortizar es plata EXTRA: con la cuota del mes (o vencidas) sin pagar, la
+  // base rebota ABONO_CON_CUOTA_DEL_MES — acá ni se deja elegir.
+  const debeElMes = (cobroDelMes?.alDia ?? 0) > 0;
+  useEffect(() => {
+    if (debeElMes && destino === 'capital') setDestino('cuota');
+  }, [debeElMes, destino]);
+
   // Qué va a pasar con este pago, en plata y en meses. Replica exactamente lo
   // que hace admin_register_cuota_payment: si el diálogo prometiera otra cosa
   // que la base, sería peor que no prometer nada.
@@ -353,24 +389,38 @@ export default function RegistrarCobroDialog({
                 className="mt-1"
               />
               <span>
-                <strong>Su cuota del mes</strong>
+                <strong>
+                  Su cuota del mes
+                  {cobroDelMes ? ` — ${formatMoney(cobroDelMes.monto, 'BOB')}` : ''}
+                </strong>
                 <span className="block text-xs text-stone-500">
-                  El pago normal del plan: cubre las cuotas vencidas y las que siguen. La cuota
-                  mensual queda igual.
+                  {cobroDelMes && Math.abs(cobroDelMes.arrastre) > 0.01
+                    ? cobroDelMes.arrastre > 0
+                      ? `Cuota de ${formatMoney(plan?.cuota ?? 0, 'BOB')} + ${formatMoney(cobroDelMes.arrastre, 'BOB')} arrastrado de antes (pago parcial o cuota vencida).`
+                      : `Cuota de ${formatMoney(plan?.cuota ?? 0, 'BOB')} − ${formatMoney(-cobroDelMes.arrastre, 'BOB')} que ya adelantó.`
+                    : 'El pago normal del plan: cubre las cuotas vencidas y las que siguen. La cuota mensual queda igual.'}{' '}
+                  Si paga menos, la diferencia pasa a la cuota siguiente.
                 </span>
               </span>
             </label>
-            <label className="flex cursor-pointer items-start gap-2 text-sm">
+            <label
+              className={`flex items-start gap-2 text-sm ${
+                debeElMes ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+              }`}
+            >
               <input
                 type="radio"
                 checked={destino === 'capital'}
+                disabled={debeElMes}
                 onChange={() => setDestino('capital')}
                 className="mt-1"
               />
               <span>
                 <strong>Abono a capital (amortizar)</strong>
                 <span className="block text-xs text-stone-500">
-                  Plata EXTRA además de su cuota: baja la deuda y el plan se rearma.
+                  {debeElMes
+                    ? 'Primero la cuota del mes: no se abona a capital debiendo la cuota corriente. Cobrala y volvé a abrir este diálogo.'
+                    : 'Plata EXTRA además de su cuota: baja la deuda y el plan se rearma.'}
                 </span>
               </span>
             </label>
