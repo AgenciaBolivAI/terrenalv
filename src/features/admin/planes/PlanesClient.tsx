@@ -633,14 +633,24 @@ export default function PlanesClient({
                                         label="Cuota mensual"
                                         valor={formatMoney(Number(r.monthly_amount), r.currency)}
                                       />
+                                      {/* Se pacta la ANUAL; la mensual es su
+                                          equivalente y es la que corre sobre
+                                          el saldo. Las dos, como la planilla
+                                          que usaba el equipo. */}
                                       <Dato
-                                        label="Interés mensual"
+                                        label="Interés anual"
                                         valor={
-                                          Number(r.monthly_interest_pct) > 0
-                                            ? `${fnum(Number(r.monthly_interest_pct), 2)} % sobre saldo`
+                                          Number(r.annual_interest_pct) > 0
+                                            ? `${fnum(Number(r.annual_interest_pct), 2)} %`
                                             : 'Sin interés'
                                         }
                                       />
+                                      {Number(r.monthly_interest_pct) > 0 ? (
+                                        <Dato
+                                          label="Tasa equivalente"
+                                          valor={`${fnum(Number(r.monthly_interest_pct), 2)} % mensual sobre saldo`}
+                                        />
+                                      ) : null}
                                       <Dato
                                         label="Primera cuota"
                                         valor={dateLabel(r.first_due_date)}

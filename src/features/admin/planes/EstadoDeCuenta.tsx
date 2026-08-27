@@ -199,14 +199,23 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
                 label="Cuota mensual"
                 valor={formatMoney(Number(d.plan.monthly_amount), 'BOB')}
               />
+              {/* Las dos tasas, como en la planilla del equipo: se pacta la
+                  ANUAL y la mensual es su equivalente (anual / 12), que es la
+                  que corre sobre el saldo mes a mes. */}
               <Dato
-                label="Interés mensual"
+                label="Interés anual"
                 valor={
-                  Number(d.plan.monthly_interest_pct) > 0
-                    ? `${Number(d.plan.monthly_interest_pct)} % sobre saldo`
+                  Number(d.plan.annual_interest_pct) > 0
+                    ? `${Number(d.plan.annual_interest_pct)} %`
                     : 'Sin interés'
                 }
               />
+              {Number(d.plan.monthly_interest_pct) > 0 ? (
+                <Dato
+                  label="Tasa equivalente"
+                  valor={`${Number(d.plan.monthly_interest_pct).toFixed(2)} % mensual sobre saldo`}
+                />
+              ) : null}
               <Dato label="Primera cuota" valor={fecha(d.plan.first_due_date)} />
               <Dato label="Las cuotas suman" valor={formatMoney(totalCuotas, 'BOB')} />
               <Dato label="Total a pagar" valor={formatMoney(totalAPagar, 'BOB')} />

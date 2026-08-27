@@ -83,6 +83,8 @@ export interface EstadoDeCuenta {
     months: number;
     monthly_amount: number;
     monthly_interest_pct: number;
+    /** La que se pacta con el comprador. La mensual se deriva de ésta. */
+    annual_interest_pct: number;
     first_due_date: string;
     cuotas_pagadas: number;
     cuotas_totales: number;
@@ -201,7 +203,8 @@ export async function cargarEstadoDeCuenta(
     .from('v_planes')
     .select(
       'plan_id, estado, total_price, down_payment, financed_amount, months, monthly_amount, ' +
-        'monthly_interest_pct, first_due_date, cuotas_pagadas, cuotas_totales, proxima_cuota',
+        'monthly_interest_pct, annual_interest_pct, first_due_date, cuotas_pagadas, cuotas_totales, ' +
+        'proxima_cuota',
     )
     .eq('reservation_id', r.id)
     .order('estado');
@@ -215,6 +218,7 @@ export async function cargarEstadoDeCuenta(
     months: number;
     monthly_amount: number;
     monthly_interest_pct: number | null;
+    annual_interest_pct: number | null;
     first_due_date: string;
     cuotas_pagadas: number;
     cuotas_totales: number;
@@ -235,6 +239,7 @@ export async function cargarEstadoDeCuenta(
     plan = {
       ...elegido,
       monthly_interest_pct: Number(elegido.monthly_interest_pct ?? 0),
+      annual_interest_pct: Number(elegido.annual_interest_pct ?? 0),
       cuotas: (cs ?? []).map((c) => {
         const x = c as CuotaEstado;
         return {
