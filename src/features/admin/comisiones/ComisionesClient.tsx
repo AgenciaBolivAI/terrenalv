@@ -30,6 +30,7 @@ import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
 import { CuentaSelect, useTesoreria } from '@/features/admin/contabilidad/Tesoreria';
 import { dateLabel } from '@/features/admin/contabilidad/types';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
+import EscalaComisiones from './EscalaComisiones';
 import { num as fnum, type Cell as XCell } from '@/features/admin/export';
 
 interface Vendedor {
@@ -63,6 +64,16 @@ interface Comision {
   ganado: number;
   pagado: number;
   por_pagar: number;
+  // Lo que agrega la escala del Directorio.
+  modalidad: 'contado' | 'plazo' | null;
+  ventas_periodo: number | null;
+  comision_total: number | null;
+  tramo_inicial: number | null;
+  tramo_reintegro: number | null;
+  inicial_cumplida: boolean | null;
+  reintegro_cumplido: boolean | null;
+  cuotas_pagadas: number | null;
+  cuota_reintegro: number | null;
 }
 
 interface Movimiento {
@@ -123,7 +134,7 @@ export default function ComisionesClient() {
   // Dos vistas del mismo asunto: cuánto le toca a cada uno HOY (equipo), y qué
   // fue pasando en el tiempo (movimientos) — que es lo que se mira cuando
   // alguien reclama o hay que auditar un pago.
-  const [vista, setVista] = useState<'equipo' | 'movimientos'>('equipo');
+  const [vista, setVista] = useState<'equipo' | 'movimientos' | 'escala'>('equipo');
   const [movs, setMovs] = useState<Movimiento[]>([]);
   const [filtroEmpleado, setFiltroEmpleado] = useState<string>('');
 
@@ -219,7 +230,18 @@ export default function ComisionesClient() {
         >
           Movimientos ({movs.length})
         </button>
+        <button
+          type="button"
+          onClick={() => setVista('escala')}
+          className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium ${
+            vista === 'escala' ? 'bg-green-50 text-brand' : 'text-stone-600 hover:bg-stone-50'
+          }`}
+        >
+          Escala y políticas
+        </button>
       </div>
+
+      {vista === 'escala' ? <EscalaComisiones /> : null}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi
@@ -532,14 +554,34 @@ export default function ComisionesClient() {
                                     <span className="text-xs text-stone-400">{c.comprador}</span>
                                     <button
                                       type="button"
-                                      title="Cambiar el % de ESTA venta"
+                                      title={
+                                        c.base === 'escala'
+                                          ? 'Sale de la escala. Tocar para ponerle un % a mano.'
+                                          : 'Cambiar el % de ESTA venta'
+                                      }
                                       onClick={() =>
                                         setEditandoVenta({ c, pct: String(Number(c.pct)) })
                                       }
-                                      className="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-semibold text-stone-600 underline decoration-dotted underline-offset-2 hover:bg-stone-200"
+                                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold underline decoration-dotted underline-offset-2 ${
+                                        c.base === 'escala'
+                                          ? 'bg-green-50 text-brand hover:bg-green-100'
+                                          : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                                      }`}
                                     >
-                                      {Number(c.pct)}% sobre {c.base}
+                                      {c.base === 'escala'
+                                        ? `${Number(c.pct)}% · escala ${c.modalidad ?? ''} (${c.ventas_periodo ?? 0} ventas)`
+                                        : `${Number(c.pct)}% sobre ${c.base}`}
                                     </button>
+                                    {c.base === 'escala' && c.modalidad === 'plazo' ? (
+                                      <span className="text-[11px] text-stone-400">
+                                        {c.inicial_cumplida ? '✓' : '○'} inicial ·{' '}
+                                        {c.reintegro_cumplido ? '✓' : '○'} cuota{' '}
+                                        {c.cuota_reintegro ?? 4}
+                                        {c.comision_total != null
+                                          ? ` · de ${formatMoney(Number(c.comision_total), 'BOB')}`
+                                          : ''}
+                                      </span>
+                                    ) : null}
                                     <span className="text-xs text-stone-500">
                                       cobrado {formatMoney(Number(c.cobrado), 'BOB')}
                                     </span>
@@ -657,6 +699,33 @@ export default function ComisionesClient() {
             Cambia lo pactado en <strong>esta venta</strong> de {editandoVenta.c.vendedor}: lo
             ganado y lo que se le debe se recalculan al instante. Lo ya pagado no se toca.
           </p>
+          {editandoVenta.c.base === 'escala' ? (
+            <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Hoy esta venta va por la <strong>escala</strong> del Directorio
+              ({Number(editandoVenta.c.pct)}% por sus {editandoVenta.c.ventas_periodo ?? 0} ventas
+              al {editandoVenta.c.modalidad}). Si le ponés un % a mano, sale de la escala y deja
+              de moverse cuando el asesor venda más.
+            </p>
+          ) : (
+            <button
+              type="button"
+              className="mt-2 text-xs font-semibold text-brand hover:underline"
+              onClick={async () => {
+                const { error } = await supabase.rpc('admin_comision_a_escala', {
+                  p_reservation_id: editandoVenta.c.reservation_id,
+                });
+                if (error) {
+                  push(adminErrorCopy(error.message), 'error');
+                  return;
+                }
+                push('Esta venta vuelve a la escala del Directorio.', 'success');
+                setEditandoVenta(null);
+                void cargar();
+              }}
+            >
+              ← Volver esta venta a la escala del Directorio
+            </button>
+          )}
           <label className="mt-3 mb-1 block text-xs text-stone-500">Porcentaje (%)</label>
           <input
             type="number"
