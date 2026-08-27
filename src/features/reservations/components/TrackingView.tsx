@@ -4,6 +4,8 @@
 // sanitized status payload. This is where money anxiety lives — every state
 // says clearly what happened and what to do next.
 
+import { HORARIO_OFICINA, WHATSAPP_VENTAS } from '@/lib/contacto';
+import { waLink } from '@/lib/format';
 import { useState } from 'react';
 import Link from 'next/link';
 import { Logo } from '@/components/Logo';
@@ -177,6 +179,24 @@ export function TrackingView({
             <p className="mt-3 text-sm text-stone-600">
               Te avisaremos aquí mismo cuando esté confirmado. Guarda este enlace — no necesitas
               hacer nada más.
+            </p>
+            {/* Sin plazo ni horario, el comprador no sabe si media hora o tres
+                días es lo normal, y no tiene a quién preguntar. */}
+            <p className="mt-1 text-xs text-stone-500">
+              Revisamos los comprobantes en horario de oficina ({HORARIO_OFICINA}). Si pasaron más
+              de 24 horas hábiles,{' '}
+              <a
+                href={waLink(
+                  WHATSAPP_VENTAS,
+                  `Hola Terrenalv, subí mi comprobante y sigue en verificación. Mi código es ${data.tracking_code}.`,
+                )}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-brand underline"
+              >
+                escribinos
+              </a>
+              .
             </p>
           </section>
           <SummaryFromStatus data={data} />

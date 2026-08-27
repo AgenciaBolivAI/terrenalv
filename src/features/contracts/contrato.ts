@@ -33,7 +33,7 @@ export interface ContratoData {
   saldo: number;
   sena_pagada: number;
   plan: {
-    down_payment: number;
+    cuota_inicial: number;
     months: number;
     monthly_amount: number;
     first_due_date: string;
@@ -131,14 +131,42 @@ export async function cargarContrato(opts: {
     pagado = Number((venta as { pagado_total: number }).pagado_total);
     saldo = Number((venta as { saldo: number }).saldo);
     sena = Number((venta as { sena_pagada: number }).sena_pagada);
+  } else {
+    // Reserva cerrada (la de quien cedió su lote): v_ventas ya no la trae y
+    // los ceros quedaban impresos. El papel decía «pagó Bs 0» a alguien que
+    // había pagado Bs 35.000, justo debajo del cartel que promete que sus
+    // recibos conservan validez histórica. Se reconstruye de sus pagos.
+    const { data: suyos } = await supabase
+      .from('payments')
+      .select('amount_bob, interest_bob, purpose')
+      .eq('reservation_id', r.id)
+      .eq('status', 'aprobado')
+      .in('purpose', ['reserva', 'cuota', 'abono']);
+    const filas = (suyos ?? []) as { amount_bob: number; interest_bob: number | null; purpose: string }[];
+    pagado =
+      Math.round(
+        filas.reduce((t, x) => t + Number(x.amount_bob) - Number(x.interest_bob ?? 0), 0) * 100,
+      ) / 100;
+    sena =
+      Math.round(
+        filas.filter((x) => x.purpose === 'reserva').reduce((t, x) => t + Number(x.amount_bob), 0) *
+          100,
+      ) / 100;
+    saldo = Math.max(0, Math.round((Number(r.price_agreed) - pagado) * 100) / 100);
   }
 
+  // La cuota inicial sale de v_planes, igual que en el estado de cuenta y en
+  // Planes: `installment_plans.down_payment` vale 0 cuando la inicial entró
+  // como pago, y el contrato llegaba a decir «cuota inicial de Bs 0».
   const { data: plan } = await supabase
-    .from('installment_plans')
-    .select('down_payment, months, monthly_amount, first_due_date')
+    .from('v_planes')
+    .select('cuota_inicial, months, monthly_amount, first_due_date, saldo')
     .eq('reservation_id', r.id)
-    .eq('status', 'activo')
+    .eq('estado', 'activo')
     .maybeSingle();
+  // Y el saldo del contrato es el mismo que el del recibo y el del estado de
+  // cuenta: lo que falta entregar.
+  if (plan) saldo = Number((plan as { saldo: number }).saldo);
 
   return {
     reservation_id: r.id,
@@ -162,7 +190,7 @@ export async function cargarContrato(opts: {
     sena_pagada: sena,
     plan: plan
       ? {
-          down_payment: Number((plan as { down_payment: number }).down_payment),
+          cuota_inicial: Number((plan as { cuota_inicial: number }).cuota_inicial),
           months: Number((plan as { months: number }).months),
           monthly_amount: Number((plan as { monthly_amount: number }).monthly_amount),
           first_due_date: (plan as { first_due_date: string }).first_due_date,

@@ -33,6 +33,9 @@ export interface ReciboData {
   proyecto: string;
   pagado_total: number;
   saldo: number;
+  /** La moneda del LOTE. La del pago puede ser otra: cobrar en dólares es una
+   *  opción del cajero, y con ella el papel decía «$us 24.800» de precio. */
+  moneda_lote: 'BOB' | 'USD';
 }
 
 interface Row {
@@ -109,6 +112,17 @@ export async function cargarRecibo(
     // migrado el recibo le negaba la mitad de su historia.
     pagadoTotal = Number((venta as { pagado_total: number }).pagado_total);
     saldo = Number((venta as { saldo: number }).saldo);
+    // Con plan vivo, «saldo» es lo que falta ENTREGAR — las cuotas que quedan,
+    // con su interés adentro. Es la cifra del estado de cuenta y la de Planes;
+    // v_ventas.saldo es el capital del lote y da otro número (Bs 11.678 de
+    // diferencia en una venta real), que en el mismo papel se lee como error.
+    const { data: plan } = await supabase
+      .from('v_planes')
+      .select('saldo')
+      .eq('reservation_id', pay.reservation_id)
+      .eq('estado', 'activo')
+      .maybeSingle();
+    if (plan) saldo = Number((plan as { saldo: number }).saldo);
   } else {
     // Reserva aún no confirmada (o cancelada, p.ej. la vieja de un
     // traspaso): solo cuota y abono pagan lote — ni la seña ni la comisión
@@ -145,6 +159,7 @@ export async function cargarRecibo(
     proyecto: res.projects?.name ?? 'Terrenalv',
     pagado_total: pagadoTotal,
     saldo,
+    moneda_lote: res.currency ?? 'BOB',
   };
 }
 

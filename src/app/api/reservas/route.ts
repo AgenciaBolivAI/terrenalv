@@ -133,6 +133,22 @@ export async function POST(request: Request) {
     });
     if (error) {
       const code = rpcErrorCode(error.message);
+
+      // ¿Es la reserva que este mismo comprador acaba de hacer y cuya
+      // respuesta se perdió? Mismo carnet, mismo lote, todavía viva: se le
+      // devuelve su código en vez de un error que lo manda a buscar un
+      // código que nunca recibió.
+      if (code === 'CI_LIMIT_REACHED') {
+        const suya = await admin.rpc('recuperar_reserva_del_carnet', {
+          p_lot_id: parsed.data.lot_id,
+          p_ci: parsed.data.ci,
+        });
+        const recuperada = suya.data as CreateReservationPayload | null;
+        if (!suya.error && recuperada) {
+          const qr = await mintQrSignedUrl(admin, recuperada.payment_instructions);
+          return NextResponse.json({ ...recuperada, qr_url: qr, recuperada: true });
+        }
+      }
       // The RPC's own log_attempt is rolled back with its RAISE, so failures
       // were invisible to the rate limiter. Record them out-of-band — except
       // when the limiter itself rejected (that would feed its own loop).

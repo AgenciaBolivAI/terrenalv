@@ -179,7 +179,6 @@ export function PlanViewport({ controllerRef, children }: PlanViewportProps) {
 
   // ---- Imperative camera for the search box --------------------------------
   useEffect(() => {
-    if (!controllerRef) return;
     const zoomToBbox = (bbox: [number, number, number, number], marginFactor: number, minTarget: number, maxTarget: number) => {
       const t = transformRef.current;
       const { w, h } = sizeRef.current;
@@ -195,18 +194,27 @@ export function PlanViewport({ controllerRef, children }: PlanViewportProps) {
       const cy = (bbox[1] + bbox[3]) / 2 - vb.minY;
       t.setTransform(w / 2 - cx * scale, h / 2 - cy * scale, scale, 350, 'easeOut');
     };
-    controllerRef.current = {
-      zoomToLot: (lotId) => {
-        const lot = useMapStore.getState().lots.get(lotId);
-        if (lot) zoomToBbox(lot.bbox, 5, 3, 7);
-      },
-      zoomToManzana: (manzanaId) => {
-        const m = useMapStore.getState().manzanas.find((x) => x.id === manzanaId);
-        if (m) zoomToBbox(m.bbox, 1.3, fit ?? 0.3, MAX_SCALE);
-      },
+    const acercarAManzana = (manzanaId: string) => {
+      const m = useMapStore.getState().manzanas.find((x) => x.id === manzanaId);
+      // Se pide LOD 1 como piso: entrar a una manzana y que siga sin haber
+      // lotes seria repetir el problema que esto viene a arreglar.
+      if (m) zoomToBbox(m.bbox, 1.3, Math.max(0.55, fit ?? 0.3), MAX_SCALE);
     };
+    if (controllerRef) {
+      controllerRef.current = {
+        zoomToLot: (lotId) => {
+          const lot = useMapStore.getState().lots.get(lotId);
+          if (lot) zoomToBbox(lot.bbox, 5, 3, 7);
+        },
+        zoomToManzana: acercarAManzana,
+      };
+    }
+    // La misma camara, publicada en el store: la manzana la necesita para
+    // responder al toque en la vista general.
+    useMapStore.getState().setAcercarAManzana(acercarAManzana);
     return () => {
-      controllerRef.current = null;
+      if (controllerRef) controllerRef.current = null;
+      useMapStore.getState().setAcercarAManzana(null);
     };
   }, [controllerRef, vb.minX, vb.minY, fit]);
 

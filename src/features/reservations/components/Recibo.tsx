@@ -122,7 +122,9 @@ export function Recibo({ r, emitidoPor }: { r: ReciboData; emitidoPor?: string }
       <section className="mt-6 grid grid-cols-3 gap-3 rounded-lg bg-stone-50 p-4 text-sm print:bg-white print:ring-1 print:ring-stone-300">
         <div>
           <p className="text-xs text-stone-500">Precio del lote</p>
-          <p className="font-semibold tabular-nums">{formatMoney(r.price_agreed, r.currency)}</p>
+          <p className="font-semibold tabular-nums">
+            {formatMoney(r.price_agreed, r.moneda_lote)}
+          </p>
         </div>
         <div>
           <p className="text-xs text-stone-500">Pagado a la fecha</p>

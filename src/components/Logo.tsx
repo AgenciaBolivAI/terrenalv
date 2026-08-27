@@ -26,6 +26,9 @@ export function Logo({
   void srl;
   const img = (
     <Image
+      // Se dibuja a 36 px de alto en el encabezado; sin esto el navegador
+      // bajaba la version de 3840 px (80 KB) en cada pagina publica.
+      sizes="(max-width: 640px) 160px, 220px"
       src="/logo.png"
       alt="Terrenalv S.R.L."
       width={1380}

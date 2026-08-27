@@ -63,6 +63,13 @@ interface MapState {
   setLodBucket: (b: LodBucket) => void;
   viewportBbox: [number, number, number, number] | null;
   setViewportBbox: (b: [number, number, number, number]) => void;
+  /**
+   * La camara, publicada por PlanViewport para que cualquier capa del plano
+   * pueda pedirle que se acerque. Antes solo la tenia el buscador, via ref, y
+   * por eso la manzana no podia reaccionar a un toque.
+   */
+  acercarAManzana: ((manzanaId: string) => void) | null;
+  setAcercarAManzana: (fn: ((manzanaId: string) => void) | null) => void;
 }
 
 type Stats = Record<string, { total: number; disponibles: number; priced: number }>;
@@ -170,6 +177,8 @@ export const useMapStore = create<MapState>()(
     setNeedsStatusResync: (v) => set({ needsStatusResync: v }),
 
     viewMode: '2d',
+    acercarAManzana: null,
+    setAcercarAManzana: (fn) => set({ acercarAManzana: fn }),
     setViewMode: (m) => set({ viewMode: m }),
     selectedLotId: null,
     selectLot: (id) => set({ selectedLotId: id }),

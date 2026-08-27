@@ -17,7 +17,12 @@ import type { ContratoData } from './contrato';
 
 function fechaLarga(iso: string | null): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('es-BO', {
+  // Una fecha suelta ('2026-09-27') se lee como medianoche UTC, y en La Paz
+  // (UTC−4) eso cae el día ANTERIOR: el contrato fechaba la primera cuota el
+  // 26 mientras el cronograma decía 27. Se ancla al mediodía, como el resto
+  // del sistema, para que ningún huso la corra.
+  const d = iso.length <= 10 ? new Date(`${iso}T12:00:00`) : new Date(iso);
+  return d.toLocaleDateString('es-BO', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -151,7 +156,7 @@ export function Contrato({ c }: { c: ContratoData }) {
         {c.plan ? (
           <p className="mt-1">
             {esTraspaso ? 'EL CESIONARIO' : 'EL COMPRADOR'} paga una cuota inicial de{' '}
-            <strong>{formatMoney(c.plan.down_payment, 'BOB')}</strong> y el resto en{' '}
+            <strong>{formatMoney(c.plan.cuota_inicial, 'BOB')}</strong> y el resto en{' '}
             <strong>{c.plan.months} cuotas mensuales</strong> de{' '}
             <strong>{formatMoney(c.plan.monthly_amount, 'BOB')}</strong>, la primera con
             vencimiento el {fechaLarga(c.plan.first_due_date)}.

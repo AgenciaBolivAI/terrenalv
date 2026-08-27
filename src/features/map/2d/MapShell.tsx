@@ -109,6 +109,7 @@ export function MapShell({
       ) : null}
 
       <LotSearch controllerRef={controllerRef} />
+      <PistaDeZoom />
       <MapLegend />
       <ViewToggle disabled3d={blocked3d} />
 
@@ -121,6 +122,25 @@ export function MapShell({
       ) : null}
 
       <LotBottomSheet project={project} financingPlan={financingPlan} />
+    </div>
+  );
+}
+
+/**
+ * En la vista general no hay lotes montados: el plano entero es una tira de
+ * 3.246 x 404 m y a esa escala dibujar 2.078 lotes no se ve ni se puede tocar.
+ * El comprador tiene que acercar, y hasta ahora nada se lo decia — miraba una
+ * franja verde, la tocaba, y no pasaba nada. Ahora el bloque de manzana es
+ * tocable Y el cartel explica el gesto.
+ */
+function PistaDeZoom() {
+  const lodBucket = useMapStore((s) => s.lodBucket);
+  if (lodBucket !== 0) return null;
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-24 z-10 flex justify-center px-3">
+      <span className="rounded-full bg-stone-900/85 px-3.5 py-1.5 text-center text-xs font-medium text-white shadow-lg">
+        Tocá una manzana para ver sus lotes, o acercá el plano
+      </span>
     </div>
   );
 }

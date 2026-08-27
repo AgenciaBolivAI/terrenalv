@@ -142,7 +142,10 @@ export default async function MapaPage({
         planoFondo={planoFondo}
       />
 
-      <div className="pointer-events-none absolute inset-x-0 top-16 z-20 flex justify-center px-3">
+      {/* Debajo del buscador, no encima. Los dos vivian en top-16 z-20 y el
+          banner se comia todos los toques del buscador — que es la unica
+          forma de encontrar un lote cuando el plano esta lejos. */}
+      <div className="pointer-events-none absolute inset-x-0 top-32 z-10 flex justify-center px-3">
         <ActiveReservationBanner variant="floating" />
       </div>
     </div>

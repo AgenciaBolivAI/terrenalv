@@ -1,3 +1,4 @@
+import { WHATSAPP_VENTAS } from '@/lib/contacto';
 import Link from 'next/link';
 import { waLink, formatMoney } from '@/lib/format';
 import { Logo } from '@/components/Logo';
@@ -43,7 +44,7 @@ const PASARELLA: Slide[] = [
   { ...RENDER, src: '/clubhouse/ch-03.jpg', alt: 'Render del interior del salón del club house: barra, mesas para las familias y vista abierta al parque.' },
 ];
 
-const WHATSAPP_VENTAS = '+59175511996'; // Ventas Terrenalv
+
 
 // Real accounts, verified against the live profiles (names + Prados del Sur
 // content). Do NOT add links that have not been checked.
@@ -213,7 +214,7 @@ export default async function Home() {
             </Link>
             <Link
               href="/mercado"
-              className="hidden rounded-full px-4 py-2 text-sm font-semibold transition hover:bg-white/10 sm:block"
+              className="rounded-full px-4 py-2 text-sm font-semibold transition hover:bg-white/10"
             >
               Mercado
             </Link>

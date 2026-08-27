@@ -21,8 +21,12 @@ function aggregateFill(total: number, disponibles: number, priced: number): stri
   return '#86efac';
 }
 
+/** Un arrastre corto sigue siendo un toque; más que esto, es paneo. */
+const TAP_SLOP_PX = 10;
+
 function ManzanaGroupInner({ manzana }: { manzana: MapManzana }) {
   const m = manzana;
+  const tapRef = React.useRef<{ x: number; y: number } | null>(null);
   const lodBucket = useMapStore((s) => s.lodBucket);
   const visible = useMapStore(
     (s) =>
@@ -45,12 +49,27 @@ function ManzanaGroupInner({ manzana }: { manzana: MapManzana }) {
     return (
       <g>
         {isResidencial ? (
+          // TOCABLE. En la vista general no hay lotes montados, así que si el
+          // bloque tampoco escucha, tocar el plano no hace nada y el comprador
+          // no tiene forma de llegar al formulario de reserva. Tocar el bloque
+          // entra al bloque, que es el gesto de cualquier mapa.
           <path
             d={m.path}
             fill={aggregateFill(m.lotIds.length, disponibles, pricedCount)}
             stroke="#57534e"
             strokeWidth={0.9}
-            pointerEvents="none"
+            style={{ cursor: 'pointer' }}
+            onPointerDown={(e) => {
+              tapRef.current = { x: e.clientX, y: e.clientY };
+            }}
+            onPointerUp={(e) => {
+              // Solo si fue un toque y no el final de un arrastre.
+              const t = tapRef.current;
+              tapRef.current = null;
+              if (!t) return;
+              if (Math.hypot(e.clientX - t.x, e.clientY - t.y) > TAP_SLOP_PX) return;
+              useMapStore.getState().acercarAManzana?.(m.id);
+            }}
           />
         ) : (
           <path d={m.path} className={`mz-outline mz-${m.kind}`} pointerEvents="none" />

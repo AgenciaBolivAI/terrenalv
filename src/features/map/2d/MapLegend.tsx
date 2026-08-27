@@ -2,6 +2,7 @@
 
 // Fixed bottom-left legend chips + live count of reservable lots.
 
+import { formatMoney } from '@/lib/format';
 import { useMapStore } from '../store/useMapStore';
 
 function Swatch({ kind }: { kind: 'disponible' | 'reservado' | 'vendido' }) {
@@ -42,12 +43,26 @@ export function MapLegend() {
     }
     return n;
   });
+  // El precio más bajo disponible. Era la única cifra que el comprador no
+  // podía ver sin antes acercar el plano y tocar un lote — y es la que decide
+  // si sigue mirando. Sale del mismo recorrido que ya se hacía.
+  const desde = useMapStore((s) => {
+    let min = Infinity;
+    for (const id in s.statusByLotId) {
+      const e = s.statusByLotId[id];
+      if (e.st === 'disponible' && e.priced && typeof e.price === 'number' && e.price < min) {
+        min = e.price;
+      }
+    }
+    return Number.isFinite(min) ? min : null;
+  });
 
   return (
     <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex flex-col items-start gap-1.5">
       {disponibles > 0 ? (
         <span className="pointer-events-auto rounded-full bg-brand px-2.5 py-1 text-[11px] font-semibold text-white shadow-md">
           {disponibles} {disponibles === 1 ? 'lote disponible' : 'lotes disponibles'}
+          {desde !== null ? ` · desde ${formatMoney(desde, 'BOB')}` : ''}
         </span>
       ) : null}
       <div className="pointer-events-auto flex items-center gap-2.5 rounded-full bg-white/90 px-3 py-1.5 text-[11px] font-medium text-stone-700 shadow-md backdrop-blur">

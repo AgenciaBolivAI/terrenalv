@@ -1,5 +1,7 @@
 // /reserva — "Buscar mi reserva": enter the tracking code, jump to the tracking page.
 
+import { waLink } from '@/lib/format';
+import { WHATSAPP_VENTAS } from '@/lib/contacto';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { PublicShell } from '@/features/reservations/components/PublicShell';
@@ -31,6 +33,23 @@ export default function BuscarReservaPage() {
           </Link>
         </p>
       </div>
-    </PublicShell>
+          {/* Sin esto, quien pierde el código llega a un campo que no puede
+          llenar: no hay búsqueda por carnet ni «olvidé mi código». */}
+      <p className="mt-6 text-center text-xs text-stone-500">
+        ¿Perdiste tu código?{' '}
+        <a
+          href={waLink(
+            WHATSAPP_VENTAS,
+            'Hola Terrenalv, perdí el código de seguimiento de mi reserva. Mi carnet es: ',
+          )}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-semibold text-brand underline"
+        >
+          Escribinos con tu carnet
+        </a>{' '}
+        y te lo reenviamos.
+      </p>
+</PublicShell>
   );
 }

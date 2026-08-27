@@ -68,6 +68,15 @@ export function ProofUploader({
       });
       const json: { error?: string } | null = await res.json().catch(() => null);
       if (!res.ok) {
+        // 409: la reserva ya no espera pago. En un reintento eso NO es un
+        // error: es que el envío anterior sí llegó y el comprobante ya está en
+        // revisión. Se trata como lo que es — una carrera ganada.
+        if (res.status === 409) {
+          setPhase('idle');
+          lastFileRef.current = null;
+          onUploaded();
+          return;
+        }
         setPhase('error');
         setError(json?.error ?? 'No pudimos subir el comprobante. Intenta de nuevo.');
         return;
@@ -77,7 +86,11 @@ export function ProofUploader({
       onUploaded();
     } catch {
       setPhase('error');
-      setError('Se cortó la conexión y tu comprobante no se envió.');
+      // No se puede afirmar que no se envió: la conexión pudo cortarse DESPUÉS
+      // de que el servidor lo guardara.
+      setError(
+        'Se cortó la conexión. Puede que tu comprobante sí haya llegado: actualizá esta página antes de volver a subirlo.',
+      );
     }
   }
 
