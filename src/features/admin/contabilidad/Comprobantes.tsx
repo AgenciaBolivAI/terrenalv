@@ -21,11 +21,20 @@ import { num, type Cell } from '@/features/admin/export';
 import { dateLabel, todayIso } from './types';
 
 export interface Account {
+  /** La llave interna. Para las cuentas del sistema es el código corto (1131). */
   code: string;
+  /** El código del plan (1.02.01.010): el que se muestra y por el que se busca. */
+  codigo_plan: string | null;
+  parent_code: string | null;
   name: string;
   kind: string;
   is_active: boolean;
   is_system: boolean;
+}
+
+/** El código que ve la contadora. */
+export function codigoDe(a: Account): string {
+  return a.codigo_plan ?? a.code;
 }
 
 interface EntryRow {
@@ -89,7 +98,13 @@ export default function Comprobantes({
   const [lines, setLines] = useState<DraftLine[]>([{ ...EMPTY_LINE }, { ...EMPTY_LINE }]);
   const [error, setError] = useState<string | null>(null);
 
-  const activos = accounts.filter((a) => a.is_active);
+  // Solo se ofrecen las cuentas IMPUTABLES. Una cuenta con hijas es titular:
+  // agrupa, no se asienta. El servidor igual lo rechaza, pero ofrecerla y
+  // después negarla es hacerle perder el asiento a quien lo está escribiendo.
+  const activos = useMemo(() => {
+    const conHijas = new Set(accounts.filter((a) => a.is_active).map((a) => a.parent_code));
+    return accounts.filter((a) => a.is_active && !conHijas.has(a.code));
+  }, [accounts]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -368,7 +383,7 @@ export default function Comprobantes({
                         <option value="">—</option>
                         {activos.map((a) => (
                           <option key={a.code} value={a.code}>
-                            {a.code} · {a.name}
+                            {codigoDe(a)} · {a.name}
                           </option>
                         ))}
                       </select>

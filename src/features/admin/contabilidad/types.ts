@@ -198,7 +198,7 @@ export interface LedgerLine {
   cuenta: string;
   debe: number;
   haber: number;
-  origen: 'pago' | 'egreso';
+  origen: LedgerOrigin;
   origen_id: string;
   // Las dimensiones con las que se segrega el libro: de quien es el
   // movimiento, a que centro carga, y a nombre de quien esta.
@@ -208,26 +208,98 @@ export interface LedgerLine {
   centro_costo: string | null;
   titular: string | null;
   titular_nombre: string | null;
+  // La bitacora del asiento. Un libro no dice solo a que fecha corresponde el
+  // movimiento: dice cuando se asento, cuando se toco por ultima vez, quien
+  // lo hizo y a que tipo de cambio.
+  registrado_en: string | null;
+  modificado_en: string | null;
+  usuario_id: string | null;
+  usuario: string | null;
+  moneda: string | null;
+  tipo_cambio: number | null;
+  monto_origen: number | null;
 }
+
+/** De donde sale un movimiento del libro. */
+export type LedgerOrigin = 'venta' | 'pago' | 'egreso' | 'terreno' | 'comprobante';
+
+export type AccountKind =
+  | 'activo'
+  | 'pasivo'
+  | 'patrimonio'
+  | 'ingreso'
+  | 'gasto'
+  | 'orden_deudora'
+  | 'orden_acreedora';
 
 /** One account's totals, as projected by v_libro_mayor. */
 export interface LedgerAccount {
+  /** Llave interna. Para las cuentas del sistema, el codigo corto (1131). */
   cuenta: string;
+  /** El codigo del plan (1.02.01.010): el que se muestra. */
+  codigo: string;
   cuenta_nombre: string;
-  tipo: 'activo' | 'pasivo' | 'patrimonio' | 'ingreso' | 'gasto';
+  tipo: AccountKind;
   sort_order: number;
   debe: number;
   haber: number;
   saldo: number;
 }
 
-export const ACCOUNT_KIND_LABEL: Record<LedgerAccount['tipo'], string> = {
+/** One movement of one account, as projected by v_libro_mayor_movimientos. */
+export interface LedgerMovement {
+  cuenta: string;
+  codigo: string;
+  cuenta_nombre: string;
+  tipo: AccountKind;
+  fecha: string;
+  comprobante: string;
+  origen: LedgerOrigin;
+  origen_id: string;
+  glosa: string;
+  debe: number;
+  haber: number;
+  /**
+   * Saldo acumulado despues de este movimiento, con el signo de la cuenta.
+   * `saldo` acumula sobre el LIBRO ENTERO —la contabilidad es una sola— y
+   * `saldo_urbanizacion` dentro de una urbanizacion. Cuando la consulta ya
+   * filtro por urbanizacion hay que mostrar el segundo: el primero quedaria
+   * con huecos, porque acumula tambien lo que el filtro dejo afuera.
+   */
+  saldo: number;
+  saldo_urbanizacion: number;
+  centro_costo: string | null;
+  cliente: string | null;
+  registrado_en: string | null;
+  modificado_en: string | null;
+  usuario: string | null;
+  moneda: string | null;
+  tipo_cambio: number | null;
+  monto_origen: number | null;
+}
+
+export const ACCOUNT_KIND_LABEL: Record<AccountKind, string> = {
   activo: 'Activo',
   pasivo: 'Pasivo',
   patrimonio: 'Patrimonio',
   ingreso: 'Ingreso',
   gasto: 'Gasto',
+  orden_deudora: 'Orden deudora',
+  orden_acreedora: 'Orden acreedora',
 };
+
+/** Fecha y hora de La Paz, para las columnas de bitacora del libro. */
+export function fechaHoraLabel(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('es-BO', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'America/La_Paz',
+  });
+}
 
 /** First day of the current month, yyyy-mm-dd — the default report period. */
 export function monthStartIso(): string {

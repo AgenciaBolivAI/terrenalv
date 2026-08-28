@@ -21,7 +21,8 @@ import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
 import { Badge, EmptyState, Kpi, Spinner, btnPrimary, btnSecondary, inputClass } from '@/features/admin/ui/bits';
 import { Dialog } from '@/features/admin/ui/dialog';
 import Estados from './Estados';
-import Comprobantes, { type Account } from './Comprobantes';
+import Comprobantes, { codigoDe, type Account } from './Comprobantes';
+import RegistroComprobantes from './RegistroComprobantes';
 import Gestion from './Gestion';
 import RegistrarCobroDialog from './RegistrarCobro';
 import Tesoreria, {
@@ -50,6 +51,7 @@ import {
   EXPENSE_LABEL,
   dateLabel,
   downloadCsv,
+  fechaHoraLabel,
   mesFin,
   monthLabel,
   monthStartIso,
@@ -62,6 +64,7 @@ import {
   type Installment,
   type LedgerAccount,
   type LedgerLine,
+  type LedgerMovement,
   type MonthlyCashflow,
   type CobroPorVia,
   type CobroTarget,
@@ -185,7 +188,7 @@ export default function AccountingClient({
   const loadPlan = useCallback(async () => {
     const { data } = await supabase
       .from('chart_of_accounts')
-      .select('code, name, kind, is_active, is_system')
+      .select('code, codigo_plan, parent_code, name, kind, is_active, is_system')
       .order('sort_order');
     setPlan((data ?? []) as unknown as Account[]);
   }, [supabase]);
@@ -415,7 +418,8 @@ export default function AccountingClient({
           .from('v_libro_diario')
           .select(
             'fecha, comprobante, glosa, cuenta, debe, haber, origen, origen_id, ' +
-              'cliente_ci, cliente, centro_costo_id, centro_costo, titular, titular_nombre',
+              'cliente_ci, cliente, centro_costo_id, centro_costo, titular, titular_nombre, ' +
+              'registrado_en, modificado_en, usuario_id, usuario, moneda, tipo_cambio, monto_origen',
           ),
       )
         .gte('fecha', desde)
@@ -427,6 +431,43 @@ export default function AccountingClient({
     setDiario((dRes.data ?? []) as unknown as LedgerLine[]);
     setLibroBusy(false);
   }, [supabase, alcance, desde, hasta]);
+
+  // EL MAYOR DE UNA CUENTA, movimiento a movimiento y con saldo acumulado.
+  //
+  // Se pide aparte y solo cuando hay una cuenta elegida: el saldo acumulado
+  // se calcula sobre TODA la historia de la cuenta, no sobre el periodo que
+  // se está mirando. Recortarlo por fechas daría un saldo que arranca en cero
+  // a mitad del año, que es exactamente el error que hace que un mayor no
+  // sirva para conciliar.
+  const [movimientos, setMovimientos] = useState<LedgerMovement[] | null>(null);
+  useEffect(() => {
+    if (tab !== 'libro' || !cuentaFiltro) {
+      setMovimientos(null);
+      return;
+    }
+    let vivo = true;
+    void (async () => {
+      const { data } = await alcance(
+        supabase.from('v_libro_mayor_movimientos').select('*'),
+      )
+        // Por prefijo, no por igualdad: pedir 1111 tiene que traer también
+        // 1111.01 y 1111.02, que son las cuentas de cada banco y cada caja.
+        // El comodín de PostgREST es `*`, no `%`.
+        .or(`cuenta.eq.${cuentaFiltro},cuenta.like.${cuentaFiltro}.*`)
+        // El MISMO orden con el que la vista acumula el saldo. Si acá se
+        // ordenara distinto, la columna de saldo saltaría hacia atrás y hacia
+        // adelante sin que las filas expliquen por qué.
+        .order('fecha')
+        .order('comprobante')
+        .order('registrado_en')
+        .order('debe', { ascending: false })
+        .limit(5000);
+      if (vivo) setMovimientos((data ?? []) as unknown as LedgerMovement[]);
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [tab, cuentaFiltro, supabase, alcance]);
 
   useEffect(() => {
     if (tab === 'libro') void loadLibro();
@@ -1268,9 +1309,9 @@ export default function AccountingClient({
                   ]}
                   rows={() =>
                     (mayor ?? []).map((a) => [
-                      a.cuenta,
+                      a.codigo ?? a.cuenta,
                       a.cuenta_nombre,
-                      ACCOUNT_KIND_LABEL[a.tipo],
+                      ACCOUNT_KIND_LABEL[a.tipo] ?? a.tipo,
                       fnum(Number(a.debe)),
                       fnum(Number(a.haber)),
                       fnum(Number(a.saldo)),
@@ -1307,10 +1348,14 @@ export default function AccountingClient({
                           cuentaFiltro === a.cuenta ? 'bg-green-50' : ''
                         }`}
                       >
-                        <td className="px-4 py-2 font-mono text-xs text-stone-600">{a.cuenta}</td>
+                        <td className="px-4 py-2 font-mono text-xs whitespace-nowrap text-stone-600">
+                          {a.codigo ?? a.cuenta}
+                        </td>
                         <td className="px-3 py-2 text-stone-800">{a.cuenta_nombre}</td>
                         <td className="px-3 py-2">
-                          <Badge className="bg-stone-100 text-stone-600">{ACCOUNT_KIND_LABEL[a.tipo]}</Badge>
+                          <Badge className="bg-stone-100 text-stone-600">
+                            {ACCOUNT_KIND_LABEL[a.tipo] ?? a.tipo}
+                          </Badge>
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums text-stone-600">
                           {formatMoney(Number(a.debe), 'BOB')}
@@ -1330,6 +1375,163 @@ export default function AccountingClient({
               </div>
             )}
           </section>
+
+          {/* EL MAYOR DE LA CUENTA ELEGIDA — la cuenta abierta.
+              Los totales de arriba sirven para el balance; para puntear y
+              conciliar hace falta ver cada movimiento con su comprobante, su
+              bitácora y el saldo que va quedando. El saldo acumulado corre
+              sobre toda la historia de la cuenta, no sobre el periodo. */}
+          {cuentaFiltro ? (
+            <section className="rounded-xl border border-brand/30 bg-white">
+              <div className="flex flex-wrap items-center gap-3 border-b border-stone-200 px-4 py-3">
+                <div>
+                  <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+                    Mayor de la cuenta {movimientos?.[0]?.codigo ?? cuentaFiltro}
+                    {movimientos?.[0] ? ` — ${movimientos[0].cuenta_nombre}` : ''}
+                  </h2>
+                  <p className="mt-0.5 text-xs text-stone-500">
+                    Toda la historia de la cuenta, con el saldo acumulado después de cada asiento
+                    {consolidado
+                      ? ' — sobre el libro entero, las urbanizaciones juntas.'
+                      : ` — solo lo de ${projectName}.`}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCuentaFiltro(null)}
+                  className="cursor-pointer rounded-full bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand
+                             transition-colors hover:bg-brand/20
+                             focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                >
+                  cerrar ✕
+                </button>
+                <div className="ml-auto">
+                  <ExportButtons
+                    disabled={!movimientos?.length}
+                    orientation="landscape"
+                    meta={{
+                      title: `Libro Mayor — cuenta ${movimientos?.[0]?.codigo ?? cuentaFiltro}`,
+                      subtitle: `${projectName}${movimientos?.[0] ? ` · ${movimientos[0].cuenta_nombre}` : ''}`,
+                      filename: `libro-mayor-${cuentaFiltro}-${todayIso()}`,
+                      footnote:
+                        'Saldo acumulado sobre toda la historia de la cuenta. Registro, modificación, usuario y tipo de cambio de cada asiento.',
+                    }}
+                    columns={[
+                      { header: 'Fecha' },
+                      { header: 'Comprobante' },
+                      { header: 'Glosa' },
+                      { header: 'Debe', align: 'right' },
+                      { header: 'Haber', align: 'right' },
+                      { header: 'Saldo', align: 'right' },
+                      { header: 'Registrado' },
+                      { header: 'Modificado' },
+                      { header: 'Usuario' },
+                      { header: 'Mon.' },
+                      { header: 'T/C', align: 'right' },
+                      { header: 'Importe origen', align: 'right' },
+                    ]}
+                    rows={() =>
+                      (movimientos ?? []).map((m) => [
+                        dateLabel(m.fecha),
+                        m.comprobante,
+                        m.glosa,
+                        Number(m.debe) > 0 ? fnum(Number(m.debe)) : '',
+                        Number(m.haber) > 0 ? fnum(Number(m.haber)) : '',
+                        fnum(Number(consolidado ? m.saldo : m.saldo_urbanizacion)),
+                        fechaHoraLabel(m.registrado_en),
+                        fechaHoraLabel(m.modificado_en),
+                        m.usuario ?? '—',
+                        m.moneda ?? 'BOB',
+                        fnum(Number(m.tipo_cambio ?? 1)),
+                        m.monto_origen === null ? '' : fnum(Number(m.monto_origen)),
+                      ]) as XCell[][]
+                    }
+                  />
+                </div>
+              </div>
+              {movimientos === null ? (
+                <div className="flex justify-center py-8"><Spinner /></div>
+              ) : !movimientos.length ? (
+                <p className="py-8 text-center text-sm text-stone-400">
+                  Esta cuenta todavía no tiene movimientos.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-300 text-sm">
+                    <thead>
+                      <tr className="border-b border-stone-200 bg-stone-50 text-left">
+                        <th className="px-4 py-2 text-xs font-semibold text-stone-500">Fecha</th>
+                        <th className="px-3 py-2 text-xs font-semibold text-stone-500">Comprobante</th>
+                        <th className="px-3 py-2 text-xs font-semibold text-stone-500">Glosa</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Debe</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Haber</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Saldo</th>
+                        <th className="px-3 py-2 text-xs font-semibold text-stone-500">Registrado</th>
+                        <th className="px-3 py-2 text-xs font-semibold text-stone-500">Modificado</th>
+                        <th className="px-3 py-2 text-xs font-semibold text-stone-500">Usuario</th>
+                        <th className="px-3 py-2 text-xs font-semibold text-stone-500">Mon.</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">T/C</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">
+                          Importe origen
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {movimientos.map((m, i) => (
+                        <tr
+                          key={`${m.origen}-${m.origen_id}-${m.cuenta}-${i}`}
+                          className="border-b border-stone-100 last:border-0 hover:bg-stone-50"
+                        >
+                          <td className="px-4 py-1.5 whitespace-nowrap text-stone-600">
+                            {dateLabel(m.fecha)}
+                          </td>
+                          <td className="px-3 py-1.5 font-mono text-xs whitespace-nowrap text-stone-500">
+                            {m.comprobante}
+                          </td>
+                          <td className="px-3 py-1.5 text-stone-800">{m.glosa}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">
+                            {Number(m.debe) > 0 ? formatMoney(Number(m.debe), 'BOB') : ''}
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">
+                            {Number(m.haber) > 0 ? formatMoney(Number(m.haber), 'BOB') : ''}
+                          </td>
+                          <td className={`px-3 py-1.5 text-right font-semibold tabular-nums ${
+                            Number(consolidado ? m.saldo : m.saldo_urbanizacion) < 0
+                              ? 'text-red-600'
+                              : 'text-stone-900'
+                          }`}>
+                            {formatMoney(Number(consolidado ? m.saldo : m.saldo_urbanizacion), 'BOB')}
+                          </td>
+                          <td className="px-3 py-1.5 text-xs whitespace-nowrap text-stone-500">
+                            {fechaHoraLabel(m.registrado_en)}
+                          </td>
+                          <td className="px-3 py-1.5 text-xs whitespace-nowrap text-stone-500">
+                            {fechaHoraLabel(m.modificado_en)}
+                          </td>
+                          <td className="px-3 py-1.5 text-xs text-stone-500">{m.usuario ?? '—'}</td>
+                          <td className="px-3 py-1.5 text-xs text-stone-500">{m.moneda ?? 'BOB'}</td>
+                          <td className="px-3 py-1.5 text-right text-xs tabular-nums text-stone-500">
+                            {Number(m.tipo_cambio ?? 1).toLocaleString('es-BO', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 5,
+                            })}
+                          </td>
+                          <td className="px-3 py-1.5 text-right text-xs tabular-nums text-stone-500">
+                            {m.monto_origen === null
+                              ? ''
+                              : Number(m.monto_origen).toLocaleString('es-BO', {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          ) : null}
 
           <section className="rounded-xl border border-stone-200 bg-white">
             <div className="flex flex-wrap items-center gap-3 border-b border-stone-200 px-4 py-3">
@@ -1419,6 +1621,11 @@ export default function AccountingClient({
                     { header: 'Cuenta' },
                     { header: 'Debe', align: 'right' },
                     { header: 'Haber', align: 'right' },
+                    { header: 'Registrado' },
+                    { header: 'Modificado' },
+                    { header: 'Usuario' },
+                    { header: 'Mon.' },
+                    { header: 'T/C', align: 'right' },
                   ]}
                   rows={() =>
                     [
@@ -1429,11 +1636,17 @@ export default function AccountingClient({
                         l.cuenta,
                         Number(l.debe) > 0 ? fnum(Number(l.debe)) : '',
                         Number(l.haber) > 0 ? fnum(Number(l.haber)) : '',
+                        fechaHoraLabel(l.registrado_en),
+                        fechaHoraLabel(l.modificado_en),
+                        l.usuario ?? '—',
+                        l.moneda ?? 'BOB',
+                        fnum(Number(l.tipo_cambio ?? 1)),
                       ]),
                       [
                         '', '', 'TOTALES', '',
                         fnum(diarioFiltrado.reduce((a, l) => a + Number(l.debe), 0)),
                         fnum(diarioFiltrado.reduce((a, l) => a + Number(l.haber), 0)),
+                        '', '', '', '', '',
                       ],
                     ] as XCell[][]
                   }
@@ -1460,13 +1673,16 @@ export default function AccountingClient({
                         <th className="px-3 py-2 text-xs font-semibold text-stone-500">Cuenta</th>
                         <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Debe</th>
                         <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">Haber</th>
+                        <th className="px-3 py-2 text-xs font-semibold text-stone-500">Registrado</th>
+                        <th className="px-3 py-2 text-xs font-semibold text-stone-500">Usuario</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-stone-500">T/C</th>
                       </tr>
                     </thead>
                     <tbody>
                       {diarioFiltrado.map((l, i) => (
                         <tr key={`${l.origen_id}-${l.cuenta}-${i}`} className="border-b border-stone-100 last:border-0 hover:bg-stone-50">
                           <td className="px-4 py-1.5 whitespace-nowrap text-stone-600">{dateLabel(l.fecha)}</td>
-                          <td className="px-3 py-1.5 font-mono text-xs text-stone-500">{l.comprobante}</td>
+                          <td className="px-3 py-1.5 font-mono text-xs whitespace-nowrap text-stone-500">{l.comprobante}</td>
                           <td className="px-3 py-1.5 text-stone-800">{l.glosa}</td>
                           <td className="px-3 py-1.5 font-mono text-xs text-stone-600">{l.cuenta}</td>
                           <td className="px-3 py-1.5 text-right tabular-nums">
@@ -1474,6 +1690,16 @@ export default function AccountingClient({
                           </td>
                           <td className="px-3 py-1.5 text-right tabular-nums">
                             {Number(l.haber) > 0 ? formatMoney(Number(l.haber), 'BOB') : ''}
+                          </td>
+                          <td className="px-3 py-1.5 text-xs whitespace-nowrap text-stone-500">
+                            {fechaHoraLabel(l.registrado_en)}
+                          </td>
+                          <td className="px-3 py-1.5 text-xs text-stone-500">{l.usuario ?? '—'}</td>
+                          <td className="px-3 py-1.5 text-right text-xs tabular-nums text-stone-500">
+                            {Number(l.tipo_cambio ?? 1).toLocaleString('es-BO', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 5,
+                            })}
                           </td>
                         </tr>
                       ))}
@@ -1489,6 +1715,7 @@ export default function AccountingClient({
                         <td className="px-3 py-2 text-right tabular-nums">
                           {formatMoney(diarioFiltrado.reduce((acc, l) => acc + Number(l.haber), 0), 'BOB')}
                         </td>
+                        <td colSpan={3} />
                       </tr>
                     </tfoot>
                   </table>
@@ -1519,15 +1746,11 @@ export default function AccountingClient({
 
       {tab === 'estados' ? <Estados projectId={scope} projectName={projectName} /> : null}
 
-      {escrituraBloqueada && (tab === 'comprobantes' || tab === 'gestion') ? (
+      {escrituraBloqueada && tab === 'gestion' ? (
         <section className="rounded-xl border border-stone-200 bg-white p-6">
           <EmptyState
             title="Elegí una urbanización"
-            hint={
-              tab === 'comprobantes'
-                ? 'Un comprobante se asienta en la gestión de UNA urbanización — no existe un asiento "de todas". Elegila arriba y volvé a esta pestaña.'
-                : 'El cierre de gestión y la reexpresión se hacen por urbanización, porque cada una tiene su propio ejercicio. Elegí cuál arriba.'
-            }
+            hint="El cierre de gestión y la reexpresión se hacen por urbanización, porque cada una tiene su propio ejercicio. Elegí cuál arriba."
           />
           <div className="mt-4 flex flex-wrap gap-2">
             {projects.map((pr) => (
@@ -1544,13 +1767,43 @@ export default function AccountingClient({
         </section>
       ) : null}
 
-      {!escrituraBloqueada && tab === 'comprobantes' ? (
-        <Comprobantes
-          projectId={scope}
-          createProjectId={projectId}
-          projectName={scope === null ? 'Todas las urbanizaciones' : projectName}
-          accounts={plan}
-        />
+      {/* El REGISTRO se lee siempre, con o sin urbanización elegida: es la
+          lista de todo lo asentado. Escribir un asiento a mano sí exige
+          elegir una, porque no existe un comprobante «de todas». */}
+      {tab === 'comprobantes' ? (
+        <div className="space-y-5">
+          <RegistroComprobantes
+            projectId={scope}
+            projectName={scope === null ? 'Todas las urbanizaciones' : projectName}
+          />
+          {escrituraBloqueada ? (
+            <section className="rounded-xl border border-stone-200 bg-white p-6">
+              <EmptyState
+                title="Para cargar un asiento a mano, elegí una urbanización"
+                hint='Un comprobante manual se asienta en la gestión de UNA urbanización — no existe un asiento "de todas".'
+              />
+              <div className="mt-4 flex flex-wrap gap-2">
+                {projects.map((pr) => (
+                  <button
+                    key={pr.id}
+                    type="button"
+                    className={btnSecondary}
+                    onClick={() => setScope(pr.id)}
+                  >
+                    {pr.name}
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : (
+            <Comprobantes
+              projectId={scope}
+              createProjectId={projectId}
+              projectName={scope === null ? 'Todas las urbanizaciones' : projectName}
+              accounts={plan}
+            />
+          )}
+        </div>
       ) : null}
 
       {!escrituraBloqueada && tab === 'gestion' ? (
@@ -1596,7 +1849,8 @@ export default function AccountingClient({
 
       {expenseOpen ? (
         <ExpenseDialog
-          projectId={projectId}
+          projectId={scope ?? projectId}
+          projects={projects}
           currency={currency}
           onClose={() => setExpenseOpen(false)}
           onSaved={() => {
@@ -1949,17 +2203,25 @@ function CreatePlanDialog({
 
 function ExpenseDialog({
   projectId,
+  projects,
   currency,
   onClose,
   onSaved,
 }: {
   projectId: string;
+  projects: AdminProject[];
   currency: Currency;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const { push } = useToast();
+  // A qué urbanización carga el gasto. Se elige acá y no viene impuesto por la
+  // que esté seleccionada arriba: la contabilidad es una sola, y quien carga
+  // una factura de combustible tiene que poder mandarla a la urbanización que
+  // corresponda sin salir de la pantalla. El correlativo del comprobante es
+  // del libro, así que la elección no lo altera.
+  const [expProjectId, setExpProjectId] = useState(projectId);
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [category, setCategory] = useState<ExpenseCategory>('obra');
   const [description, setDescription] = useState('');
@@ -1994,9 +2256,12 @@ function ExpenseDialog({
         .from('centros_costo')
         .select('id, codigo, nombre, project_id')
         .eq('is_active', true)
-        .or(`project_id.eq.${projectId},project_id.is.null`)
+        .or(`project_id.eq.${expProjectId},project_id.is.null`)
         .order('codigo');
-      setCentros((data ?? []) as { id: string; codigo: string; nombre: string }[]);
+      const cc = (data ?? []) as { id: string; codigo: string; nombre: string }[];
+      setCentros(cc);
+      // Al cambiar de urbanización, el centro elegido puede ser de la anterior.
+      setCentroId((actual) => (cc.some((c) => c.id === actual) ? actual : ''));
       const { data: cs } = await supabase
         .from('expense_concepts')
         .select('id, nombre, sort_order')
@@ -2004,7 +2269,7 @@ function ExpenseDialog({
         .order('sort_order');
       setConceptos((cs ?? []) as { id: string; nombre: string }[]);
     })();
-  }, [supabase, projectId]);
+  }, [supabase, expProjectId]);
 
   async function save() {
     setError(null);
@@ -2023,7 +2288,7 @@ function ExpenseDialog({
     }
     setBusy(true);
     const { error: err } = await supabase.rpc('admin_record_expense', {
-      p_project_id: projectId,
+      p_project_id: expProjectId,
       p_incurred_on: date,
       p_category: category,
       p_description: description.trim(),
@@ -2052,6 +2317,20 @@ function ExpenseDialog({
   return (
     <Dialog open onClose={onClose} title="Nuevo egreso">
       <div className="space-y-3">
+        <div>
+          <label className="mb-1 block text-xs text-stone-500">Urbanización a la que carga</label>
+          <select
+            value={expProjectId}
+            onChange={(e) => setExpProjectId(e.target.value)}
+            className={inputClass}
+          >
+            {projects.map((pr) => (
+              <option key={pr.id} value={pr.id}>
+                {pr.name}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs text-stone-500">Fecha</label>

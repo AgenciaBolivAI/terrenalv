@@ -16,7 +16,7 @@ import { ExportButtons } from '@/features/admin/export/ExportButtons';
 import { num, type Cell } from '@/features/admin/export';
 import { dateLabel, todayIso } from './types';
 import CentrosCosto from './CentrosCosto';
-import type { Account } from './Comprobantes';
+import { codigoDe, type Account } from './Comprobantes';
 
 interface Period {
   id: string;
@@ -39,7 +39,20 @@ const KIND_LABEL: Record<string, string> = {
   patrimonio: 'Patrimonio',
   ingreso: 'Ingreso',
   gasto: 'Gasto',
+  orden_deudora: 'Orden deudora',
+  orden_acreedora: 'Orden acreedora',
 };
+
+/** El nivel de una cuenta en el plan: 1.02.01.010 está en el cuarto. */
+function nivelDe(a: Account): number {
+  const c = codigoDe(a);
+  const partes = c.split('.');
+  if (partes.length !== 4) return 4;
+  if (partes[1] === '00') return 1;
+  if (partes[2] === '00') return 2;
+  if (partes[3] === '000') return 3;
+  return 4;
+}
 
 export default function Gestion({
   projectId,
@@ -277,7 +290,8 @@ export default function Gestion({
               columns={[{ header: 'Código' }, { header: 'Nombre' }, { header: 'Tipo' }, { header: 'Estado' }]}
               rows={() =>
                 accounts.map((a) => [
-                  a.code, a.name, KIND_LABEL[a.kind] ?? a.kind, a.is_active ? 'activa' : 'inactiva',
+                  codigoDe(a), a.name, KIND_LABEL[a.kind] ?? a.kind,
+                  a.is_active ? 'activa' : 'inactiva',
                 ]) as Cell[][]
               }
             />
@@ -289,10 +303,21 @@ export default function Gestion({
         <div className="max-h-96 overflow-y-auto">
           <table className="w-full text-sm">
             <tbody>
-              {accounts.map((a) => (
+              {accounts.map((a) => {
+                const nivel = nivelDe(a);
+                return (
                 <tr key={a.code} className="border-b border-stone-100 last:border-0 hover:bg-stone-50">
-                  <td className="px-4 py-1.5 font-mono text-xs text-stone-600">{a.code}</td>
-                  <td className={`px-3 py-1.5 ${a.is_active ? 'text-stone-800' : 'text-stone-400 line-through'}`}>
+                  <td className="px-4 py-1.5 font-mono text-xs whitespace-nowrap text-stone-600">
+                    {codigoDe(a)}
+                  </td>
+                  {/* La sangría hace visible la jerarquía: rubro, grupo,
+                      subgrupo y cuenta imputable, como en el listado impreso. */}
+                  <td
+                    className={`py-1.5 pr-3 ${
+                      a.is_active ? 'text-stone-800' : 'text-stone-400 line-through'
+                    } ${nivel <= 2 ? 'font-semibold' : ''}`}
+                    style={{ paddingLeft: `${0.75 + (nivel - 1) * 1.25}rem` }}
+                  >
                     {a.name}
                   </td>
                   <td className="px-3 py-1.5">
@@ -314,7 +339,8 @@ export default function Gestion({
                     ) : null}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -484,7 +510,7 @@ export default function Gestion({
                   .filter((a) => a.is_active)
                   .map((a) => (
                     <option key={a.code} value={a.code}>
-                      {a.code} · {a.name}
+                      {codigoDe(a)} · {a.name}
                     </option>
                   ))}
               </select>
