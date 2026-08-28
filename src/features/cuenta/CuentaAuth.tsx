@@ -52,28 +52,45 @@ export default function CuentaAuth({ modo }: { modo: 'entrar' | 'crear' }) {
     setBusy(true);
 
     if (esAlta) {
-      const { data, error: err } = await supabase.auth.signUp({
+      // El alta va por el servidor, que crea la cuenta con el correo YA
+      // confirmado: sin vuelta por el mail, la persona entra en el acto. El
+      // signUp del navegador no sirve acá porque Supabase tiene la
+      // confirmación encendida y devolvería una cuenta sin sesión.
+      const res = await fetch('/api/cuenta/registrar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email.trim(),
+          password: clave,
+          full_name: nombre.trim(),
+          phone: telefono.trim() || null,
+          ci: ci.trim() || null,
+          birth_date: nacimiento || null,
+          city: ciudad.trim() || null,
+          como_nos_conocio: comoConocio || null,
+          marketing_opt_in: permiso,
+        }),
+      });
+      const json = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) {
+        setBusy(false);
+        setError(json?.error ?? 'No pudimos crear la cuenta. Intentá de nuevo.');
+        return;
+      }
+      // Cuenta lista: se entra con la misma contraseña que acaba de elegir.
+      const { error: errLogin } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password: clave,
       });
-      if (err) {
+      if (errLogin) {
         setBusy(false);
-        setError(
-          /already registered|already been/i.test(err.message)
-            ? 'Ya hay una cuenta con ese correo. Entrá con tu contraseña.'
-            : err.message,
-        );
+        setError('Tu cuenta quedó creada. Entrá con tu correo y contraseña.');
+        setEsAlta(false);
         return;
       }
-      // Sin sesión = Supabase pidió confirmar el correo. La ficha se completa
-      // en el primer ingreso; sin esto el alta se perdería en el aire.
-      if (!data.session) {
-        setBusy(false);
-        setAviso(
-          'Te mandamos un correo para confirmar tu cuenta. Abrilo y después entrá acá con tu contraseña.',
-        );
-        return;
-      }
+      router.push('/cuenta/panel');
+      router.refresh();
+      return;
     } else {
       const { error: err } = await supabase.auth.signInWithPassword({
         email: email.trim(),
@@ -86,9 +103,9 @@ export default function CuentaAuth({ modo }: { modo: 'entrar' | 'crear' }) {
       }
     }
 
-    // Con sesión: se crea (o completa) la ficha del cliente. Es idempotente,
-    // así que sirve tanto para el alta como para el ingreso.
-    if (esAlta || nombre.trim()) {
+    // Al INGRESAR, si el nombre viene cargado se refresca la ficha. Es
+    // idempotente, así que no molesta a quien solo entra.
+    if (nombre.trim()) {
       const { error: err } = await supabase.rpc('crear_mi_cuenta', {
         p_full_name: nombre.trim() || email.split('@')[0],
         p_phone: telefono.trim() || null,
