@@ -77,3 +77,7 @@ tf*.html
 
 # Dibujos de plano: van al bucket maps, no al repo
 *-plano.svg
+
+# Scripts de prueba de un rato: no son del repo.
+prueba_plataforma.mjs
+diag*.mjs

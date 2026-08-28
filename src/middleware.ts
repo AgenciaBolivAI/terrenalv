@@ -46,6 +46,24 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  // Estar logueado no es ser del EQUIPO. Desde que el comprador tiene cuenta,
+  // un cliente con sesión pasaba este control y llegaba a cargar /admin: la
+  // RLS no le mostraba nada, pero la pantalla del panel se le abría igual. El
+  // panel es del personal, y el personal es quien tiene fila en `profiles`.
+  if (user && !isLogin) {
+    const { data: perfil } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', user.id)
+      .maybeSingle();
+    if (!perfil) {
+      const suyo = request.nextUrl.clone();
+      suyo.pathname = '/cuenta/panel';
+      suyo.search = '';
+      return NextResponse.redirect(suyo);
+    }
+  }
+
   if (user && isLogin) {
     // Already signed in (cookies present) — go to the panel. Invite links land
     // here WITHOUT cookies (tokens travel in the URL hash), so they still reach
