@@ -44,9 +44,13 @@ export const SECCIONES: { clave: string; etiqueta: string; grupo: string }[] = [
 /**
  * A qué sección pertenece una ruta del panel.
  *
- * /admin es el dashboard; /admin/plan/[id] y /admin/recibo/[id] son papeles
- * que se abren desde Planes y Contabilidad, así que heredan esas secciones;
- * /admin/contrato/[id] se abre desde Ventas.
+ * /admin es el dashboard; /admin/plan/[id], /admin/recibo/[id] y
+ * /admin/egreso/[id] son papeles que se abren desde Planes y Contabilidad,
+ * así que heredan esas secciones; /admin/contrato/[id] se abre desde Ventas.
+ *
+ * OJO: una ruta que no cae en ninguna sección conocida queda SIN gobernar —
+ * `puedeVer` devuelve true para lo que no conoce. Al agregar una pantalla o
+ * un papel nuevo, mapearlo acá.
  */
 export function seccionDe(pathname: string): string {
   const resto = pathname.replace(/^\/admin\/?/, '');
@@ -54,6 +58,11 @@ export function seccionDe(pathname: string): string {
   const primera = resto.split('/')[0];
   if (primera === 'plan') return 'planes';
   if (primera === 'recibo') return 'contabilidad';
+  // El comprobante de egreso es un papel de Contabilidad. Sin esta línea
+  // `seccionDe` devolvía 'egreso', que no es ninguna sección conocida, y
+  // `puedeVer` deja pasar lo que no sabe gobernar: cualquiera del equipo lo
+  // abría escribiendo la URL.
+  if (primera === 'egreso') return 'contabilidad';
   // El fiscal es su propia seccion: se puede dar el gerencial sin dar el
   // fiscal, y al reves.
   if (primera === 'fiscal') return 'fiscal';
