@@ -25,6 +25,11 @@ export function PublicShell({
             <Logo className="h-6 w-auto" />
           </Link>
         </div>
+        <nav className="mx-auto flex w-full max-w-5xl justify-end px-4 pb-2">
+          <Link href="/cuenta" className="text-xs font-semibold text-brand hover:underline">
+            Mi cuenta
+          </Link>
+        </nav>
       </header>
 
       <div className={`mx-auto w-full flex-1 ${maxWidth} px-4 pb-16 pt-4`}>{children}</div>

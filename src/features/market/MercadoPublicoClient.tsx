@@ -185,14 +185,14 @@ export function MercadoPublicoClient() {
       <section className="mt-4 rounded-2xl border border-brand/30 bg-green-50/50 p-5 text-sm">
         <h3 className="font-bold text-stone-800">¿Querés vender tu lote?</h3>
         <p className="mt-1 text-stone-600">
-          Publicalo acá desde tu propia página: entrá con el código de seguimiento de tu compra y
-          vas a ver el botón para publicarlo.
+          Entrá a tu cuenta y publicalo desde tus lotes. Si todavía no tenés cuenta, se crea en un
+          minuto: es lo que nos deja avisarte cuando alguien pregunte por tu lote.
         </p>
         <Link
-          href="/reserva"
+          href="/cuenta"
           className="mt-3 inline-block rounded-full bg-brand px-4 py-2 text-xs font-semibold text-white hover:bg-brand/90"
         >
-          Entrar con mi código
+          Entrar a mi cuenta
         </Link>
       </section>
 

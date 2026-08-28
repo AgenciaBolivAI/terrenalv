@@ -58,6 +58,10 @@ const GRUPOS: { titulo: string; items: NavItem[] }[] = [
       { href: '/admin/reservas', label: 'Reservas', icon: IconInbox },
       { href: '/admin/ventas', label: 'Ventas', icon: IconCheck },
       { href: '/admin/clientes', label: 'Clientes', icon: IconUsers },
+      // Los que se registraron en la web. Es otra cosa que «Clientes»:
+      // ahí están los que COMPRARON; acá los que tienen CUENTA, hayan
+      // comprado o no — que es justamente la lista para trabajar.
+      { href: '/admin/cuentas', label: 'Cuentas', icon: IconUsers },
       { href: '/admin/notificaciones', label: 'Notificaciones', icon: IconBell },
       // Sin roles: es la pantalla del vendedor, que no entra a Contabilidad.
       { href: '/admin/mi-cuenta', label: 'Mi cuenta', icon: IconUsers },
