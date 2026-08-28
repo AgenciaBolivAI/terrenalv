@@ -15,6 +15,7 @@ import { btnPrimary, btnSecondary, inputClass, Spinner } from '@/features/admin/
 
 interface Ficha {
   id: string;
+  email_verificado_at: string | null;
   full_name: string;
   email: string;
   phone: string | null;
@@ -47,6 +48,25 @@ export default function PanelCliente() {
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [verifEstado, setVerifEstado] = useState<'idle' | 'enviando' | 'enviado' | 'error'>('idle');
+  const [verifMsg, setVerifMsg] = useState<string | null>(null);
+
+  // El alta no pasa por el correo, así que un error de tipeo deja una cuenta
+  // viva sobre una dirección que no existe — y de esa dirección dependen el
+  // aviso de cuota y el saludo de cumpleaños. Se pide confirmar, pero NUNCA
+  // se bloquea nada: es un aviso que se puede ignorar para siempre.
+  async function pedirVerificacion() {
+    setVerifEstado('enviando');
+    setVerifMsg(null);
+    const res = await fetch('/api/cuenta/verificar', { method: 'POST' });
+    const j = (await res.json().catch(() => null)) as { error?: string } | null;
+    if (!res.ok) {
+      setVerifEstado('error');
+      setVerifMsg(j?.error ?? 'No pudimos enviarlo. Probá en un rato.');
+      return;
+    }
+    setVerifEstado('enviado');
+  }
 
   const cargar = useCallback(async () => {
     const { data: sesion } = await supabase.auth.getUser();
@@ -129,6 +149,31 @@ export default function PanelCliente() {
           Salir
         </button>
       </header>
+
+      {ficha && !ficha.email_verificado_at ? (
+        <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm text-amber-900">
+            <strong>Confirmá tu correo.</strong> Nos sirve para avisarte cuando vence tu cuota,
+            mandarte tus recibos y saludarte en tu cumpleaños. Podés seguir usando tu cuenta
+            igual — esto no te frena nada.
+          </p>
+          {verifEstado === 'enviado' ? (
+            <p className="mt-2 text-sm font-semibold text-green-800">
+              Te mandamos el enlace a {ficha.email}. Revisá también el correo no deseado.
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={pedirVerificacion}
+              disabled={verifEstado === 'enviando'}
+              className="mt-2 rounded-full bg-amber-800 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-amber-900 disabled:opacity-60"
+            >
+              {verifEstado === 'enviando' ? 'Enviando…' : 'Mandame el enlace'}
+            </button>
+          )}
+          {verifMsg ? <p className="mt-2 text-xs text-amber-900">{verifMsg}</p> : null}
+        </section>
+      ) : null}
 
       <section>
         <h2 className="text-xs font-bold tracking-wide text-stone-500 uppercase">

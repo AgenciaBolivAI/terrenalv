@@ -13,6 +13,7 @@ import BuyerReservaConfirmada from '../../../../../emails/BuyerReservaConfirmada
 import BuyerComprobanteRechazado from '../../../../../emails/BuyerComprobanteRechazado';
 import BuyerReservaExpirada from '../../../../../emails/BuyerReservaExpirada';
 import GenericNotification from '../../../../../emails/GenericNotification';
+import BuyerVerificarCorreo from '../../../../../emails/BuyerVerificarCorreo';
 import BuyerRecibo from '../../../../../emails/BuyerRecibo';
 
 export const runtime = 'nodejs';
@@ -195,6 +196,14 @@ async function buildEmail(
       return {
         subject: `Tu reserva ${code} expiró — Prados del Sur`,
         react: createElement(BuyerReservaExpirada, { tracking_code: code, trackingUrl, baseUrl: base }),
+      };
+    case 'buyer_verificar_correo':
+      return {
+        subject: 'Confirmá tu correo — Terrenalv',
+        react: createElement(BuyerVerificarCorreo, {
+          nombre: typeof p.nombre === 'string' ? p.nombre : null,
+          enlace: String(p.enlace ?? base),
+        }),
       };
     default:
       return {
