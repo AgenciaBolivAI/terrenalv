@@ -19,6 +19,7 @@ import { useToast } from '@/features/admin/ui/toast';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
 import { num, type Cell } from '@/features/admin/export';
 import { dateLabel, todayIso } from './types';
+import type { AdminProject } from '@/features/admin/lib/project-types';
 
 export interface Account {
   /** La llave interna. Para las cuentas del sistema es el código corto (1131). */
@@ -40,6 +41,7 @@ export function codigoDe(a: Account): string {
 interface EntryRow {
   id: string;
   number: string;
+  project_id: string;
   kind: string;
   entry_date: string;
   glosa: string;
@@ -76,13 +78,16 @@ export default function Comprobantes({
   createProjectId,
   projectName,
   accounts,
+  projects,
 }: {
   /** Qué se LISTA: null = todas las urbanizaciones («Todos»). */
   projectId: string | null;
-  /** Dónde se CREA un comprobante nuevo: siempre una urbanización concreta. */
+  /** A qué urbanización apunta el diálogo cuando se abre en «Todos». */
   createProjectId: string;
   projectName: string;
   accounts: Account[];
+  /** Incluye «Administración»: un asiento de la empresa va ahí. */
+  projects: AdminProject[];
 }) {
   const supabase = useMemo(() => createClient(), []);
   const { push } = useToast();
@@ -97,6 +102,31 @@ export default function Comprobantes({
   const [glosa, setGlosa] = useState('');
   const [lines, setLines] = useState<DraftLine[]>([{ ...EMPTY_LINE }, { ...EMPTY_LINE }]);
   const [error, setError] = useState<string | null>(null);
+
+  // A qué gestión se asienta. Antes venía impuesto por la urbanización activa
+  // del panel —la de la cookie—, así que mirando «Prados del Sur II» se podía
+  // guardar un asiento en Prados del Sur sin enterarse. Ahora se elige acá, y
+  // arranca en la que se está mirando.
+  const [voucherProjectId, setVoucherProjectId] = useState(projectId ?? createProjectId);
+  const [centroId, setCentroId] = useState('');
+  const [centros, setCentros] = useState<{ id: string; codigo: string; nombre: string }[]>([]);
+  const [titular, setTitular] = useState<'empresa' | 'tercero'>('empresa');
+  const [titularNombre, setTitularNombre] = useState('');
+
+  // Los centros de la urbanización elegida más los de toda la empresa.
+  useEffect(() => {
+    void (async () => {
+      const { data } = await supabase
+        .from('centros_costo')
+        .select('id, codigo, nombre')
+        .eq('is_active', true)
+        .or(`project_id.eq.${voucherProjectId},project_id.is.null`)
+        .order('codigo');
+      const cc = (data ?? []) as { id: string; codigo: string; nombre: string }[];
+      setCentros(cc);
+      setCentroId((actual) => (cc.some((c) => c.id === actual) ? actual : ''));
+    })();
+  }, [supabase, voucherProjectId]);
 
   // Solo se ofrecen las cuentas IMPUTABLES. Una cuenta con hijas es titular:
   // agrupa, no se asienta. El servidor igual lo rechaza, pero ofrecerla y
@@ -133,6 +163,9 @@ export default function Comprobantes({
     setKind('traspaso');
     setGlosa('');
     setLines([{ ...EMPTY_LINE }, { ...EMPTY_LINE }]);
+    setVoucherProjectId(projectId ?? createProjectId);
+    setTitular('empresa');
+    setTitularNombre('');
     setError(null);
     setOpen(true);
   }
@@ -142,6 +175,7 @@ export default function Comprobantes({
     setFecha(e.entry_date.slice(0, 10));
     setKind(e.kind);
     setGlosa(e.glosa);
+    setVoucherProjectId(e.project_id);
     setLines(
       e.journal_lines.map((l) => ({
         account_code: l.account_code,
@@ -186,16 +220,23 @@ export default function Comprobantes({
       setError(`No cuadra: debe ${num(totalDebe)} contra haber ${num(totalHaber)}.`);
       return;
     }
+    if (titular === 'tercero' && !titularNombre.trim()) {
+      setError('Si el comprobante está a nombre de un tercero, decinos de quién.');
+      return;
+    }
 
     setBusy(true);
     const { error: err } = await supabase.rpc('admin_save_voucher', {
-      p_project_id: createProjectId,
+      p_project_id: voucherProjectId,
       p_entry_date: fecha,
       p_kind: kind,
       p_glosa: glosa.trim(),
       p_lines: payload,
       p_entry_id: editId,
       p_post: post,
+      p_centro_costo_id: centroId || null,
+      p_titular: titular,
+      p_titular_nombre: titular === 'tercero' ? titularNombre.trim() : null,
     });
     setBusy(false);
     if (err) {
@@ -339,6 +380,28 @@ export default function Comprobantes({
         title={editId ? 'Comprobante' : 'Nuevo comprobante'}
       >
         <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs text-stone-500">
+              ¿A qué gestión se asienta?
+            </label>
+            <select
+              value={voucherProjectId}
+              onChange={(e) => setVoucherProjectId(e.target.value)}
+              disabled={editId !== null}
+              className={inputClass}
+            >
+              {projects.map((pr) => (
+                <option key={pr.id} value={pr.id}>
+                  {pr.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[11px] text-stone-500">
+              {editId
+                ? 'Un comprobante ya cargado no se muda de gestión: se anula y se hace otro.'
+                : 'Lo que es de la empresa y no de una urbanización va en «Administración».'}
+            </p>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-xs text-stone-500">Fecha</label>
@@ -359,6 +422,43 @@ export default function Comprobantes({
             placeholder="Glosa (ej. Aporte de capital socios)"
             className={inputClass}
           />
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs text-stone-500">Centro de costos</label>
+              <select
+                value={centroId}
+                onChange={(e) => setCentroId(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">— sin centro —</option>
+                {centros.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.codigo} · {c.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-stone-500">A nombre de</label>
+              <select
+                value={titular}
+                onChange={(e) => setTitular(e.target.value as 'empresa' | 'tercero')}
+                className={inputClass}
+              >
+                <option value="empresa">La empresa</option>
+                <option value="tercero">Un tercero</option>
+              </select>
+              {titular === 'tercero' ? (
+                <input
+                  value={titularNombre}
+                  onChange={(e) => setTitularNombre(e.target.value)}
+                  placeholder="¿De quién?"
+                  className={`${inputClass} mt-2`}
+                />
+              ) : null}
+            </div>
+          </div>
 
           <div className="overflow-x-auto rounded-lg border border-stone-200">
             <table className="w-full min-w-150 text-sm">

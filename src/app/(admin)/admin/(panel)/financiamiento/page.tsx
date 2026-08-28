@@ -4,6 +4,7 @@ import FinanciamientoClient from '@/features/admin/financiamiento/Financiamiento
 import { getAdminContext } from '@/features/admin/lib/get-admin-context';
 import { EmptyState } from '@/features/admin/ui/bits';
 import { isAccounting } from '@/features/admin/lib/roles';
+import { soloUrbanizaciones } from '@/features/admin/lib/project-types';
 
 export const metadata: Metadata = { title: 'Financiamiento' };
 export const dynamic = 'force-dynamic';
@@ -31,7 +32,7 @@ export default async function FinanciamientoPage() {
 
   return (
     <FinanciamientoClient
-      projects={ctx.projects.map((p) => ({ id: p.id, name: p.name }))}
+      projects={soloUrbanizaciones(ctx.projects).map((p) => ({ id: p.id, name: p.name }))}
     />
   );
 }

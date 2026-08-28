@@ -5,6 +5,7 @@ import AdminShell from '@/features/admin/shell/AdminShell';
 import SignOutButton from '@/features/admin/auth/SignOutButton';
 import { getAdminContext } from '@/features/admin/lib/get-admin-context';
 import { PROJECT_NAME } from '@/features/admin/lib/constants';
+import { soloUrbanizaciones } from '@/features/admin/lib/project-types';
 
 export const metadata: Metadata = {
   title: { default: 'Panel', template: '%s — Panel Terrenalv' },
@@ -79,7 +80,7 @@ export default async function AdminPanelLayout({ children }: { children: React.R
         profile={ctx.profile}
         projectId={ctx.project?.id ?? null}
         projectName={ctx.project?.name ?? PROJECT_NAME}
-        projects={ctx.projects}
+        projects={soloUrbanizaciones(ctx.projects)}
         activeSlug={ctx.project?.slug ?? null}
         currency={ctx.project?.currency ?? 'BOB'}
       >

@@ -10,10 +10,10 @@ import { PERIODS, periodStart, pickMoney, scopeCurrency, scopeLabel } from './sc
 import type { AdminProject } from '@/features/admin/lib/project-types';
 
 const PRADOS: AdminProject = {
-  id: 'p1', slug: 'prados-del-sur', name: 'Prados del Sur', currency: 'BOB',
+  id: 'p1', slug: 'prados-del-sur', name: 'Prados del Sur', currency: 'BOB', es_administracion: false,
 };
 const MIRADOR: AdminProject = {
-  id: 'p2', slug: 'mirador', name: 'Mirador del Este', currency: 'BOB',
+  id: 'p2', slug: 'mirador', name: 'Mirador del Este', currency: 'BOB', es_administracion: false,
 };
 
 describe('pickMoney', () => {

@@ -60,15 +60,19 @@ export async function getAdminContext(): Promise<AdminContext> {
 
     const { data: proyectos } = await supabase
       .from('projects')
-      .select('id, slug, name, currency')
+      .select('id, slug, name, currency, es_administracion')
       .neq('status', 'archivado')
       .order('created_at');
 
     const lista = (proyectos ?? []) as AdminProject[];
+    // La urbanización ACTIVA del panel nunca puede ser Administración: el
+    // mapa, los lotes y las reservas no significan nada ahí, y una cookie
+    // vieja no tiene que poder dejar el panel en ese estado.
+    const vendibles = lista.filter((p) => !p.es_administracion);
     const project =
-      lista.find((p) => p.slug === elegido) ??
-      lista.find((p) => p.slug === PROJECT_SLUG) ??
-      lista[0] ??
+      vendibles.find((p) => p.slug === elegido) ??
+      vendibles.find((p) => p.slug === PROJECT_SLUG) ??
+      vendibles[0] ??
       null;
 
     // Que puede ver y tocar esta persona, ya resuelto por la base.

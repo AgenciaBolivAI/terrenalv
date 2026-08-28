@@ -32,6 +32,9 @@ import Tesoreria, {
   type ContactKind,
   type TreasuryAccount,
 } from './Tesoreria';
+import { FormaPagoPicker, type FormaPago, type FondoDePersona } from './FormaPago';
+import CuentasPorPagar from './CuentasPorPagar';
+import FondosPorRendir from './FondosPorRendir';
 import { GroupedBars, Legend, SERIES } from '@/features/admin/analitica/Charts';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
 import { num as fnum, type Cell as XCell } from '@/features/admin/export';
@@ -76,6 +79,7 @@ type Tab =
   | 'resumen'
   | 'cobrar'
   | 'egresos'
+  | 'pagar'
   | 'bancos'
   | 'directorio'
   | 'libro'
@@ -108,6 +112,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'resumen', label: 'Resumen' },
   { id: 'cobrar', label: 'Por cobrar' },
   { id: 'egresos', label: 'Egresos' },
+  { id: 'pagar', label: 'Por pagar' },
   { id: 'bancos', label: 'Bancos y caja' },
   { id: 'directorio', label: 'Directorio' },
   { id: 'libro', label: 'Libro' },
@@ -1731,13 +1736,25 @@ export default function AccountingClient({
         </div>
       ) : null}
 
+      {tab === 'pagar' ? (
+        <CuentasPorPagar
+          projectId={scope}
+          projectName={projectName}
+          onPaid={() => void fetchAll()}
+        />
+      ) : null}
+
       {tab === 'bancos' ? (
+        <div className="space-y-5">
         <Tesoreria
           projectId={scope ?? projectId}
           projectName={projectName}
           currency={currency}
           onVerLibro={(code, desdeCuenta) => abrirLibro(desdeCuenta ?? desdeTodo, todayIso(), code)}
         />
+        {/* La entrega de un fondo es plata saliendo de un banco: vive acá. */}
+        <FondosPorRendir />
+        </div>
       ) : null}
 
       {tab === 'directorio' ? (
@@ -1776,33 +1793,16 @@ export default function AccountingClient({
             projectId={scope}
             projectName={scope === null ? 'Todas las urbanizaciones' : projectName}
           />
-          {escrituraBloqueada ? (
-            <section className="rounded-xl border border-stone-200 bg-white p-6">
-              <EmptyState
-                title="Para cargar un asiento a mano, elegí una urbanización"
-                hint='Un comprobante manual se asienta en la gestión de UNA urbanización — no existe un asiento "de todas".'
-              />
-              <div className="mt-4 flex flex-wrap gap-2">
-                {projects.map((pr) => (
-                  <button
-                    key={pr.id}
-                    type="button"
-                    className={btnSecondary}
-                    onClick={() => setScope(pr.id)}
-                  >
-                    {pr.name}
-                  </button>
-                ))}
-              </div>
-            </section>
-          ) : (
-            <Comprobantes
-              projectId={scope}
-              createProjectId={projectId}
-              projectName={scope === null ? 'Todas las urbanizaciones' : projectName}
-              accounts={plan}
-            />
-          )}
+          {/* El formulario se muestra SIEMPRE, también en consolidado: el
+              diálogo elige a qué gestión asienta, así que ya no hace falta
+              obligar a salir del consolidado para cargar un asiento. */}
+          <Comprobantes
+            projectId={scope}
+            createProjectId={scope ?? projectId}
+            projectName={scope === null ? 'Todas las urbanizaciones' : projectName}
+            accounts={plan}
+            projects={projects}
+          />
         </div>
       ) : null}
 
@@ -2250,6 +2250,24 @@ function ExpenseDialog({
   const [titular, setTitular] = useState<'empresa' | 'tercero'>('empresa');
   const [titularNombre, setTitularNombre] = useState('');
 
+  // Cómo se pagó, y el papel que lo respalda.
+  const [numeroFactura, setNumeroFactura] = useState('');
+  const [formaPago, setFormaPago] = useState<FormaPago>('contado');
+  const [vencimiento, setVencimiento] = useState('');
+  const [fondoEmpleadoId, setFondoEmpleadoId] = useState('');
+  const [fondos, setFondos] = useState<FondoDePersona[]>([]);
+
+  useEffect(() => {
+    void (async () => {
+      const { data } = await supabase
+        .from('v_fondos_por_rendir')
+        .select('empleado_id, nombre_completo, saldo')
+        .gt('saldo', 0)
+        .order('nombre_completo');
+      setFondos((data ?? []) as FondoDePersona[]);
+    })();
+  }, [supabase]);
+
   useEffect(() => {
     void (async () => {
       const { data } = await supabase
@@ -2286,6 +2304,14 @@ function ExpenseDialog({
       setError('Si el gasto esta a nombre de un tercero, decinos de quien.');
       return;
     }
+    if (formaPago === 'credito' && !vencimiento) {
+      setError('Una compra a crédito necesita fecha de vencimiento.');
+      return;
+    }
+    if (formaPago === 'fondos_por_rendir' && !fondoEmpleadoId) {
+      setError('Elegí de qué fondo sale este gasto.');
+      return;
+    }
     setBusy(true);
     const { error: err } = await supabase.rpc('admin_record_expense', {
       p_project_id: expProjectId,
@@ -2297,13 +2323,19 @@ function ExpenseDialog({
       p_supplier: supplier.trim() || null,
       p_receipt_storage_path: null,
       p_note: note.trim() || null,
-      p_treasury_account_id: cuentaId || null,
+      // La caja solo se nombra si la plata salió de ahí: a crédito todavía no
+      // salió, y del fondo salió cuando se entregó el fondo.
+      p_treasury_account_id: formaPago === 'contado' ? cuentaId || null : null,
       p_contact_id: contactId || null,
       p_centro_costo_id: centroId || null,
       p_titular: titular,
       p_titular_nombre: titular === 'tercero' ? titularNombre.trim() : null,
       p_reservation_id: null,
       p_concept_id: conceptId || null,
+      p_numero_factura: numeroFactura.trim() || null,
+      p_forma_pago: formaPago,
+      p_vencimiento: formaPago === 'credito' ? vencimiento : null,
+      p_fondo_empleado_id: formaPago === 'fondos_por_rendir' ? fondoEmpleadoId : null,
     });
     setBusy(false);
     if (err) {
@@ -2348,6 +2380,15 @@ function ExpenseDialog({
           </div>
         </div>
         <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Detalle (ej. cemento para calles)" className={inputClass} />
+        <div>
+          <label className="mb-1 block text-xs text-stone-500">N° de factura o recibo</label>
+          <input
+            value={numeroFactura}
+            onChange={(e) => setNumeroFactura(e.target.value)}
+            placeholder="Ej. 001234 — el número del papel del proveedor"
+            className={inputClass}
+          />
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs text-stone-500">Proveedor</label>
@@ -2458,13 +2499,19 @@ function ExpenseDialog({
           </div>
         ) : null}
 
-        <CuentaSelect
+        <FormaPagoPicker
+          value={formaPago}
+          onChange={setFormaPago}
           cuentas={cuentas}
-          value={cuentaId}
-          onChange={setCuentaId}
-          label="Pagado desde"
+          cuentaId={cuentaId}
+          onCuentaId={setCuentaId}
+          vencimiento={vencimiento}
+          onVencimiento={setVencimiento}
+          fondos={fondos}
+          empleadoId={fondoEmpleadoId}
+          onEmpleadoId={setFondoEmpleadoId}
           monto={Number(amount)}
-          signo={-1}
+          cuentaDebito="la cuenta del concepto elegido"
         />
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Nota (opcional)" className={inputClass} />
         {error ? <p className="text-sm text-red-600">{error}</p> : null}

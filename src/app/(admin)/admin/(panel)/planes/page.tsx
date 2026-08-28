@@ -4,6 +4,7 @@ import PlanesClient from '@/features/admin/planes/PlanesClient';
 import { getAdminContext } from '@/features/admin/lib/get-admin-context';
 import { EmptyState } from '@/features/admin/ui/bits';
 import { isAccounting } from '@/features/admin/lib/roles';
+import { soloUrbanizaciones } from '@/features/admin/lib/project-types';
 
 export const metadata: Metadata = { title: 'Planes' };
 export const dynamic = 'force-dynamic';
@@ -48,7 +49,7 @@ export default async function PlanesPage({
   return (
     <PlanesClient
       projectId={ctx.project.id}
-      projects={ctx.projects}
+      projects={soloUrbanizaciones(ctx.projects)}
       open={open ?? null}
     />
   );

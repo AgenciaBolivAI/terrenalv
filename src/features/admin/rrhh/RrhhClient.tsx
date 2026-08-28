@@ -24,19 +24,10 @@ import { useToast } from '@/features/admin/ui/toast';
 import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
 import { dateLabel } from '@/features/admin/contabilidad/types';
 import { CuentaSelect, useTesoreria } from '@/features/admin/contabilidad/Tesoreria';
+import { EmpleadoFile } from './EmpleadoFile';
+import type { Empleado } from './tipos';
 
-interface Empleado {
-  id: string;
-  codigo: string;
-  nombre_completo: string;
-  ci: string | null;
-  telefono: string | null;
-  cargo: string;
-  area: string | null;
-  fecha_ingreso: string;
-  salario_mensual: number;
-  estado: string;
-}
+// La ficha vive en `tipos.ts`: la comparten la lista y el file.
 
 interface Planilla {
   id: string;
@@ -74,6 +65,8 @@ export default function RrhhClient() {
   const [loading, setLoading] = useState(true);
   const [vista, setVista] = useState<'personal' | 'planillas'>('personal');
   const [edit, setEdit] = useState<Partial<Empleado> | null>(null);
+  /** El file completo del dependiente, con sus papeles. */
+  const [file, setFile] = useState<Empleado | null>(null);
   const [abierta, setAbierta] = useState<string | null>(null);
   const [pagando, setPagando] = useState<Planilla | null>(null);
   const [cuentaId, setCuentaId] = useState('');
@@ -232,6 +225,13 @@ export default function RrhhClient() {
                   <span className="font-semibold tabular-nums text-stone-900">
                     {formatMoney(Number(e.salario_mensual), 'BOB')}
                   </span>
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-stone-600 hover:text-brand"
+                    onClick={() => setFile(e)}
+                  >
+                    File
+                  </button>
                   <button
                     type="button"
                     className="text-xs font-medium text-stone-600 hover:text-brand"
@@ -601,6 +601,17 @@ export default function RrhhClient() {
             </button>
           </div>
         </Dialog>
+      ) : null}
+
+      {file ? (
+        <EmpleadoFile
+          empleado={file}
+          onClose={() => setFile(null)}
+          onSaved={() => {
+            setFile(null);
+            void cargar();
+          }}
+        />
       ) : null}
     </div>
   );

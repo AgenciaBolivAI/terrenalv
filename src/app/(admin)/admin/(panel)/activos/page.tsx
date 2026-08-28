@@ -20,5 +20,10 @@ export default async function ActivosPage() {
   if ((ctx.acceso?.['activos'] ?? (isAccounting(ctx.profile.role) ? 'edita' : 'no')) === 'no') {
     return <EmptyState title="Sección restringida" hint="Los activos fijos los maneja Contabilidad." />;
   }
-  return <ActivosClient />;
+  if (!ctx.project) {
+    return <EmptyState title="Sin urbanizaciones" hint="Creá una urbanización antes de cargar activos." />;
+  }
+  // Con Administración incluida: la computadora de la oficina no es de ninguna
+  // urbanización, pero es un activo de la empresa igual.
+  return <ActivosClient projectId={ctx.project.id} projects={ctx.projects} />;
 }

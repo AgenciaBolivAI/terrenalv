@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import VentasClient from '@/features/admin/ventas/VentasClient';
 import { getAdminContext } from '@/features/admin/lib/get-admin-context';
 import { EmptyState } from '@/features/admin/ui/bits';
+import { soloUrbanizaciones } from '@/features/admin/lib/project-types';
 
 export const metadata: Metadata = { title: 'Ventas' };
 export const dynamic = 'force-dynamic';
@@ -31,7 +32,7 @@ export default async function VentasPage({
   return (
     <VentasClient
       projectId={ctx.project.id}
-      projects={ctx.projects}
+      projects={soloUrbanizaciones(ctx.projects)}
       open={open ?? null}
     />
   );

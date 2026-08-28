@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: 'Contabilidad' };
 export const dynamic = 'force-dynamic';
 
 const TABS = [
-  'resumen', 'cobrar', 'egresos', 'bancos', 'directorio',
+  'resumen', 'cobrar', 'egresos', 'pagar', 'bancos', 'directorio',
   'libro', 'estados', 'comprobantes', 'gestion',
 ] as const;
 type Tab = (typeof TABS)[number];
