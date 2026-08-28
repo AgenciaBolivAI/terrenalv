@@ -178,6 +178,24 @@ export function MercadoPublicoClient() {
         </p>
       </section>
 
+      {/* El otro lado del mercado. La vidriera explicaba cómo COMPRAR y no
+          decía en ninguna parte cómo publicar: el único punto de entrada
+          está dentro de /reserva/[code], que sólo encuentra quien ya sabe
+          que existe. */}
+      <section className="mt-4 rounded-2xl border border-brand/30 bg-green-50/50 p-5 text-sm">
+        <h3 className="font-bold text-stone-800">¿Querés vender tu lote?</h3>
+        <p className="mt-1 text-stone-600">
+          Publicalo acá desde tu propia página: entrá con el código de seguimiento de tu compra y
+          vas a ver el botón para publicarlo.
+        </p>
+        <Link
+          href="/reserva"
+          className="mt-3 inline-block rounded-full bg-brand px-4 py-2 text-xs font-semibold text-white hover:bg-brand/90"
+        >
+          Entrar con mi código
+        </Link>
+      </section>
+
       {consultar ? (
         <ConsultaDialog aviso={consultar} onClose={() => setConsultar(null)} />
       ) : null}
@@ -218,7 +236,15 @@ function ConsultaDialog({ aviso, onClose }: { aviso: Aviso; onClose: () => void 
       setError(
         err.message.includes('PHONE')
           ? 'Revisa el celular: debe ser un número boliviano válido.'
-          : 'No se pudo enviar la consulta. Intenta de nuevo en un momento.',
+          : err.message.includes('LISTING_NOT_FOUND')
+            ? // El vendedor lo retiró mientras esta página estaba abierta.
+              // Reintentar no lo va a resolver: hay que recargar.
+              'Este lote ya no está publicado. Actualizá la página para ver los que siguen disponibles.'
+            : err.message.includes('NAME_REQUIRED')
+              ? 'Escribí tu nombre para que el vendedor sepa quién pregunta.'
+              : err.message.includes('DEMASIADAS')
+                ? 'Este aviso recibió muchas consultas hoy. Probá mañana o escribinos por WhatsApp.'
+                : 'No se pudo enviar la consulta. Intenta de nuevo en un momento.',
       );
       return;
     }

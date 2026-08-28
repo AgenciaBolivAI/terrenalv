@@ -117,13 +117,14 @@ async function loadData(lotId: string): Promise<LoadResult> {
         .select('slug, name, currency')
         .eq('id', lot.project_id)
         .maybeSingle(),
-      supabase.rpc('get_lot_statuses', { p_project_id: lot.project_id }),
+      // Un lote, no la urbanización entera: esta página leía UNA fila de un
+      // JSON de 203 kB con los 5.927 lotes. Ahora pide 148 bytes.
+      supabase.rpc('get_lot_status', { p_lot_id: lot.id }),
     ]);
     const project = projectRes.data as { slug: string; name: string; currency: 'USD' | 'BOB' } | null;
     const mapHref = project?.slug ? `/${project.slug}/mapa` : FALLBACK_MAP;
 
-    const entries = ((statusesRes.data as { lots?: StatusEntry[] } | null)?.lots ?? []) as StatusEntry[];
-    const entry = entries.find((l) => l.id === lot.id);
+    const entry = (statusesRes.data as StatusEntry | null) ?? null;
     const liveStatus = entry?.st ?? lot.status;
     const price = entry?.price ?? null;
     const priced = entry ? entry.priced === true && typeof price === 'number' && price > 0 : false;
