@@ -56,6 +56,16 @@ const ADMIN_ERROR_COPY: Record<string, string> = {
   DOC_NO_ENCONTRADO: 'No se encontró el documento. Puede que ya lo hayan sacado del file.',
   ARCHIVO_REQUERIDO: 'Falta el archivo.',
   CUENTA_NO_ENCONTRADA: 'Esa caja o banco no existe o está inactiva.',
+  // Pagos parciales y planilla devengada.
+  PAGO_MAYOR_AL_SALDO: 'No se puede pagar más de lo que se debe. Revisá el saldo.',
+  PAGO_NO_ENCONTRADO: 'No se encontró ese pago.',
+  PAGO_YA_ANULADO: 'Ese pago ya estaba anulado.',
+  PLANILLA_SIN_DEVENGAR:
+    'Primero devengá la planilla: el sueldo es del mes trabajado, y recién después se paga.',
+  PLANILLA_YA_DEVENGADA: 'Esa planilla ya entró al libro.',
+  PLANILLA_YA_PAGADA: 'No quedaba nada por pagar en esa planilla.',
+  PLANILLA_NO_ENCONTRADA: 'No se encontró la planilla.',
+  PLANILLA_VACIA: 'La planilla no tiene a nadie con sueldo por pagar.',
   // Postgres cuando la función todavía no está creada en la base.
   'Could not find the function': 'Falta aplicar la migración admin_reserve_offline en la base de datos.',
   PGRST202: 'Falta aplicar la migración admin_reserve_offline en la base de datos.',

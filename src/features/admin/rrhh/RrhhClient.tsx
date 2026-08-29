@@ -29,11 +29,13 @@ import type { Empleado } from './tipos';
 
 // La ficha vive en `tipos.ts`: la comparten la lista y el file.
 
+/** Una planilla pasa por tres estados: se arma, se devenga y se paga. */
 interface Planilla {
   id: string;
   anio: number;
   mes: number;
-  estado: 'borrador' | 'pagada';
+  estado: 'borrador' | 'devengada' | 'pagada';
+  devengada_el: string | null;
   pagada_at: string | null;
 }
 
@@ -69,6 +71,7 @@ export default function RrhhClient() {
   const [file, setFile] = useState<Empleado | null>(null);
   const [abierta, setAbierta] = useState<string | null>(null);
   const [pagando, setPagando] = useState<Planilla | null>(null);
+  const [busy, setBusy] = useState(false);
   const [cuentaId, setCuentaId] = useState('');
 
   const cargar = useCallback(async () => {
@@ -110,8 +113,33 @@ export default function RrhhClient() {
       return;
     }
     const d = data as { empleados?: number } | null;
-    push(`Planilla armada con ${d?.empleados ?? 0} empleado(s). Revisala y pagala.`, 'success');
+    push(`Planilla armada con ${d?.empleados ?? 0} empleado(s). Revisala y devengala.`, 'success');
     setVista('planillas');
+    void cargar();
+  }
+
+  /**
+   * Devengar: el gasto de sueldos entra al libro con fecha del mes trabajado y
+   * queda debiéndose al personal. La plata recién sale al pagar.
+   */
+  async function devengar(p: Planilla) {
+    setBusy(true);
+    const { data, error } = await supabase.rpc('admin_devengar_planilla', {
+      p_planilla_id: p.id,
+      p_fecha: null,
+    });
+    setBusy(false);
+    if (error) {
+      push(adminErrorCopy(error.message), 'error');
+      return;
+    }
+    const d = data as { empleados?: number; total?: number; fecha?: string } | null;
+    push(
+      `Planilla devengada: ${formatMoney(Number(d?.total ?? 0), 'BOB')} de sueldos al ${
+        d?.fecha ? dateLabel(d.fecha) : 'cierre del mes'
+      }. Queda por pagar.`,
+      'success',
+    );
     void cargar();
   }
 
@@ -162,10 +190,10 @@ export default function RrhhClient() {
           onClick={() => setVista('planillas')}
         />
         <Kpi
-          label="En borrador"
-          value={String(planillas.filter((p) => p.estado === 'borrador').length)}
-          tone={planillas.some((p) => p.estado === 'borrador') ? 'bad' : 'normal'}
-          hint="armadas y sin pagar — ver"
+          label="Sin devengar o sin pagar"
+          value={String(planillas.filter((p) => p.estado !== 'pagada').length)}
+          tone={planillas.some((p) => p.estado !== 'pagada') ? 'bad' : 'normal'}
+          hint="armadas, devengadas o pendientes — ver"
           onClick={() => setVista('planillas')}
         />
       </div>
@@ -400,8 +428,30 @@ export default function RrhhClient() {
                         </tbody>
                       </table>
 
+                      {/* El sueldo es del mes trabajado: primero se devenga
+                          —el gasto entra al libro contra SUELDOS POR PAGAR— y
+                          después se paga, que es cuando sale la plata. */}
                       {p.estado === 'borrador' ? (
-                        <div className="mt-3 flex justify-end">
+                        <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+                          <p className="mr-auto text-xs text-stone-500">
+                            Al devengarla, el gasto entra al libro con fecha del último día de{' '}
+                            {MES_LABEL[p.mes]} y queda debiéndose al personal (2.01.07.010).
+                          </p>
+                          <button
+                            type="button"
+                            className={btnPrimary}
+                            disabled={busy}
+                            onClick={() => void devengar(p)}
+                          >
+                            Devengar planilla — {formatMoney(total, 'BOB')}
+                          </button>
+                        </div>
+                      ) : p.estado === 'devengada' ? (
+                        <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+                          <p className="mr-auto text-xs text-stone-500">
+                            Devengada{p.devengada_el ? ` al ${dateLabel(p.devengada_el)}` : ''}: el
+                            gasto ya está en el libro y se le debe al personal. Falta pagarla.
+                          </p>
                           <button
                             type="button"
                             className={btnPrimary}

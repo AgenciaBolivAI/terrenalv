@@ -36,8 +36,11 @@ interface Deuda {
   detalle: string;
   fecha: string;
   vencimiento: string | null;
+  /** Lo que FALTA pagar. El importe original está en `importe`. */
   monto: number;
   dias_vencido: number;
+  importe: number;
+  pagado: number;
 }
 
 /** Los tramos con los que un contador mira una deuda. */
@@ -286,6 +289,12 @@ export default function CuentasPorPagar({
                     </td>
                     <td className="px-3 py-2 text-right font-semibold tabular-nums">
                       {formatMoney(Number(d.monto), 'BOB')}
+                      {Number(d.pagado) > 0 ? (
+                        <span className="block text-[11px] font-normal text-stone-500">
+                          de {formatMoney(Number(d.importe), 'BOB')} · abonado{' '}
+                          {formatMoney(Number(d.pagado), 'BOB')}
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2 text-right">
                       <button type="button" className={btnSecondary} onClick={() => setPagando(d)}>
@@ -344,8 +353,14 @@ function PagarDialog({
   const supabase = useMemo(() => createClient(), []);
   const [cuentaId, setCuentaId] = useState('');
   const [fecha, setFecha] = useState(todayIso);
+  // Arranca con el saldo entero: pagar todo es lo normal, pagar una parte es
+  // cambiar un número.
+  const [monto, setMonto] = useState(String(Number(deuda.monto)));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const aPagar = Number(monto) || 0;
+  const queda = Math.round((Number(deuda.monto) - aPagar) * 100) / 100;
 
   async function pagar() {
     setError(null);
@@ -353,19 +368,32 @@ function PagarDialog({
       setError('Elegí de qué caja o banco sale el pago.');
       return;
     }
+    if (!(aPagar > 0)) {
+      setError('El monto tiene que ser mayor a cero.');
+      return;
+    }
+    if (queda < 0) {
+      setError(`No se puede pagar más que el saldo: quedan ${formatMoney(Number(deuda.monto), 'BOB')}.`);
+      return;
+    }
     setBusy(true);
     const { error: err } = await supabase.rpc(
       deuda.tipo === 'activo' ? 'admin_pagar_activo' : 'admin_pagar_egreso',
       deuda.tipo === 'activo'
-        ? { p_activo_id: deuda.id, p_treasury_account_id: cuentaId, p_fecha: fecha }
-        : { p_expense_id: deuda.id, p_treasury_account_id: cuentaId, p_fecha: fecha },
+        ? { p_activo_id: deuda.id, p_treasury_account_id: cuentaId, p_fecha: fecha, p_monto: aPagar }
+        : { p_expense_id: deuda.id, p_treasury_account_id: cuentaId, p_fecha: fecha, p_monto: aPagar },
     );
     setBusy(false);
     if (err) {
       setError(adminErrorCopy(err.message));
       return;
     }
-    push(`Pago registrado. La deuda con ${deuda.proveedor ?? 'el proveedor'} quedó saldada.`, 'success');
+    push(
+      queda > 0
+        ? `Abono registrado. Quedan ${formatMoney(queda, 'BOB')} por pagar.`
+        : `Pago registrado. La deuda con ${deuda.proveedor ?? 'el proveedor'} quedó saldada.`,
+      'success',
+    );
     onPaid();
   }
 
@@ -381,6 +409,32 @@ function PagarDialog({
           <p className="mt-1 text-lg font-bold text-stone-900">
             {formatMoney(Number(deuda.monto), 'BOB')}
           </p>
+          {Number(deuda.pagado) > 0 ? (
+            <p className="text-xs text-stone-500">
+              De {formatMoney(Number(deuda.importe), 'BOB')} ya se abonaron{' '}
+              {formatMoney(Number(deuda.pagado), 'BOB')}.
+            </p>
+          ) : null}
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs text-stone-500">¿Cuánto se paga? (Bs)</label>
+          <input
+            type="number"
+            step="0.01"
+            min={0}
+            max={Number(deuda.monto)}
+            value={monto}
+            onChange={(e) => setMonto(e.target.value)}
+            className={inputClass}
+          />
+          <p className="mt-1 text-[11px] text-stone-500">
+            {queda > 0
+              ? `Es un abono: quedarían ${formatMoney(queda, 'BOB')} por pagar.`
+              : queda < 0
+                ? 'No se puede pagar más que el saldo.'
+                : 'Cancela la deuda entera.'}
+          </p>
         </div>
 
         <CuentaSelect
@@ -388,7 +442,7 @@ function PagarDialog({
           value={cuentaId}
           onChange={setCuentaId}
           label="¿De qué caja o banco sale?"
-          monto={Number(deuda.monto)}
+          monto={aPagar}
           signo={-1}
         />
 
@@ -399,7 +453,7 @@ function PagarDialog({
 
         <p className="text-[11px] text-stone-500">
           Asienta el pago: se debita 2.01.04.010 · Proveedores por Pagar y sale de la cuenta
-          elegida. El documento deja de figurar acá.
+          elegida. {queda > 0 ? 'El documento sigue acá por el saldo.' : 'El documento deja de figurar acá.'}
         </p>
 
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
