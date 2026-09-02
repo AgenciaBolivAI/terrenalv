@@ -108,22 +108,38 @@ const CHIPS: { id: Exclude<Filtro, 'con_saldo' | 'mes'>; label: string }[] = [
   { id: 'todos', label: 'Todos' },
 ];
 
+/** Los filtros que pueden llegar por la URL desde una casilla del tablero. */
+const FILTROS_VALIDOS = new Set<string>([
+  'activos', 'atraso', 'aldia', 'completados', 'todos', 'con_saldo', 'mes',
+]);
+
 export default function PlanesClient({
   projectId,
   projects,
   open,
+  scopeInicial = null,
+  filtroInicial = null,
 }: {
   /** La urbanización activa en la barra: valor inicial del filtro. */
   projectId: string;
   projects: AdminProject[];
   /** plan_id a expandir al cargar (enlace desde Contabilidad o desde un aviso). */
   open: string | null;
+  /**
+   * Alcance y filtro pedidos por la URL. Vienen de la casilla de cuotas
+   * vencidas del tablero, que muestra UNA urbanización: sin esto la pantalla
+   * abriría consolidada y el número no coincidiría con la lista.
+   */
+  scopeInicial?: string | null;
+  filtroInicial?: string | null;
 }) {
   const supabase = useMemo(() => createClient(), []);
 
   // Con varias urbanizaciones arranca consolidado: "cuánto tenemos por cobrar"
   // es una pregunta de la empresa, no de un plano.
-  const [scope, setScope] = useState<ProjectScope>(projects.length > 1 ? null : projectId);
+  const [scope, setScope] = useState<ProjectScope>(
+    scopeInicial ?? (projects.length > 1 ? null : projectId),
+  );
   const projectName = scopeLabel(scope, projects);
   // Los totales de los KPI van en la moneda del alcance; cada fila, en la suya.
   // Consolidado siempre en bolivianos — es la regla de scope-core, y es lo que
@@ -133,7 +149,9 @@ export default function PlanesClient({
   const [rows, setRows] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
-  const [filtro, setFiltro] = useState<Filtro>('activos');
+  const [filtro, setFiltro] = useState<Filtro>(
+    filtroInicial && FILTROS_VALIDOS.has(filtroInicial) ? (filtroInicial as Filtro) : 'activos',
+  );
 
   const [selected, setSelected] = useState<string | null>(null);
   // El nombre del comprador abre su ficha sin salir de Planes.

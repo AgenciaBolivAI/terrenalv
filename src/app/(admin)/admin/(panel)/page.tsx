@@ -81,6 +81,7 @@ export default async function DashboardPage() {
     funnelConfirmed,
     expiringRes,
     waSettingRes,
+    ventasRes,
   ] = await Promise.all([
     supabase.from('v_conteo_lotes').select('status, n').eq('project_id', projectId),
     supabase.from('v_conteo_reservas').select('status, n').eq('project_id', projectId),
@@ -125,12 +126,77 @@ export default async function DashboardPage() {
       .order('hold_expires_at', { ascending: true })
       .limit(30),
     supabase.from('settings').select('project_id, value').eq('key', 'whatsapp_templates'),
+    // Ventas y cuotas vencidas, ya sumadas por la base con el MISMO criterio
+    // que la pantalla de Ventas (`compra_iniciada`). Se suma allá y no acá
+    // porque PostgREST corta toda respuesta en 1.000 filas: traer las ventas
+    // para sumarlas en el navegador funcionaría hoy —hay 22— y empezaría a
+    // mentir en silencio apenas una urbanización pase el millar.
+    supabase.rpc('rep_tablero_ventas', { p_project_id: projectId }),
   ]);
 
   const ingresosBs = (incomeRes.data ?? []).reduce(
     (sum, r) => sum + Number(r.amount_bob ?? 0),
     0,
   );
+
+  // ---- Ventas -----------------------------------------------------------
+  // Solo compras iniciadas, igual que la pantalla de Ventas: una confirmada a
+  // la que nadie le pagó la inicial todavía no es plata vendida ni saldo por
+  // cobrar. Si acá se contara distinto, la casilla y la lista que abre dirían
+  // números distintos — que es exactamente el error que ya nos comimos con el
+  // embudo.
+  const vt = ((ventasRes.data ?? [])[0] ?? {}) as {
+    ventas?: number;
+    valor?: number;
+    cobrado?: number;
+    saldo?: number;
+    con_saldo?: number;
+    cuotas_vencidas?: number;
+    monto_vencido?: number;
+  };
+  const ventasN = Number(vt.ventas ?? 0);
+  const valorVendido = Number(vt.valor ?? 0);
+  const cobradoVentas = Number(vt.cobrado ?? 0);
+  const saldoVentas = Number(vt.saldo ?? 0);
+  const conSaldo = Number(vt.con_saldo ?? 0);
+  const cuotasVencidas = Number(vt.cuotas_vencidas ?? 0);
+  const montoVencido = Number(vt.monto_vencido ?? 0);
+
+  // Cada casilla se lleva el alcance puesto (`u`): Ventas y Planes arrancan
+  // consolidados cuando hay varias urbanizaciones, así que sin esto el número
+  // del tablero —de UNA urbanización— abriría el total de la empresa.
+  const aVentas = (filtro: string) =>
+    `/admin/ventas?u=${projectId}&filtro=${filtro}`;
+
+  const VENTA_CARDS: { label: string; value: string; hint: string; href: string; accent?: string }[] =
+    [
+      {
+        label: 'Ventas',
+        value: String(ventasN),
+        hint: 'compras iniciadas',
+        href: aVentas('ventas'),
+      },
+      {
+        label: 'Valor vendido',
+        value: formatMoney(valorVendido, 'BOB'),
+        hint: 'precio pactado',
+        href: aVentas('ventas'),
+      },
+      {
+        label: 'Cobrado',
+        value: formatMoney(cobradoVentas, 'BOB'),
+        hint: 'incluye lo del sistema anterior',
+        href: aVentas('cobradas'),
+        accent: 'text-brand',
+      },
+      {
+        label: 'Saldo por cobrar',
+        value: formatMoney(saldoVentas, 'BOB'),
+        hint: `${conSaldo} venta${conSaldo === 1 ? '' : 's'} con saldo`,
+        href: aVentas('saldo'),
+        accent: saldoVentas > 0 ? 'text-red-600' : undefined,
+      },
+    ];
 
   const waRows = waSettingRes.data ?? [];
   const waValue =
@@ -281,6 +347,61 @@ export default async function DashboardPage() {
           </h2>
           <p className="mt-2 text-2xl font-bold text-brand">{formatMoney(ingresosBs, 'BOB')}</p>
           <p className="mt-1 text-xs text-stone-400">Pagos aprobados del mes (hora de Bolivia)</p>
+        </Link>
+      </section>
+
+      {/* Ventas — lo que se vendió, lo que entró y lo que falta cobrar. */}
+      <section>
+        <h2 className="mb-2 text-xs font-semibold tracking-wide text-stone-500 uppercase">
+          Ventas
+        </h2>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {VENTA_CARDS.map((c) => (
+            <Link
+              key={c.label}
+              href={c.href}
+              className="group rounded-xl border border-stone-200 bg-white p-4 transition hover:border-brand-light hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
+            >
+              <p className={`text-xl font-bold ${c.accent ?? 'text-stone-900'}`}>{c.value}</p>
+              <p className="flex items-center justify-between gap-2 text-xs text-stone-500">
+                {c.label}
+                <span aria-hidden="true" className="text-stone-300 group-hover:text-brand-light">
+                  ›
+                </span>
+              </p>
+              <p className="mt-0.5 text-[11px] text-stone-400">{c.hint}</p>
+            </Link>
+          ))}
+        </div>
+
+        {/* Las cuotas vencidas van aparte: no es una cifra de la venta, es una
+            cola de trabajo — a quién hay que llamar hoy. */}
+        <Link
+          href={`/admin/planes?u=${projectId}&filtro=atraso`}
+          className={`group mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border p-4 transition hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light ${
+            cuotasVencidas > 0
+              ? 'border-red-300 bg-red-50 hover:border-red-400'
+              : 'border-stone-200 bg-white hover:border-brand-light'
+          }`}
+        >
+          <div>
+            <p
+              className={`text-xl font-bold ${cuotasVencidas > 0 ? 'text-red-700' : 'text-stone-900'}`}
+            >
+              {cuotasVencidas}{' '}
+              <span className="text-sm font-semibold">
+                cuota{cuotasVencidas === 1 ? '' : 's'} vencida{cuotasVencidas === 1 ? '' : 's'}
+              </span>
+            </p>
+            <p className={`text-xs ${cuotasVencidas > 0 ? 'text-red-600' : 'text-stone-400'}`}>
+              {cuotasVencidas > 0
+                ? `${formatMoney(montoVencido, 'BOB')} sin cobrar, con fecha ya pasada`
+                : 'Ningún plan con cuotas atrasadas.'}
+            </p>
+          </div>
+          <span aria-hidden="true" className="text-stone-300 group-hover:text-brand-light">
+            ›
+          </span>
         </Link>
       </section>
 

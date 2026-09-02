@@ -232,22 +232,39 @@ const CHIPS: { id: Exclude<Filtro, 'cobradas'>; label: string }[] = [
   { id: 'traspasos', label: 'Traspasos' },
 ];
 
+/** Los filtros que pueden llegar por la URL desde una casilla del tablero. */
+const FILTROS_VALIDOS = new Set<string>([
+  'ventas', 'todas', 'saldo', 'migradas', 'plan', 'sin_inicial', 'cobradas',
+  'app', 'oficina', 'directa', 'traspasos',
+]);
+
 export default function VentasClient({
   projectId,
   projects,
   open,
+  scopeInicial = null,
+  filtroInicial = null,
 }: {
   /** La urbanización activa en la barra: valor inicial del filtro. */
   projectId: string;
   projects: AdminProject[];
   /** reservation_id a expandir al cargar (enlace desde Lotes o Reservas). */
   open: string | null;
+  /**
+   * Alcance y filtro pedidos por la URL. Vienen de las casillas del tablero,
+   * que muestran UNA urbanización: sin esto la pantalla abriría consolidada y
+   * el número de la casilla no coincidiría con la lista que abre.
+   */
+  scopeInicial?: string | null;
+  filtroInicial?: string | null;
 }) {
   const supabase = useMemo(() => createClient(), []);
 
   // Igual que en contabilidad: con varias urbanizaciones arranca consolidado,
   // porque "cuánto vendimos" es una pregunta de la empresa, no de un plano.
-  const [scope, setScope] = useState<ProjectScope>(projects.length > 1 ? null : projectId);
+  const [scope, setScope] = useState<ProjectScope>(
+    scopeInicial ?? (projects.length > 1 ? null : projectId),
+  );
   const projectName = scopeLabel(scope, projects);
 
   const [rows, setRows] = useState<Venta[]>([]);
@@ -269,7 +286,9 @@ export default function VentasClient({
   const [vendiendo, setVendiendo] = useState<LoteElegible | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
-  const [filtro, setFiltro] = useState<Filtro>('ventas');
+  const [filtro, setFiltro] = useState<Filtro>(
+    filtroInicial && FILTROS_VALIDOS.has(filtroInicial) ? (filtroInicial as Filtro) : 'ventas',
+  );
 
   const [selected, setSelected] = useState<string | null>(null);
   const [pagos, setPagos] = useState<PagoHist[] | null>(null);

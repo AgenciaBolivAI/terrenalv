@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic';
 export default async function VentasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ open?: string }>;
+  searchParams: Promise<{ open?: string; u?: string; filtro?: string }>;
 }) {
   const ctx = await getAdminContext();
   if (!ctx.ok) {
@@ -27,13 +27,15 @@ export default async function VentasPage({
     return <EmptyState title="Proyecto no encontrado" hint="Ejecuta las migraciones." />;
   }
 
-  const { open } = await searchParams;
+  const { open, u, filtro } = await searchParams;
 
   return (
     <VentasClient
       projectId={ctx.project.id}
       projects={soloUrbanizaciones(ctx.projects)}
       open={open ?? null}
+      scopeInicial={u ?? null}
+      filtroInicial={filtro ?? null}
     />
   );
 }
