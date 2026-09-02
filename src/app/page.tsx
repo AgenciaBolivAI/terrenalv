@@ -7,6 +7,7 @@ import { MiReservaLink } from '@/features/reservations/components/MiReservaLink'
 import { loadLandingData } from '@/features/landing/data';
 import { Pasarella, type Slide } from '@/features/landing/Pasarella';
 import { loadInstagramPosts } from '@/features/landing/instagram';
+import { loadTikTokVideos } from '@/features/landing/tiktok';
 import { InstagramFeed, type FallbackPost } from '@/features/landing/InstagramFeed';
 
 // The company's own marketing flyers, in pasarella/. Alt text describes what
@@ -55,16 +56,17 @@ const SOCIAL = {
   instagram: 'https://www.instagram.com/terrenalv_srl/',
 };
 
-// Curated videos, each verified via TikTok's public oEmbed as published by
-// @terrenalv.s.r.l. Deliberately FIXED — they walk the buyer's journey (who
-// Terrenalv is, the lots, the "is this a scam?" doubt) — and deliberately only
-// three: everything NEW comes in through the creator-profile embed below,
-// TikTok's own equivalent of the Facebook page plugin, which always shows the
-// account's latest videos without us redeploying.
+// Shown ONLY while the live TikTok feed is unavailable (see landing/tiktok.ts).
+// Each one verified via TikTok's public oEmbed as published by @terrenalv.s.r.l,
+// chosen for the buyer's journey: who Terrenalv is, the Prados del Sur lots
+// themselves, and the "is this a scam?" doubt answered.
 const FEATURED_TIKTOKS: { id: string; caption: string }[] = [
   { id: '7590183493653515576', caption: 'Quiénes somos: el sueño detrás de Terrenalv' },
   { id: '7667981112022502676', caption: 'Nuevos lotes habilitados en Prados del Sur' },
+  { id: '7668375936672320789', caption: 'Estos precios no vuelven' },
+  { id: '7668557245537438997', caption: 'Tu miniquinta, para disfrutar o invertir' },
   { id: '7668793237041057045', caption: '¿Dudas? Visítanos en oficina antes de invertir' },
+  { id: '7670249275229605141', caption: '¿Te imaginas pagar por algo que sí es tuyo?' },
 ];
 
 // Shown ONLY while the live Instagram feed is unavailable — before the token is
@@ -192,9 +194,16 @@ function SectionHead({
 const WEBMAIL_URL: string | null = null;
 
 export default async function Home() {
-  // Independent sources: a slow or missing Instagram feed must not hold up the
-  // live figures, and neither one failing can take the other down.
-  const [live, instagram] = await Promise.all([loadLandingData(), loadInstagramPosts(3)]);
+  // Independent sources: a slow or missing social feed must not hold up the
+  // live figures, and none of them failing can take the others down.
+  const [live, instagram, tiktokLive] = await Promise.all([
+    loadLandingData(),
+    loadInstagramPosts(3),
+    loadTikTokVideos(6),
+  ]);
+  // La grilla de TikTok de siempre: lo último del perfil cuando el feed
+  // responde, los seis verificados cuando no.
+  const tiktoks = tiktokLive ?? FEATURED_TIKTOKS;
   const cur = live.currency;
 
   return (
@@ -412,10 +421,11 @@ export default async function Home() {
             </a>
           </div>
 
-          {/* Curated trio — fixed, verified posts so the section has real
-              content immediately and the buyer's journey stays told in order. */}
+          {/* La grilla de siempre. Los videos salen del feed vivo del perfil
+              (landing/tiktok.ts) cuando responde; si no, de los seis fijos
+              verificados — misma forma, contenido al día. */}
           <div className="mt-5 grid gap-6 sm:grid-cols-3">
-            {FEATURED_TIKTOKS.map((v) => (
+            {tiktoks.map((v) => (
               <figure key={v.id} className="card card-lift rounded-3xl bg-white p-3">
                 <div className="overflow-hidden rounded-2xl bg-stone-900">
                   <iframe
@@ -432,29 +442,6 @@ export default async function Home() {
                 </figcaption>
               </figure>
             ))}
-          </div>
-
-          {/* Lo último del perfil, SIEMPRE al día: el embed oficial de creador
-              de TikTok — el equivalente exacto del plugin de página de
-              Facebook de abajo. Cada video nuevo que publica el equipo aparece
-              acá solo, sin tocar el sitio. Verificado: el endpoint responde
-              con la grilla del perfil para @terrenalv.s.r.l. */}
-          <div className="mx-auto mt-8 max-w-2xl">
-            <div className="card rounded-3xl bg-white p-4">
-              <div className="overflow-hidden rounded-2xl bg-stone-900">
-                <iframe
-                  title="Últimos videos de Terrenalv en TikTok"
-                  src="https://www.tiktok.com/embed/@terrenalv.s.r.l"
-                  className="w-full border-0"
-                  style={{ height: 760 }}
-                  loading="lazy"
-                  allow="encrypted-media; picture-in-picture; fullscreen"
-                />
-              </div>
-              <p className="annot mt-2 px-1 text-stone-400">
-                Lo último publicado por @{SOCIAL.tiktokUser} — se actualiza solo.
-              </p>
-            </div>
           </div>
 
           {/* Instagram */}
