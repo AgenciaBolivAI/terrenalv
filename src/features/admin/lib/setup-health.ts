@@ -87,27 +87,26 @@ export async function checkSetupHealth(projectId: string | null): Promise<Health
       });
     }
 
-    // ---- ¿La portada muestra lo último, o quedó congelada? --------------
-    // Esto NO es un consejo sobre cómo usar las redes: es un estado roto y
-    // silencioso. Los dos feeds caen a publicaciones fijas cuando la red no
-    // responde, así que la sección se ve llena aunque lleve meses detenida.
-    // Lo escribe la revisión diaria (private.ping_social_check → /api/internal
-    // /social-check); sin esa fila todavía, no se dice nada.
+    // ---- ¿Un feed que ANDABA se cayó en silencio? ------------------------
+    // Solo eso. Que Instagram todavía no esté conectado NO va acá: es una
+    // decisión pendiente del dueño, no un desperfecto, y un cartel repitiéndola
+    // todos los días es ruido en el lugar de trabajo de otro. La regla vale
+    // para todo el panel: acá solo entra lo que ANTES funcionaba y dejó de
+    // funcionar. Lo escribe la revisión diaria (private.ping_social_check →
+    // /api/internal/social-check); sin esa fila todavía, no se dice nada.
     const salud = get('social_feed_health') as SocialFeedHealth | undefined;
     if (salud) {
-      if (salud.instagram && !salud.instagram.vivo) {
-        const sinToken = salud.token_instagram?.presente === false;
+      // Con token puesto y sin publicaciones sí hay algo roto: andaba y se cortó.
+      if (salud.token_instagram?.presente && salud.instagram && !salud.instagram.vivo) {
         issues.push({
           level: 'warning',
-          title: sinToken
-            ? 'Instagram no está conectado'
-            : 'Instagram dejó de traer publicaciones',
+          title: 'Instagram dejó de traer publicaciones',
           detail:
             (salud.instagram.motivo ?? 'El feed no respondió.') +
             ' La portada sigue mostrando los tres reels fijos de siempre, así que ' +
             'desde afuera parece al día.',
           href: '/admin/configuracion',
-          cta: sinToken ? 'Cómo conectarlo' : 'Revisar',
+          cta: 'Revisar',
         });
       }
 

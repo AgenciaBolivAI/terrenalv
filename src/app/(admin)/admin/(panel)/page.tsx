@@ -81,8 +81,6 @@ export default async function DashboardPage() {
     funnelConfirmed,
     expiringRes,
     waSettingRes,
-    empresaVentasRes,
-    empresaIngresoRes,
   ] = await Promise.all([
     supabase.from('v_conteo_lotes').select('status, n').eq('project_id', projectId),
     supabase.from('v_conteo_reservas').select('status, n').eq('project_id', projectId),
@@ -104,10 +102,16 @@ export default async function DashboardPage() {
       .select('id', { count: 'exact', head: true })
       .eq('project_id', projectId)
       .gte('proof_submitted_at', d30),
+    // Confirmadas del período que SIGUEN confirmadas. El `status` no es un
+    // adorno: sin él entraban las que se confirmaron y después se cancelaron,
+    // así que el embudo decía 8 mientras la casilla de arriba decía 7 —la misma
+    // palabra, dos números— y el 8 abría una lista de 7. Una reserva caída no
+    // es una venta, ni acá ni en la casilla.
     supabase
       .from('reservations')
       .select('id', { count: 'exact', head: true })
       .eq('project_id', projectId)
+      .eq('status', 'confirmada')
       .gte('confirmed_at', d30),
     supabase
       .from('reservations')
@@ -121,43 +125,12 @@ export default async function DashboardPage() {
       .order('hold_expires_at', { ascending: true })
       .limit(30),
     supabase.from('settings').select('project_id, value').eq('key', 'whatsapp_templates'),
-    // Las mismas dos cifras, pero de TODA la empresa. Sin filtro de proyecto a
-    // propósito: la administración no vende (lo garantiza un guardián), así que
-    // no ensucia el total.
-    supabase
-      .from('reservations')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'confirmada'),
-    supabase
-      .from('payments')
-      .select('amount_bob')
-      .eq('status', 'aprobado')
-      .gte('verified_at', monthStart)
-      .lt('verified_at', monthEnd)
-      .limit(5000),
   ]);
 
   const ingresosBs = (incomeRes.data ?? []).reduce(
     (sum, r) => sum + Number(r.amount_bob ?? 0),
     0,
   );
-
-  // El tablero mira UNA urbanización —la del selector de arriba—, igual que
-  // Reservas, Lotes y Ventas: así cada casilla lleva exactamente a la lista que
-  // cuenta. Pero la contadora abría esto buscando la empresa entera y veía 7
-  // ventas de las 22 que hay, sin nada que le dijera que estaba mirando una
-  // sola. De ahí esta línea: dice qué se está viendo y da el total de la
-  // sociedad, con el camino a las pantallas que sí consolidan.
-  const empresaVentas = empresaVentasRes.count ?? 0;
-  const empresaIngresos = (empresaIngresoRes.data ?? []).reduce(
-    (sum, r) => sum + Number(r.amount_bob ?? 0),
-    0,
-  );
-  const ventasDeEsta = conteo(
-    resCounts.data as { status: string; n: number }[] | null,
-    'confirmada',
-  );
-  const hayMasUrbanizaciones = ctx.projects.length > 1;
 
   const waRows = waSettingRes.data ?? [];
   const waValue =
@@ -198,32 +171,10 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <div>
-        <h1 className="text-lg font-bold text-stone-900">
-          Dashboard <span className="font-medium text-stone-400">·</span>{' '}
-          <span className="text-brand">{ctx.project.name}</span>
-        </h1>
-        {hayMasUrbanizaciones ? (
-          <p className="mt-1 text-xs text-stone-500">
-            Todo lo de abajo es de <strong className="font-semibold">{ctx.project.name}</strong>.
-            Para ver otra, cambiala en el selector de arriba. En toda la empresa hay{' '}
-            <Link href="/admin/analitica" className="font-semibold text-brand hover:underline">
-              {empresaVentas} venta{empresaVentas === 1 ? '' : 's'} confirmada
-              {empresaVentas === 1 ? '' : 's'}
-            </Link>{' '}
-            y se cobraron{' '}
-            <Link
-              href="/admin/contabilidad?tab=resumen"
-              className="font-semibold text-brand hover:underline"
-            >
-              {formatMoney(empresaIngresos, 'BOB')} este mes
-            </Link>
-            {ventasDeEsta === empresaVentas
-              ? '.'
-              : ` — acá se ven ${ventasDeEsta} de esas ventas.`}
-          </p>
-        ) : null}
-      </div>
+      <h1 className="text-lg font-bold text-stone-900">
+        Dashboard <span className="font-medium text-stone-400">·</span>{' '}
+        <span className="text-brand">{ctx.project.name}</span>
+      </h1>
 
       {health.length > 0 ? (
         <section className="space-y-2">
