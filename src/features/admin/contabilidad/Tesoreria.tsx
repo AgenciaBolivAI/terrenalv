@@ -19,6 +19,7 @@
 // las ventas del mes en Bs 1.200.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { formatMoney } from '@/lib/format';
 import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
@@ -116,6 +117,16 @@ export function useTesoreria(opts?: { contactKinds?: ContactKind[] }) {
 }
 
 /**
+ * Etiqueta de una cuenta en los selectores: nombre, banco y número de cuenta
+ * (cuando están cargados) y el saldo. La contadora pidió ver el número al
+ * elegir el banco: dos cuentas del mismo banco solo se distinguen por él.
+ */
+function cuentaLabel(a: TreasuryAccount): string {
+  const banco = [a.bank_name, a.account_number].filter(Boolean).join(' ');
+  return [a.name, banco, formatMoney(Number(a.saldo), a.currency)].filter(Boolean).join(' · ');
+}
+
+/**
  * Selector de "por dónde pasó la plata", igual en el formulario de cobro y en
  * el de egreso.
  */
@@ -126,6 +137,7 @@ export function CuentaSelect({
   label,
   monto,
   signo,
+  atajoABancos,
 }: {
   cuentas: TreasuryAccount[];
   value: string;
@@ -134,6 +146,10 @@ export function CuentaSelect({
   /** Para adelantar cómo queda el saldo antes de guardar. */
   monto?: number;
   signo: 1 | -1;
+  /** Suma al aviso de "no hay cuentas" el atajo a la pestaña Bancos y caja.
+   *  Es opcional porque el aviso solo, sin salida, dejaba a la contadora
+   *  varada; pero la propia Contabilidad no tiene sentido que se linkee. */
+  atajoABancos?: boolean;
 }) {
   const cuenta = cuentas.find((a) => a.id === value);
   const queda = cuenta ? Number(cuenta.saldo) + signo * Number(monto || 0) : 0;
@@ -146,7 +162,7 @@ export function CuentaSelect({
           <option value="">— sin especificar —</option>
           {cuentas.map((a) => (
             <option key={a.id} value={a.id}>
-              {a.name} · {formatMoney(Number(a.saldo), a.currency)}
+              {cuentaLabel(a)}
             </option>
           ))}
         </select>
@@ -155,6 +171,18 @@ export function CuentaSelect({
           Todavía no hay bancos ni cajas cargados. Se puede guardar igual, pero el movimiento va a
           quedar en la cuenta genérica <strong>1111 Caja y Bancos</strong>, que junta todo y no se
           puede conciliar contra un extracto.
+          {atajoABancos ? (
+            <>
+              {' '}
+              <Link
+                href="/admin/contabilidad?tab=bancos"
+                className="font-medium text-brand hover:underline"
+              >
+                Cargá las cuentas en Bancos y caja
+              </Link>
+              .
+            </>
+          ) : null}
         </p>
       )}
       {cuenta && Number(monto) > 0 ? (
@@ -734,7 +762,7 @@ function TransferDialog({
             <select value={from} onChange={(e) => setFrom(e.target.value)} className={inputClass}>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.name} · {formatMoney(Number(a.saldo), a.currency)}
+                  {cuentaLabel(a)}
                 </option>
               ))}
             </select>
@@ -744,7 +772,7 @@ function TransferDialog({
             <select value={to} onChange={(e) => setTo(e.target.value)} className={inputClass}>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.name} · {formatMoney(Number(a.saldo), a.currency)}
+                  {cuentaLabel(a)}
                 </option>
               ))}
             </select>

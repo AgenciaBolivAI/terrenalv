@@ -57,7 +57,9 @@ export function ActivoDialog({
   const [proveedorId, setProveedorId] = useState(activo?.proveedor_contact_id ?? '');
   const [numeroFactura, setNumeroFactura] = useState(activo?.numero_factura ?? '');
   const [centroId, setCentroId] = useState(activo?.centro_costo_id ?? '');
-  const [centros, setCentros] = useState<{ id: string; codigo: string; nombre: string }[]>([]);
+  const [centros, setCentros] = useState<
+    { id: string; codigo: string; nombre: string; project_id: string | null }[]
+  >([]);
   const [descripcion, setDescripcion] = useState(activo?.descripcion ?? '');
   const [nota, setNota] = useState(activo?.nota ?? '');
   const [titular, setTitular] = useState<'empresa' | 'tercero'>(
@@ -77,15 +79,26 @@ export function ActivoDialog({
     void (async () => {
       const { data } = await supabase
         .from('centros_costo')
-        .select('id, codigo, nombre')
+        .select('id, codigo, nombre, project_id')
         .eq('is_active', true)
         .or(`project_id.eq.${projectIdSel},project_id.is.null`)
         .order('codigo');
-      const cc = (data ?? []) as { id: string; codigo: string; nombre: string }[];
+      const cc = (data ?? []) as {
+        id: string;
+        codigo: string;
+        nombre: string;
+        project_id: string | null;
+      }[];
       setCentros(cc);
       setCentroId((a) => (cc.some((c) => c.id === a) ? a : ''));
     })();
   }, [supabase, projectIdSel]);
+
+  // Los centros propios de la urbanización van aparte de los de toda la
+  // empresa, para que no se cargue una obra ajena por elegir mal en una lista
+  // mezclada.
+  const centrosDeAca = centros.filter((c) => c.project_id !== null);
+  const centrosDeEmpresa = centros.filter((c) => c.project_id === null);
 
   const categoria = cats.find((c) => c.id === categoriaId);
   const proveedor = contactos.find((c) => c.id === proveedorId);
@@ -328,11 +341,24 @@ export function ActivoDialog({
               className={inputClass}
             >
               <option value="">— sin centro —</option>
-              {centros.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.codigo} · {c.nombre}
-                </option>
-              ))}
+              {centrosDeAca.length > 0 ? (
+                <optgroup label="De esta urbanización">
+                  {centrosDeAca.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.codigo} · {c.nombre}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+              {centrosDeEmpresa.length > 0 ? (
+                <optgroup label="De toda la empresa">
+                  {centrosDeEmpresa.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.codigo} · {c.nombre}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
             </select>
           </div>
           <div>

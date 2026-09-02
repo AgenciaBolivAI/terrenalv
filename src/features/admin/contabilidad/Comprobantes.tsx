@@ -109,7 +109,9 @@ export default function Comprobantes({
   // arranca en la que se está mirando.
   const [voucherProjectId, setVoucherProjectId] = useState(projectId ?? createProjectId);
   const [centroId, setCentroId] = useState('');
-  const [centros, setCentros] = useState<{ id: string; codigo: string; nombre: string }[]>([]);
+  const [centros, setCentros] = useState<
+    { id: string; codigo: string; nombre: string; project_id: string | null }[]
+  >([]);
   const [titular, setTitular] = useState<'empresa' | 'tercero'>('empresa');
   const [titularNombre, setTitularNombre] = useState('');
 
@@ -118,15 +120,26 @@ export default function Comprobantes({
     void (async () => {
       const { data } = await supabase
         .from('centros_costo')
-        .select('id, codigo, nombre')
+        .select('id, codigo, nombre, project_id')
         .eq('is_active', true)
         .or(`project_id.eq.${voucherProjectId},project_id.is.null`)
         .order('codigo');
-      const cc = (data ?? []) as { id: string; codigo: string; nombre: string }[];
+      const cc = (data ?? []) as {
+        id: string;
+        codigo: string;
+        nombre: string;
+        project_id: string | null;
+      }[];
       setCentros(cc);
       setCentroId((actual) => (cc.some((c) => c.id === actual) ? actual : ''));
     })();
   }, [supabase, voucherProjectId]);
+
+  // En el desplegable, los centros propios de la urbanización van aparte de
+  // los de toda la empresa, para no cargar una obra ajena por elegir mal en
+  // una lista mezclada.
+  const centrosDeAca = centros.filter((c) => c.project_id !== null);
+  const centrosDeEmpresa = centros.filter((c) => c.project_id === null);
 
   // Solo se ofrecen las cuentas IMPUTABLES. Una cuenta con hijas es titular:
   // agrupa, no se asienta. El servidor igual lo rechaza, pero ofrecerla y
@@ -432,11 +445,24 @@ export default function Comprobantes({
                 className={inputClass}
               >
                 <option value="">— sin centro —</option>
-                {centros.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.codigo} · {c.nombre}
-                  </option>
-                ))}
+                {centrosDeAca.length > 0 ? (
+                  <optgroup label="De esta urbanización">
+                    {centrosDeAca.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.codigo} · {c.nombre}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
+                {centrosDeEmpresa.length > 0 ? (
+                  <optgroup label="De toda la empresa">
+                    {centrosDeEmpresa.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.codigo} · {c.nombre}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
               </select>
             </div>
             <div>

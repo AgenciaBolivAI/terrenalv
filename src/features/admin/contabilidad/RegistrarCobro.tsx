@@ -757,6 +757,7 @@ export default function RegistrarCobroDialog({
           label="Depositado en"
           monto={Number(amount)}
           signo={1}
+          atajoABancos
         />
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Nota (opcional)" className={inputClass} />
         {error ? <p className="text-sm text-red-600">{error}</p> : null}

@@ -883,7 +883,8 @@ export default function AccountingClient({
                   title: 'Ingresos y Egresos por Mes',
                   subtitle: projectName,
                   filename: `ingresos-egresos-${new Date().toISOString().slice(0, 10)}`,
-                  footnote: 'Ingresos: solo pagos aprobados, fechados al verificarse. Bolivianos.',
+                  footnote:
+                    'Movimientos reales por las cuentas de caja y banco según el libro. Un gasto a crédito aparece el mes en que se paga. Bolivianos.',
                 }}
                 columns={[
                   { header: 'Mes' },
@@ -952,8 +953,8 @@ export default function AccountingClient({
               </div>
             )}
             <p className="border-t border-stone-100 px-4 py-2 text-xs text-stone-400">
-              Los ingresos cuentan solo pagos aprobados, en la fecha en que se verificaron (hora de
-              Bolivia). Un comprobante sin revisar todavía no es ingreso.
+              Entradas y salidas por las cuentas de caja y banco, según el libro. Un gasto a
+              crédito o devengado aparece recién el mes en que la plata sale de verdad.
             </p>
           </section>
         </div>
@@ -2241,7 +2242,9 @@ function ExpenseDialog({
   // A que centro carga y a nombre de quien esta. El titular es un dato del
   // negocio —saber de quien es la factura sirve igual— y ademas es lo que
   // despues decide si esto se declara o no.
-  const [centros, setCentros] = useState<{ id: string; codigo: string; nombre: string }[]>([]);
+  const [centros, setCentros] = useState<
+    { id: string; codigo: string; nombre: string; project_id: string | null }[]
+  >([]);
   const [centroId, setCentroId] = useState('');
   // El catálogo de conceptos: «Uniformes», «Luz», «Combustible». Cada uno sabe
   // en qué cuenta del plan cae, así que agregar uno no toca el libro.
@@ -2276,7 +2279,12 @@ function ExpenseDialog({
         .eq('is_active', true)
         .or(`project_id.eq.${expProjectId},project_id.is.null`)
         .order('codigo');
-      const cc = (data ?? []) as { id: string; codigo: string; nombre: string }[];
+      const cc = (data ?? []) as {
+        id: string;
+        codigo: string;
+        nombre: string;
+        project_id: string | null;
+      }[];
       setCentros(cc);
       // Al cambiar de urbanización, el centro elegido puede ser de la anterior.
       setCentroId((actual) => (cc.some((c) => c.id === actual) ? actual : ''));

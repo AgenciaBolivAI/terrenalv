@@ -24,6 +24,7 @@ interface Centro {
   codigo: string;
   nombre: string;
   is_active: boolean;
+  capitaliza: boolean;
   cargado: number;
   acreditado: number;
   neto: number;
@@ -47,6 +48,7 @@ export default function CentrosCosto({
     codigo: string;
     nombre: string;
     deLaEmpresa: boolean;
+    capitaliza: boolean;
     activo: boolean;
   } | null>(null);
 
@@ -75,6 +77,7 @@ export default function CentrosCosto({
       p_project_id: edit.deLaEmpresa ? null : projectId,
       p_codigo: edit.codigo.trim(),
       p_nombre: edit.nombre.trim(),
+      p_capitaliza: edit.capitaliza,
       p_activo: edit.activo,
     });
     if (error) {
@@ -102,7 +105,14 @@ export default function CentrosCosto({
           type="button"
           className={`${btnPrimary} ml-auto`}
           onClick={() =>
-            setEdit({ id: null, codigo: '', nombre: '', deLaEmpresa: false, activo: true })
+            setEdit({
+              id: null,
+              codigo: '',
+              nombre: '',
+              deLaEmpresa: false,
+              capitaliza: false,
+              activo: true,
+            })
           }
         >
           Nuevo centro
@@ -143,6 +153,9 @@ export default function CentrosCosto({
                 <tr key={c.id} className="border-b border-stone-100 last:border-0">
                   <td className="px-4 py-2 font-mono text-xs font-semibold text-stone-700">
                     {c.codigo}
+                    {c.capitaliza ? (
+                      <Badge className="ml-2 bg-green-100 text-green-700">capitaliza</Badge>
+                    ) : null}
                     {!c.is_active ? (
                       <Badge className="ml-2 bg-stone-200 text-stone-600">inactivo</Badge>
                     ) : null}
@@ -180,6 +193,7 @@ export default function CentrosCosto({
                           codigo: c.codigo,
                           nombre: c.nombre,
                           deLaEmpresa: c.project_id === null,
+                          capitaliza: c.capitaliza,
                           activo: c.is_active,
                         })
                       }
@@ -252,6 +266,18 @@ export default function CentrosCosto({
               />
               Es de toda la empresa, no de {projectName}
             </label>
+            <label className="flex items-center gap-2 text-sm text-stone-700">
+              <input
+                type="checkbox"
+                checked={edit.capitaliza}
+                onChange={(e) => setEdit({ ...edit, capitaliza: e.target.checked })}
+              />
+              Capitaliza al inventario de terrenos
+            </label>
+            <p className="-mt-2 pl-6 text-[11px] text-stone-500">
+              Sus egresos van al inventario (1151) en vez de a gasto. Es para las obras de
+              urbanización: el costo queda en los lotes hasta que se venden.
+            </p>
             <label className="flex items-center gap-2 text-sm text-stone-700">
               <input
                 type="checkbox"

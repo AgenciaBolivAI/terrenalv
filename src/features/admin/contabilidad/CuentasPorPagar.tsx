@@ -444,6 +444,7 @@ function PagarDialog({
           label="¿De qué caja o banco sale?"
           monto={aPagar}
           signo={-1}
+          atajoABancos
         />
 
         <div>

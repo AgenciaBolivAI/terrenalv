@@ -28,7 +28,15 @@ export interface ComprobanteRegistro {
   project_id: string;
   proyecto: string;
   numero: string;
-  origen: 'venta' | 'pago' | 'egreso' | 'terreno' | 'comprobante';
+  origen:
+    | 'venta'
+    | 'pago'
+    | 'egreso'
+    | 'terreno'
+    | 'comprobante'
+    | 'activo'
+    | 'fondo'
+    | 'pago_proveedor';
   origen_id: string;
   tipo: string;
   fecha: string;
@@ -53,10 +61,13 @@ const COLOR_TIPO: Record<ComprobanteRegistro['origen'], string> = {
   venta: 'bg-green-100 text-green-800',
   pago: 'bg-sky-100 text-sky-800',
   terreno: 'bg-stone-200 text-stone-700',
+  activo: 'bg-indigo-100 text-indigo-800',
+  fondo: 'bg-teal-100 text-teal-800',
+  pago_proveedor: 'bg-rose-100 text-rose-800',
 };
 
 /** Dónde vive el papel de cada comprobante. */
-function documento(c: ComprobanteRegistro): string | null {
+function documento(c: ComprobanteRegistro): string {
   switch (c.origen) {
     case 'egreso':
       return `/admin/egreso/${c.origen_id}`;
@@ -65,9 +76,11 @@ function documento(c: ComprobanteRegistro): string | null {
     case 'venta':
       return `/admin/plan/${c.origen_id}`;
     default:
-      // La compra de terreno vive en Inventario y el asiento manual está en la
-      // tabla de abajo: no hay un papel aparte al que mandar.
-      return null;
+      // El resto (activo fijo, fondo a rendir, pago a proveedor, compra de
+      // terreno, asiento manual) no tiene un documento propio: el asiento
+      // mismo ES el papel, y se imprime desde /admin/comprobante. Va por
+      // número y no por uuid porque el número es lo que se archiva.
+      return `/admin/comprobante/${encodeURIComponent(c.numero)}`;
   }
 }
 
@@ -253,7 +266,11 @@ export default function RegistroComprobantes({
                       {dateLabel(c.fecha)}
                     </td>
                     <td className="px-3 py-1.5">
-                      <Badge className={COLOR_TIPO[c.origen]}>{c.tipo}</Badge>
+                      {/* El ?? es por si la vista suma un origen que este
+                          código todavía no conoce: mejor gris que reventar. */}
+                      <Badge className={COLOR_TIPO[c.origen] ?? 'bg-stone-100 text-stone-600'}>
+                        {c.tipo}
+                      </Badge>
                     </td>
                     <td className="px-3 py-1.5 text-stone-800">{c.glosa}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums text-stone-700">

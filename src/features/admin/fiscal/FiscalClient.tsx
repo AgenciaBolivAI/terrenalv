@@ -33,6 +33,8 @@ import { useAdmin } from '@/features/admin/shell/AdminContext';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
 import { num as fnum, type Cell as XCell } from '@/features/admin/export';
 import LibroIva from './LibroIva';
+import SumasFiscal from './SumasFiscal';
+import ComprobanteSoloFiscal from './ComprobanteSoloFiscal';
 
 interface Pendiente {
   project_id: string;
@@ -41,6 +43,9 @@ interface Pendiente {
   fecha: string;
   comprobante: string;
   glosa: string;
+  /** La cuenta gerencial del movimiento; si su ámbito es 'gerencial', no declara. */
+  cuenta_nombre: string | null;
+  cuenta_ambito: string | null;
   cliente: string | null;
   titular: string;
   titular_nombre: string | null;
@@ -68,9 +73,12 @@ const ORIGEN_LABEL: Record<string, string> = {
   pago: 'Cobro',
   egreso: 'Egreso',
   comprobante: 'Comprobante',
+  terreno: 'Compra de terreno',
+  activo: 'Activo fijo',
+  fondo: 'Fondo a rendir',
 };
 
-type Vista = 'pendiente' | 'libro' | 'excluidos' | 'iva';
+type Vista = 'pendiente' | 'libro' | 'sumas' | 'excluidos' | 'iva';
 
 export default function FiscalClient() {
   const supabase = useMemo(() => createClient(), []);
@@ -84,9 +92,13 @@ export default function FiscalClient() {
   const [excluyendo, setExcluyendo] = useState<Pendiente | null>(null);
   const [motivo, setMotivo] = useState('');
   const [importando, setImportando] = useState(false);
-  const [rango, setRango] = useState<{ desde: string; hasta: string; terceros: boolean } | null>(
-    null,
-  );
+  const [soloFiscal, setSoloFiscal] = useState(false);
+  const [rango, setRango] = useState<{
+    desde: string;
+    hasta: string;
+    terceros: boolean;
+    cuentasGerenciales: boolean;
+  } | null>(null);
 
   const cargar = useCallback(async () => {
     if (!projectId) {
@@ -181,6 +193,7 @@ export default function FiscalClient() {
               desde: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
               hasta: new Date().toISOString().slice(0, 10),
               terceros: false,
+              cuentasGerenciales: false,
             })
           }
         >
@@ -222,6 +235,7 @@ export default function FiscalClient() {
           [
             ['pendiente', `Por declarar (${porImportar.length})`],
             ['libro', `Libro fiscal (${comprobantes})`],
+            ['sumas', 'Sumas y saldos'],
             ['excluidos', `Afuera (${excluidos.length})`],
             ['iva', 'Compras y ventas IVA'],
           ] as [Vista, string][]
@@ -240,6 +254,8 @@ export default function FiscalClient() {
       </div>
 
       {vista === 'iva' ? <LibroIva /> : null}
+
+      {vista === 'sumas' ? <SumasFiscal projectId={projectId} projectName={projectName} /> : null}
 
       {/* ---------- por declarar ---------- */}
       {vista === 'pendiente' ? (
@@ -276,6 +292,12 @@ export default function FiscalClient() {
                         <p className="font-medium text-stone-900">{p.glosa}</p>
                         <p className="text-xs text-stone-400">
                           {ORIGEN_LABEL[p.origen] ?? p.origen} · {p.comprobante}
+                          {p.cuenta_nombre ? <> · {p.cuenta_nombre}</> : null}
+                          {/* Una cuenta gerencial es plata que no se declara: se
+                              avisa acá, antes de apretar «Declarar» sin mirar. */}
+                          {p.cuenta_ambito === 'gerencial' ? (
+                            <Badge className="ml-1.5 bg-stone-200 text-stone-600">no declara</Badge>
+                          ) : null}
                         </p>
                       </td>
                       <td className="px-3 py-2 text-xs text-stone-500">{p.cliente ?? '—'}</td>
@@ -333,7 +355,17 @@ export default function FiscalClient() {
               Cada línea dice de qué comprobante del gerencial salió. Las marcadas «sólo fiscal»
               no tienen espejo del otro lado.
             </p>
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-2">
+              {projectId ? (
+                <button
+                  type="button"
+                  className={btnSecondary}
+                  onClick={() => setSoloFiscal(true)}
+                  title="Un asiento que solo existe en el libro fiscal"
+                >
+                  Comprobante sólo fiscal
+                </button>
+              ) : null}
               <ExportButtons
                 disabled={!libro.length}
                 orientation="landscape"
@@ -567,6 +599,21 @@ export default function FiscalClient() {
               </span>
             </span>
           </label>
+          <label className="mt-3 flex items-start gap-2 text-sm text-stone-700">
+            <input
+              type="checkbox"
+              checked={rango.cuentasGerenciales}
+              onChange={(e) => setRango({ ...rango, cuentasGerenciales: e.target.checked })}
+              className="mt-0.5"
+            />
+            <span>
+              Incluir <strong>cuentas que no declaran</strong>
+              <span className="block text-xs text-stone-400">
+                Movimientos asentados en cuentas marcadas como gerenciales. Por defecto se
+                saltean: lo que no se declara no entra al libro fiscal por accidente.
+              </span>
+            </span>
+          </label>
           <div className="mt-4 flex justify-end gap-2">
             <button type="button" className={btnSecondary} onClick={() => setRango(null)}>
               Volver
@@ -582,6 +629,7 @@ export default function FiscalClient() {
                   p_desde: rango.desde,
                   p_hasta: rango.hasta,
                   p_incluir_terceros: rango.terceros,
+                  p_incluir_cuentas_gerenciales: rango.cuentasGerenciales,
                 });
                 setImportando(false);
                 if (error) {
@@ -592,6 +640,7 @@ export default function FiscalClient() {
                   traidos?: number;
                   saltados_tercero?: number;
                   saltados_excluidos?: number;
+                  saltados_cuenta?: number;
                 } | null;
                 push(
                   `Se declararon ${d?.traidos ?? 0} movimiento(s).` +
@@ -600,6 +649,9 @@ export default function FiscalClient() {
                       : '') +
                     (d?.saltados_excluidos
                       ? ` ${d.saltados_excluidos} estaban dejados afuera.`
+                      : '') +
+                    (d?.saltados_cuenta
+                      ? ` ${d.saltados_cuenta} van a cuentas que no declaran y quedaron afuera.`
                       : ''),
                   'success',
                 );
@@ -611,6 +663,15 @@ export default function FiscalClient() {
             </button>
           </div>
         </Dialog>
+      ) : null}
+
+      {/* ---------- comprobante sólo fiscal ---------- */}
+      {soloFiscal && projectId ? (
+        <ComprobanteSoloFiscal
+          projectId={projectId}
+          onClose={() => setSoloFiscal(false)}
+          onSaved={() => void cargar()}
+        />
       ) : null}
     </div>
   );

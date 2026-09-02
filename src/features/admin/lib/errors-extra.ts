@@ -66,6 +66,15 @@ const ADMIN_ERROR_COPY: Record<string, string> = {
   PLANILLA_YA_PAGADA: 'No quedaba nada por pagar en esa planilla.',
   PLANILLA_NO_ENCONTRADA: 'No se encontró la planilla.',
   PLANILLA_VACIA: 'La planilla no tiene a nadie con sueldo por pagar.',
+  // El libro fiscal: comprobantes sólo fiscales e importación del gerencial.
+  CUENTA_INVALIDA:
+    'Esa cuenta no existe en el plan o no es imputable. Elegí una cuenta de último nivel, sin hijas.',
+  MINIMO_DOS_LINEAS: 'Un asiento necesita al menos dos líneas: algo al debe y algo al haber.',
+  IMPORTE_CERO:
+    'Hay una línea sin importe. Cada línea lleva un monto mayor a cero, al debe o al haber.',
+  NO_CUADRA: 'El asiento no cuadra: el total del debe tiene que coincidir con el total del haber.',
+  ORIGEN_INVALIDO: 'Ese tipo de movimiento no existe: no se puede llevar al libro fiscal.',
+  YA_DECLARADO: 'Ese movimiento ya está declarado en el libro fiscal. Actualizá la lista.',
   // Postgres cuando la función todavía no está creada en la base.
   'Could not find the function': 'Falta aplicar la migración admin_reserve_offline en la base de datos.',
   PGRST202: 'Falta aplicar la migración admin_reserve_offline en la base de datos.',
