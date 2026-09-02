@@ -31,6 +31,14 @@ interface PaymentInstructions {
   qr_image_path?: string | null;
 }
 
+/** Lo que deja escrito la revisión diaria de los feeds de la portada. */
+interface SocialFeedHealth {
+  revisado_el?: string;
+  instagram?: { vivo: boolean; motivo: string | null };
+  tiktok?: { vivo: boolean; motivo: string | null };
+  token_instagram?: { presente: boolean; dias_restantes: number | null };
+}
+
 function isBlank(v: unknown): boolean {
   return typeof v !== 'string' || v.trim() === '';
 }
@@ -43,7 +51,7 @@ export async function checkSetupHealth(projectId: string | null): Promise<Health
     const { data: settings } = await supabase
       .from('settings')
       .select('key, value, project_id')
-      .in('key', ['payment_instructions']);
+      .in('key', ['payment_instructions', 'social_feed_health']);
 
     const get = (key: string) =>
       (settings ?? []).find((s) => s.key === key && (s.project_id === projectId || s.project_id === null))
@@ -77,6 +85,57 @@ export async function checkSetupHealth(projectId: string | null): Promise<Health
         href: '/admin/configuracion',
         cta: 'Completar',
       });
+    }
+
+    // ---- ¿La portada muestra lo último, o quedó congelada? --------------
+    // Esto NO es un consejo sobre cómo usar las redes: es un estado roto y
+    // silencioso. Los dos feeds caen a publicaciones fijas cuando la red no
+    // responde, así que la sección se ve llena aunque lleve meses detenida.
+    // Lo escribe la revisión diaria (private.ping_social_check → /api/internal
+    // /social-check); sin esa fila todavía, no se dice nada.
+    const salud = get('social_feed_health') as SocialFeedHealth | undefined;
+    if (salud) {
+      if (salud.instagram && !salud.instagram.vivo) {
+        const sinToken = salud.token_instagram?.presente === false;
+        issues.push({
+          level: 'warning',
+          title: sinToken
+            ? 'Instagram no está conectado'
+            : 'Instagram dejó de traer publicaciones',
+          detail:
+            (salud.instagram.motivo ?? 'El feed no respondió.') +
+            ' La portada sigue mostrando los tres reels fijos de siempre, así que ' +
+            'desde afuera parece al día.',
+          href: '/admin/configuracion',
+          cta: sinToken ? 'Cómo conectarlo' : 'Revisar',
+        });
+      }
+
+      // Meta solo renueva el token con el token vivo: si vence, hay que rehacer
+      // el trámite entero. Se avisa con margen.
+      const dias = salud.token_instagram?.dias_restantes;
+      if (salud.token_instagram?.presente && typeof dias === 'number' && dias <= 7) {
+        issues.push({
+          level: dias <= 2 ? 'critical' : 'warning',
+          title: `El token de Instagram vence en ${dias <= 0 ? 'menos de un día' : `${dias} día${dias === 1 ? '' : 's'}`}`,
+          detail:
+            'Se renueva solo todos los días, así que esto solo aparece si la renovación ' +
+            'viene fallando. Si vence hay que rehacer el trámite en Meta desde cero.',
+          href: '/admin/configuracion',
+          cta: 'Revisar',
+        });
+      }
+
+      if (salud.tiktok && !salud.tiktok.vivo) {
+        issues.push({
+          level: 'warning',
+          title: 'TikTok dejó de traer videos',
+          detail:
+            (salud.tiktok.motivo ?? 'El feed no respondió.') +
+            ' La portada muestra los seis videos fijos, así que la sección se ve bien ' +
+            'pero no tiene lo nuevo.',
+        });
+      }
     }
 
     return issues;
