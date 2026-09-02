@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { formatDateTime, formatMoney, waLink } from '@/lib/format';
+import { formatDate, formatDateTime, formatMoney, waLink } from '@/lib/format';
 import type { LotStatus, ReservationStatus } from '@/lib/db-types';
 import { getAdminContext } from '@/features/admin/lib/get-admin-context';
 import { checkSetupHealth } from '@/features/admin/lib/setup-health';
@@ -14,6 +14,8 @@ import {
 } from '@/features/admin/lib/lapaz';
 import { DEFAULT_WA_TEMPLATES, fillTemplate } from '@/features/admin/lib/whatsapp';
 import { EmptyState } from '@/features/admin/ui/bits';
+import { RangoFechas } from '@/features/admin/ui/RangoFechas';
+import { FILTRO_DE_TIPO, type TipoVenta } from '@/features/admin/ventas/tipo-venta';
 import { IconWhatsapp } from '@/features/admin/ui/icons';
 
 export const metadata: Metadata = { title: 'Dashboard' };
@@ -42,7 +44,19 @@ interface ExpiringRow {
   lot: { number: string; manzana: { code: string } | null } | null;
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ desde?: string; hasta?: string }>;
+}) {
+  // El período lo elige la contadora y viaja en la URL, no está clavado en el
+  // código: «cuántas ventas al contado tuve HOY» tiene que poder contestarse
+  // sin pedirle un cambio a nadie.
+  const sp = await searchParams;
+  const ISO = /^\d{4}-\d{2}-\d{2}$/;
+  const desde = sp.desde && ISO.test(sp.desde) ? sp.desde : null;
+  const hasta = sp.hasta && ISO.test(sp.hasta) ? sp.hasta : null;
+
   const ctx = await getAdminContext();
   if (!ctx.ok) {
     if (ctx.reason === 'auth') redirect('/admin/login');
@@ -82,6 +96,7 @@ export default async function DashboardPage() {
     expiringRes,
     waSettingRes,
     ventasRes,
+    tiposRes,
   ] = await Promise.all([
     supabase.from('v_conteo_lotes').select('status, n').eq('project_id', projectId),
     supabase.from('v_conteo_reservas').select('status, n').eq('project_id', projectId),
@@ -131,7 +146,16 @@ export default async function DashboardPage() {
     // porque PostgREST corta toda respuesta en 1.000 filas: traer las ventas
     // para sumarlas en el navegador funcionaría hoy —hay 22— y empezaría a
     // mentir en silencio apenas una urbanización pase el millar.
-    supabase.rpc('rep_tablero_ventas', { p_project_id: projectId }),
+    supabase.rpc('rep_tablero_ventas', {
+      p_project_id: projectId,
+      p_desde: desde,
+      p_hasta: hasta,
+    }),
+    supabase.rpc('rep_ventas_por_tipo', {
+      p_project_id: projectId,
+      p_desde: desde,
+      p_hasta: hasta,
+    }),
   ]);
 
   const ingresosBs = (incomeRes.data ?? []).reduce(
@@ -165,8 +189,28 @@ export default async function DashboardPage() {
   // Cada casilla se lleva el alcance puesto (`u`): Ventas y Planes arrancan
   // consolidados cuando hay varias urbanizaciones, así que sin esto el número
   // del tablero —de UNA urbanización— abriría el total de la empresa.
+  const rangoQS = [desde ? `desde=${desde}` : '', hasta ? `hasta=${hasta}` : '']
+    .filter(Boolean)
+    .join('&');
   const aVentas = (filtro: string) =>
-    `/admin/ventas?u=${projectId}&filtro=${filtro}`;
+    `/admin/ventas?u=${projectId}&filtro=${filtro}${rangoQS ? `&${rangoQS}` : ''}`;
+
+  // Desglose por tipo. Cada grupo abre su propia lista, con el mismo período.
+  const tipos = ((tiposRes.data ?? []) as {
+    tipo: TipoVenta;
+    ventas: number;
+    valor: number;
+    saldo: number;
+  }[]).map((t) => ({
+    ...t,
+    href: aVentas(FILTRO_DE_TIPO[t.tipo] ?? 'ventas'),
+  }));
+  const TONO_TIPO: Record<string, string> = {
+    Contado: 'text-green-700',
+    'Crédito': 'text-sky-700',
+    Traspaso: 'text-violet-700',
+    'Sin plan': 'text-amber-700',
+  };
 
   const VENTA_CARDS: { label: string; value: string; hint: string; href: string; accent?: string }[] =
     [
@@ -352,9 +396,19 @@ export default async function DashboardPage() {
 
       {/* Ventas — lo que se vendió, lo que entró y lo que falta cobrar. */}
       <section>
-        <h2 className="mb-2 text-xs font-semibold tracking-wide text-stone-500 uppercase">
-          Ventas
-        </h2>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+            Ventas{' '}
+            <span className="ml-1 normal-case text-stone-400">
+              {desde || hasta
+                ? `· ${desde ? formatDate(desde) : 'el inicio'} a ${hasta ? formatDate(hasta) : 'hoy'}`
+                : '· todo el historial'}
+            </span>
+          </h2>
+        </div>
+        <div className="mb-3">
+          <RangoFechas desde={desde} hasta={hasta} />
+        </div>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {VENTA_CARDS.map((c) => (
             <Link
@@ -374,8 +428,40 @@ export default async function DashboardPage() {
           ))}
         </div>
 
+        {/* Por tipo de venta, como los pidió la contadora. Los cuatro grupos
+            suman exactamente el total de arriba: cada venta cae en uno solo. */}
+        <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {tipos.length === 0 ? (
+            <p className="col-span-full rounded-xl border border-stone-200 bg-white p-4 text-center text-sm text-stone-400">
+              Ninguna venta en este período.
+            </p>
+          ) : (
+            tipos.map((t) => (
+              <Link
+                key={t.tipo}
+                href={t.href}
+                className="group rounded-xl border border-stone-200 bg-white p-4 transition hover:border-brand-light hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
+              >
+                <p className={`text-xl font-bold ${TONO_TIPO[t.tipo] ?? 'text-stone-900'}`}>
+                  {t.ventas}
+                </p>
+                <p className="flex items-center justify-between gap-2 text-xs font-medium text-stone-600">
+                  {t.tipo}
+                  <span aria-hidden="true" className="text-stone-300 group-hover:text-brand-light">
+                    ›
+                  </span>
+                </p>
+                <p className="mt-0.5 text-[11px] text-stone-400">
+                  {formatMoney(Number(t.valor), 'BOB')}
+                  {Number(t.saldo) > 0 ? ` · debe ${formatMoney(Number(t.saldo), 'BOB')}` : ''}
+                </p>
+              </Link>
+            ))
+          )}
+        </div>
+
         {/* Las cuotas vencidas van aparte: no es una cifra de la venta, es una
-            cola de trabajo — a quién hay que llamar hoy. */}
+            cola de trabajo — a quién hay que llamar hoy, sin importar el período. */}
         <Link
           href={`/admin/planes?u=${projectId}&filtro=atraso`}
           className={`group mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border p-4 transition hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light ${

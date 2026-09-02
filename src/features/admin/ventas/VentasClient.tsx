@@ -25,6 +25,7 @@ import type { PaymentStatus, RejectionReason } from '@/lib/db-types';
 import { PAYMENT_STATUS_LABEL, REJECTION_REASON_LABEL } from '@/features/admin/lib/labels';
 import { laPazDateOf } from '@/features/admin/lib/lapaz';
 import { Badge, EmptyState, Kpi, Spinner, btnDanger, btnPrimary, btnSecondary, inputClass } from '@/features/admin/ui/bits';
+import { tipoDeVenta } from './tipo-venta';
 import { IconSearch, IconWhatsapp } from '@/features/admin/ui/icons';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
 import { num as fnum, type Cell as XCell } from '@/features/admin/export';
@@ -208,6 +209,9 @@ type Filtro =
   | 'ventas'
   | 'todas'
   | 'saldo'
+  | 'contado'
+  | 'credito'
+  | 'sin_plan'
   | 'migradas'
   | 'plan'
   | 'sin_inicial'
@@ -220,6 +224,11 @@ type Filtro =
 const CHIPS: { id: Exclude<Filtro, 'cobradas'>; label: string }[] = [
   { id: 'ventas', label: 'Ventas' },
   { id: 'todas', label: 'Todas' },
+  // Por tipo de venta, como los definió la contadora. La regla vive en
+  // tipo-venta.ts y está espejada en el CASE de rep_ventas_por_tipo.
+  { id: 'contado', label: 'Contado' },
+  { id: 'credito', label: 'Crédito' },
+  { id: 'sin_plan', label: 'Sin plan' },
   { id: 'saldo', label: 'Con saldo' },
   { id: 'migradas', label: 'Migradas' },
   { id: 'plan', label: 'Con plan' },
@@ -236,6 +245,7 @@ const CHIPS: { id: Exclude<Filtro, 'cobradas'>; label: string }[] = [
 const FILTROS_VALIDOS = new Set<string>([
   'ventas', 'todas', 'saldo', 'migradas', 'plan', 'sin_inicial', 'cobradas',
   'app', 'oficina', 'directa', 'traspasos',
+  'contado', 'credito', 'sin_plan',
 ]);
 
 export default function VentasClient({
@@ -244,6 +254,8 @@ export default function VentasClient({
   open,
   scopeInicial = null,
   filtroInicial = null,
+  desde = null,
+  hasta = null,
 }: {
   /** La urbanización activa en la barra: valor inicial del filtro. */
   projectId: string;
@@ -257,6 +269,9 @@ export default function VentasClient({
    */
   scopeInicial?: string | null;
   filtroInicial?: string | null;
+  /** Recorte de fechas por fecha_venta, tal como lo eligió el tablero. */
+  desde?: string | null;
+  hasta?: string | null;
 }) {
   const supabase = useMemo(() => createClient(), []);
 
@@ -470,6 +485,14 @@ export default function VentasClient({
       if (filtro === 'oficina' && r.origen !== 'oficina_reserva') return false;
       if (filtro === 'directa' && r.origen !== 'oficina_directa') return false;
       if (filtro === 'traspasos' && !r.traspaso) return false;
+      // Los tres tipos nuevos salen de la MISMA regla que usa el tablero.
+      if (filtro === 'contado' && tipoDeVenta(r) !== 'Contado') return false;
+      if (filtro === 'credito' && tipoDeVenta(r) !== 'Crédito') return false;
+      if (filtro === 'sin_plan' && tipoDeVenta(r) !== 'Sin plan') return false;
+      // El período llega del tablero: sin esto la casilla diría «1 venta hoy»
+      // y la lista mostraría las 22 de siempre.
+      if (desde && r.fecha_venta < desde) return false;
+      if (hasta && r.fecha_venta > hasta) return false;
       if (!q) return true;
       const lote = `${r.manzana ?? ''}-${r.lote ?? ''}`.toLowerCase();
       return (
@@ -480,7 +503,7 @@ export default function VentasClient({
         lote.replace('-', ' ').includes(q)
       );
     });
-  }, [rows, query, filtro]);
+  }, [rows, query, filtro, desde, hasta]);
 
   /** Un KPI abre la lista YA filtrada: la cifra y la lista deben coincidir. */
   function verFiltrado(f: Filtro) {
