@@ -55,16 +55,16 @@ const SOCIAL = {
   instagram: 'https://www.instagram.com/terrenalv_srl/',
 };
 
-// Featured videos, each verified via TikTok's public oEmbed as published by
-// @terrenalv.s.r.l. Chosen for the buyer's journey: who Terrenalv is, the
-// Prados del Sur lots themselves, and the "is this a scam?" doubt answered.
+// Curated videos, each verified via TikTok's public oEmbed as published by
+// @terrenalv.s.r.l. Deliberately FIXED — they walk the buyer's journey (who
+// Terrenalv is, the lots, the "is this a scam?" doubt) — and deliberately only
+// three: everything NEW comes in through the creator-profile embed below,
+// TikTok's own equivalent of the Facebook page plugin, which always shows the
+// account's latest videos without us redeploying.
 const FEATURED_TIKTOKS: { id: string; caption: string }[] = [
   { id: '7590183493653515576', caption: 'Quiénes somos: el sueño detrás de Terrenalv' },
   { id: '7667981112022502676', caption: 'Nuevos lotes habilitados en Prados del Sur' },
-  { id: '7668375936672320789', caption: 'Estos precios no vuelven' },
-  { id: '7668557245537438997', caption: 'Tu miniquinta, para disfrutar o invertir' },
   { id: '7668793237041057045', caption: '¿Dudas? Visítanos en oficina antes de invertir' },
-  { id: '7670249275229605141', caption: '¿Te imaginas pagar por algo que sí es tuyo?' },
 ];
 
 // Shown ONLY while the live Instagram feed is unavailable — before the token is
@@ -412,8 +412,8 @@ export default async function Home() {
             </a>
           </div>
 
-          {/* Featured videos — fixed, verified posts so the section has real
-              content immediately, before the Facebook plugin hydrates. */}
+          {/* Curated trio — fixed, verified posts so the section has real
+              content immediately and the buyer's journey stays told in order. */}
           <div className="mt-5 grid gap-6 sm:grid-cols-3">
             {FEATURED_TIKTOKS.map((v) => (
               <figure key={v.id} className="card card-lift rounded-3xl bg-white p-3">
@@ -432,6 +432,29 @@ export default async function Home() {
                 </figcaption>
               </figure>
             ))}
+          </div>
+
+          {/* Lo último del perfil, SIEMPRE al día: el embed oficial de creador
+              de TikTok — el equivalente exacto del plugin de página de
+              Facebook de abajo. Cada video nuevo que publica el equipo aparece
+              acá solo, sin tocar el sitio. Verificado: el endpoint responde
+              con la grilla del perfil para @terrenalv.s.r.l. */}
+          <div className="mx-auto mt-8 max-w-2xl">
+            <div className="card rounded-3xl bg-white p-4">
+              <div className="overflow-hidden rounded-2xl bg-stone-900">
+                <iframe
+                  title="Últimos videos de Terrenalv en TikTok"
+                  src="https://www.tiktok.com/embed/@terrenalv.s.r.l"
+                  className="w-full border-0"
+                  style={{ height: 760 }}
+                  loading="lazy"
+                  allow="encrypted-media; picture-in-picture; fullscreen"
+                />
+              </div>
+              <p className="annot mt-2 px-1 text-stone-400">
+                Lo último publicado por @{SOCIAL.tiktokUser} — se actualiza solo.
+              </p>
+            </div>
           </div>
 
           {/* Instagram */}
