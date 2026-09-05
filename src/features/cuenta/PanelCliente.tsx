@@ -50,6 +50,10 @@ export default function PanelCliente() {
   const [busy, setBusy] = useState(false);
   const [verifEstado, setVerifEstado] = useState<'idle' | 'enviando' | 'enviado' | 'error'>('idle');
   const [verifMsg, setVerifMsg] = useState<string | null>(null);
+  // Compras a su correo que todavía no son suyas porque falta el carnet.
+  const [esperando, setEsperando] = useState(0);
+  const [faltaCarnet, setFaltaCarnet] = useState(false);
+  const [ciEnganche, setCiEnganche] = useState('');
 
   // El alta no pasa por el correo, así que un error de tipeo deja una cuenta
   // viva sobre una dirección que no existe — y de esa dirección dependen el
@@ -74,6 +78,23 @@ export default function PanelCliente() {
       router.push('/cuenta');
       return;
     }
+    // Sus compras se enganchan solas: las que están a su mismo correo Y a su
+    // mismo carnet. Corre en cada visita, no sólo al crear la cuenta, porque
+    // una compra puede cargarse en la oficina después de que se registró.
+    const { data: enganche } = await supabase.rpc('vincular_mis_compras');
+    const e = enganche as
+      | { vinculadas?: number; esperando?: number; falta_carnet?: boolean }
+      | null;
+    setEsperando(Number(e?.esperando ?? 0));
+    setFaltaCarnet(Boolean(e?.falta_carnet));
+    if (Number(e?.vinculadas ?? 0) > 0) {
+      setAviso(
+        Number(e?.vinculadas) === 1
+          ? 'Encontramos una compra tuya y ya está acá.'
+          : `Encontramos ${e?.vinculadas} compras tuyas y ya están acá.`,
+      );
+    }
+
     const [f, c] = await Promise.all([
       supabase.from('customers').select('*').eq('id', sesion.user.id).maybeSingle(),
       // RLS ya recorta a lo suyo: no hace falta filtrar por cliente acá.
@@ -228,6 +249,65 @@ export default function PanelCliente() {
           </ul>
         )}
       </section>
+
+      {/* Tenemos compras a su correo pero su cuenta no tiene carnet cargado.
+          Con el carnet entran solas — no hace falta buscar ningún código. */}
+      {faltaCarnet && esperando > 0 ? (
+        <section className="rounded-xl border border-brand/30 bg-green-50 p-4">
+          <h2 className="text-sm font-bold text-stone-900">
+            {esperando === 1
+              ? 'Tenemos una compra a tu nombre'
+              : `Tenemos ${esperando} compras a tu nombre`}
+          </h2>
+          <p className="mt-1 text-xs text-stone-600">
+            {esperando === 1 ? 'Está' : 'Están'} a este correo. Escribí tu carnet y{' '}
+            {esperando === 1 ? 'aparece' : 'aparecen'} acá. Pedimos el carnet para que nadie más
+            pueda quedarse con tu compra.
+          </p>
+          <form
+            onSubmit={async (ev) => {
+              ev.preventDefault();
+              setError(null);
+              setAviso(null);
+              setBusy(true);
+              const { data, error: err } = await supabase.rpc('vincular_mis_compras', {
+                p_ci: ciEnganche.trim(),
+              });
+              setBusy(false);
+              const r = data as
+                | { ok: boolean; error?: string; vinculadas?: number }
+                | null;
+              if (err || !r?.ok) {
+                setError(
+                  r?.error === 'DEMASIADOS_INTENTOS'
+                    ? 'Probaste varios carnets seguidos. Esperá un rato o escribinos.'
+                    : r?.error === 'CARNET_INVALIDO'
+                      ? 'Ese carnet no parece válido. Revisá el número.'
+                      : 'No pudimos vincular la compra. Intentá de nuevo.',
+                );
+                return;
+              }
+              if (Number(r.vinculadas ?? 0) === 0) {
+                setError('Ese carnet no coincide con la compra que tenemos a este correo.');
+                return;
+              }
+              setCiEnganche('');
+              await cargar();
+            }}
+            className="mt-2 flex flex-wrap gap-2"
+          >
+            <input
+              value={ciEnganche}
+              onChange={(ev) => setCiEnganche(ev.target.value)}
+              placeholder="Tu carnet de identidad"
+              className={`${inputClass} w-auto flex-1`}
+            />
+            <button type="submit" disabled={busy || !ciEnganche.trim()} className={btnPrimary}>
+              {busy ? 'Buscando…' : 'Ver mis compras'}
+            </button>
+          </form>
+        </section>
+      ) : null}
 
       <section className="rounded-xl border border-stone-200 bg-stone-50 p-4">
         <h2 className="text-xs font-bold tracking-wide text-stone-500 uppercase">

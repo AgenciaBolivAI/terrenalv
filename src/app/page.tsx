@@ -214,22 +214,34 @@ export default async function Home() {
           <Link href="/" aria-label="Inicio">
             <Logo variant="inverse" className="h-7 w-auto" />
           </Link>
-          <nav className="flex items-center gap-2">
+          <nav className="flex items-center gap-1 sm:gap-2">
             <Link
               href="/prados-del-sur/mapa"
-              className="rounded-full bg-white/10 px-4 py-2 text-sm font-semibold transition hover:bg-white/20"
+              className="hidden rounded-full bg-white/10 px-4 py-2 text-sm font-semibold transition hover:bg-white/20 sm:block"
             >
               Ver mapa
             </Link>
             <Link
               href="/mercado"
-              className="rounded-full px-4 py-2 text-sm font-semibold transition hover:bg-white/10"
+              className="rounded-full px-3 py-2 text-sm font-semibold transition hover:bg-white/10 sm:px-4"
             >
               Mercado
             </Link>
             <MiReservaLink className="hidden rounded-full px-4 py-2 text-sm font-semibold transition hover:bg-white/10 sm:block">
               Mi reserva
             </MiReservaLink>
+            {/* La puerta del comprador. Faltaba: quien ya nos compró no tenía
+                por dónde entrar a ver sus lotes, su plan y sus pagos — y quien
+                todavía no tiene cuenta, por dónde crearla. En el móvil
+                «Ver mapa» se esconde porque la barra de abajo ya lo ofrece, y
+                así esto entra sin apretar el resto. */}
+            <Link
+              href="/cuenta"
+              className="rounded-full bg-white px-3 py-2 text-sm font-bold text-brand transition hover:bg-white/90 sm:px-4"
+            >
+              <span className="sm:hidden">Cuenta</span>
+              <span className="hidden sm:inline">Mi cuenta</span>
+            </Link>
           </nav>
         </div>
       </header>

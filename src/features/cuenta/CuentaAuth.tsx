@@ -183,7 +183,11 @@ export default function CuentaAuth({ modo }: { modo: 'entrar' | 'crear' }) {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-stone-600">Carnet</label>
+              {/* No es un dato más: con el correo y el carnet, las compras que
+                  ya tenemos a su nombre entran solas a la cuenta. */}
+              <label className="mb-1 block text-xs font-semibold text-stone-600">
+                Carnet <span className="font-normal text-stone-400">— si ya nos compraste</span>
+              </label>
               <input value={ci} onChange={(e) => setCi(e.target.value)} className={inputClass} />
             </div>
           </div>
