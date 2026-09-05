@@ -6,12 +6,7 @@ import { formatDate, formatDateTime, formatMoney, waLink } from '@/lib/format';
 import type { LotStatus, ReservationStatus } from '@/lib/db-types';
 import { getAdminContext } from '@/features/admin/lib/get-admin-context';
 import { checkSetupHealth } from '@/features/admin/lib/setup-health';
-import {
-  laPazDayEndIso,
-  laPazDayStartIso,
-  laPazMonthEndIso,
-  laPazMonthStartIso,
-} from '@/features/admin/lib/lapaz';
+import { laPazDayEndIso, laPazDayStartIso } from '@/features/admin/lib/lapaz';
 import { DEFAULT_WA_TEMPLATES, fillTemplate } from '@/features/admin/lib/whatsapp';
 import { EmptyState } from '@/features/admin/ui/bits';
 import { RangoFechas } from '@/features/admin/ui/RangoFechas';
@@ -75,8 +70,6 @@ export default async function DashboardPage({
   // Config problems that silently cost sales — payment details above all.
   const health = ctx.profile.role === 'admin' ? await checkSetupHealth(projectId) : [];
 
-  const monthStart = laPazMonthStartIso();
-  const monthEnd = laPazMonthEndIso();
   const todayStart = laPazDayStartIso();
   const todayEnd = laPazDayEndIso();
   const d30 = new Date(Date.now() - 30 * 86_400_000).toISOString();
@@ -89,7 +82,6 @@ export default async function DashboardPage({
   const [
     lotCounts,
     resCounts,
-    incomeRes,
     funnelCreated,
     funnelProof,
     funnelConfirmed,
@@ -97,17 +89,10 @@ export default async function DashboardPage({
     waSettingRes,
     ventasRes,
     tiposRes,
+    dineroRes,
   ] = await Promise.all([
     supabase.from('v_conteo_lotes').select('status, n').eq('project_id', projectId),
     supabase.from('v_conteo_reservas').select('status, n').eq('project_id', projectId),
-    supabase
-      .from('payments')
-      .select('amount_bob')
-      .eq('project_id', projectId)
-      .eq('status', 'aprobado')
-      .gte('verified_at', monthStart)
-      .lt('verified_at', monthEnd)
-      .limit(2000),
     supabase
       .from('reservations')
       .select('id', { count: 'exact', head: true })
@@ -156,12 +141,13 @@ export default async function DashboardPage({
       p_desde: desde,
       p_hasta: hasta,
     }),
+    // Las dos columnas de plata, ya sumadas por la base. Un saldo no tiene
+    // período: tiene fecha de corte, y es la del selector de arriba.
+    supabase.rpc('rep_tablero_cobrar_pagar', {
+      p_project_id: projectId,
+      p_hasta: hasta,
+    }),
   ]);
-
-  const ingresosBs = (incomeRes.data ?? []).reduce(
-    (sum, r) => sum + Number(r.amount_bob ?? 0),
-    0,
-  );
 
   // ---- Ventas -----------------------------------------------------------
   // Solo compras iniciadas, igual que la pantalla de Ventas: una confirmada a
@@ -242,6 +228,76 @@ export default async function DashboardPage({
       },
     ];
 
+  // ---- Las dos columnas de plata ----------------------------------------
+  // «Por cobrar» y «Por pagar» son SALDOS: no tienen período, tienen fecha de
+  // corte — la del selector de arriba. Por eso el mismo control gobierna toda
+  // la pantalla sin que ninguna cifra mienta.
+  const dinero = (dineroRes.data ?? []) as {
+    columna: 'cobrar' | 'pagar';
+    grupo: string;
+    monto: number;
+    documentos: number;
+    filtro: string;
+  }[];
+
+  const lotesDisponibles = conteo(
+    lotCounts.data as { status: string; n: number }[] | null,
+    'disponible',
+  );
+
+  const aCobrar = dinero
+    .filter((d) => d.columna === 'cobrar')
+    .map((d) => ({
+      label: d.grupo,
+      value: formatMoney(Number(d.monto), 'BOB'),
+      hint:
+        d.filtro === 'saldo'
+          ? `${d.documentos} venta${d.documentos === 1 ? '' : 's'} con saldo`
+          : d.filtro === 'atraso'
+            ? `${d.documentos} cuota${d.documentos === 1 ? '' : 's'} vencida${d.documentos === 1 ? '' : 's'}`
+            : `${d.documentos} cuenta${d.documentos === 1 ? '' : 's'}`,
+      href:
+        d.filtro === 'saldo'
+          ? aVentas('saldo')
+          : d.filtro === 'atraso'
+            ? `/admin/planes?u=${projectId}&filtro=atraso`
+            : '/admin/contabilidad?tab=bancos',
+      accent:
+        d.filtro === 'atraso' && Number(d.monto) > 0
+          ? 'text-red-600'
+          : d.filtro === 'bancos'
+            ? Number(d.monto) < 0
+              ? 'text-red-600'
+              : 'text-brand'
+            : undefined,
+    }))
+    // Los lotes que todavía no se vendieron son la cartera que viene.
+    .concat([
+      {
+        label: 'Lotes disponibles',
+        value: String(lotesDisponibles),
+        hint: 'sin vender',
+        href: '/admin/lotes?estado=disponible',
+        accent: 'text-green-700',
+      },
+    ]);
+
+  const aPagar = dinero
+    .filter((d) => d.columna === 'pagar')
+    .sort((a, b) => Number(b.monto) - Number(a.monto))
+    .map((d) => ({
+      label: d.grupo,
+      value: formatMoney(Number(d.monto), 'BOB'),
+      hint: `${d.documentos} documento${d.documentos === 1 ? '' : 's'}`,
+      href:
+        d.filtro === 'libro'
+          ? '/admin/contabilidad?tab=libro'
+          : '/admin/contabilidad?tab=pagar',
+    }));
+  const totalPagar = dinero
+    .filter((d) => d.columna === 'pagar')
+    .reduce((t, d) => t + Number(d.monto), 0);
+
   const waRows = waSettingRes.data ?? [];
   const waValue =
     (waRows.find((r) => r.project_id === projectId)?.value as { contacto?: string } | undefined) ??
@@ -281,10 +337,21 @@ export default async function DashboardPage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <h1 className="text-lg font-bold text-stone-900">
-        Dashboard <span className="font-medium text-stone-400">·</span>{' '}
-        <span className="text-brand">{ctx.project.name}</span>
-      </h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-lg font-bold text-stone-900">
+          Dashboard <span className="font-medium text-stone-400">·</span>{' '}
+          <span className="text-brand">{ctx.project.name}</span>
+          <span className="ml-2 text-xs font-medium text-stone-400">
+            {desde || hasta
+              ? `${desde ? formatDate(desde) : 'el inicio'} a ${hasta ? formatDate(hasta) : 'hoy'}`
+              : 'todo el historial'}
+          </span>
+        </h1>
+      </div>
+
+      {/* UN solo selector para toda la pantalla. Lo que es un saldo se muestra
+          a la fecha de corte; lo que es movimiento, dentro del rango. */}
+      <RangoFechas desde={desde} hasta={hasta} />
 
       {health.length > 0 ? (
         <section className="space-y-2">
@@ -331,6 +398,82 @@ export default async function DashboardPage({
         </section>
       ) : null}
 
+      {/* LA PLATA: qué nos deben y qué debemos, a la fecha de corte de arriba. */}
+      <section className="grid gap-3 lg:grid-cols-2">
+        <div className="rounded-xl border border-stone-200 bg-white p-4">
+          <h2 className="mb-3 text-xs font-semibold tracking-wide text-stone-500 uppercase">
+            Por cobrar
+          </h2>
+          <div className="grid grid-cols-2 gap-3">
+            {aCobrar.map((c) => (
+              <Link
+                key={c.label}
+                href={c.href}
+                className="group rounded-lg bg-stone-50 p-3 transition hover:bg-stone-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
+              >
+                <p className={`text-lg font-bold ${c.accent ?? 'text-stone-900'}`}>{c.value}</p>
+                <p className="flex items-center justify-between gap-2 text-xs font-medium text-stone-600">
+                  {c.label}
+                  <span aria-hidden="true" className="text-stone-300 group-hover:text-stone-500">
+                    ›
+                  </span>
+                </p>
+                <p className="mt-0.5 text-[11px] text-stone-400">{c.hint}</p>
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-stone-200 bg-white p-4">
+          <div className="mb-3 flex items-baseline justify-between gap-2">
+            <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
+              Por pagar
+            </h2>
+            {totalPagar > 0 ? (
+              <span className="text-sm font-bold text-stone-900">
+                {formatMoney(totalPagar, 'BOB')}
+              </span>
+            ) : null}
+          </div>
+          {aPagar.length === 0 ? (
+            <Link
+              href="/admin/contabilidad?tab=pagar"
+              className="group block rounded-lg bg-stone-50 p-3 transition hover:bg-stone-100"
+            >
+              <p className="text-lg font-bold text-stone-900">{formatMoney(0, 'BOB')}</p>
+              <p className="flex items-center justify-between gap-2 text-xs font-medium text-stone-600">
+                No se le debe nada a nadie
+                <span aria-hidden="true" className="text-stone-300 group-hover:text-stone-500">
+                  ›
+                </span>
+              </p>
+              <p className="mt-0.5 text-[11px] text-stone-400">
+                Acá van proveedores, servicios, influencers, tercerizados y utilidades
+              </p>
+            </Link>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {aPagar.map((c) => (
+                <Link
+                  key={c.label}
+                  href={c.href}
+                  className="group rounded-lg bg-stone-50 p-3 transition hover:bg-stone-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
+                >
+                  <p className="text-lg font-bold text-stone-900">{c.value}</p>
+                  <p className="flex items-center justify-between gap-2 text-xs font-medium text-stone-600">
+                    {c.label}
+                    <span aria-hidden="true" className="text-stone-300 group-hover:text-stone-500">
+                      ›
+                    </span>
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-stone-400">{c.hint}</p>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
       {/* Reservations KPI cards */}
       <section>
         <h2 className="mb-2 text-xs font-semibold tracking-wide text-stone-500 uppercase">
@@ -356,8 +499,8 @@ export default async function DashboardPage({
       </section>
 
       {/* Lots + income */}
-      <section className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-        <div className="rounded-xl border border-stone-200 bg-white p-4 lg:col-span-2">
+      <section className="grid grid-cols-1 gap-3">
+        <div className="rounded-xl border border-stone-200 bg-white p-4">
           <h2 className="mb-3 text-xs font-semibold tracking-wide text-stone-500 uppercase">
             Inventario de lotes
           </h2>
@@ -379,36 +522,13 @@ export default async function DashboardPage({
             ))}
           </div>
         </div>
-        <Link
-          href="/admin/reservas?tab=confirmadas"
-          className="group rounded-xl border border-stone-200 bg-white p-4 transition hover:border-brand-light hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-light"
-        >
-          <h2 className="flex items-center justify-between gap-2 text-xs font-semibold tracking-wide text-stone-500 uppercase">
-            Ingresos verificados (este mes)
-            <span aria-hidden="true" className="text-stone-300 group-hover:text-brand-light">
-              ›
-            </span>
-          </h2>
-          <p className="mt-2 text-2xl font-bold text-brand">{formatMoney(ingresosBs, 'BOB')}</p>
-          <p className="mt-1 text-xs text-stone-400">Pagos aprobados del mes (hora de Bolivia)</p>
-        </Link>
       </section>
 
       {/* Ventas — lo que se vendió, lo que entró y lo que falta cobrar. */}
       <section>
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
-            Ventas{' '}
-            <span className="ml-1 normal-case text-stone-400">
-              {desde || hasta
-                ? `· ${desde ? formatDate(desde) : 'el inicio'} a ${hasta ? formatDate(hasta) : 'hoy'}`
-                : '· todo el historial'}
-            </span>
-          </h2>
-        </div>
-        <div className="mb-3">
-          <RangoFechas desde={desde} hasta={hasta} />
-        </div>
+        <h2 className="mb-2 text-xs font-semibold tracking-wide text-stone-500 uppercase">
+          Ventas del período
+        </h2>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {VENTA_CARDS.map((c) => (
             <Link
