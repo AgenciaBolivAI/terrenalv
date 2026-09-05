@@ -88,6 +88,12 @@ const CONTACT_KINDS: ContactKind[] = ['proveedor', 'cliente', 'empleado', 'otro'
  * exactamente la misma lista: si uno filtrara las inactivas y el otro no, el
  * mismo egreso podría cargarse contra una cuenta cerrada.
  */
+/**
+ * La hoja comodín del plan. Un cobro aprobado sin indicar banco cae acá, así que
+ * es plata real de la empresa que todavía no está en ninguna cuenta cargada.
+ */
+const CUENTA_SIN_ASIGNAR = '1111.00';
+
 export function useTesoreria(opts?: { contactKinds?: ContactKind[] }) {
   const supabase = useMemo(() => createClient(), []);
   const kinds = opts?.contactKinds;
@@ -223,21 +229,28 @@ export default function Tesoreria({
   const { push } = useToast();
 
   const [rows, setRows] = useState<TreasuryAccount[] | null>(null);
+  const [sinAsignar, setSinAsignar] = useState(0);
   const [editing, setEditing] = useState<TreasuryAccount | 'nueva' | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('v_tesoreria_saldos')
-      .select('*')
-      .order('kind')
-      .order('name');
-    if (error) {
-      push(adminErrorCopy(error.message), 'error');
+    // Además de las cuentas cargadas, la plata que TODAVÍA no tiene cuenta: los
+    // cobros que se aprobaron sin decir a qué banco entraron caen en la cuenta
+    // comodín 1111.00. Si no se muestra, esta pantalla dice que la empresa está
+    // en rojo mientras el libro dice que tiene un cuarto de millón.
+    const [t, comodin] = await Promise.all([
+      supabase.from('v_tesoreria_saldos').select('*').order('kind').order('name'),
+      supabase.from('v_libro_mayor').select('saldo').eq('cuenta', CUENTA_SIN_ASIGNAR),
+    ]);
+    if (t.error) {
+      push(adminErrorCopy(t.error.message), 'error');
       setRows([]);
       return;
     }
-    setRows((data ?? []) as TreasuryAccount[]);
+    setRows((t.data ?? []) as TreasuryAccount[]);
+    setSinAsignar(
+      (comodin.data ?? []).reduce((acc, f) => acc + Number((f as { saldo: number }).saldo ?? 0), 0),
+    );
   }, [supabase, push]);
 
   useEffect(() => {
@@ -253,14 +266,10 @@ export default function Tesoreria({
     () => activas.filter((r) => r.kind !== 'banco').reduce((s, r) => s + Number(r.saldo), 0),
     [activas],
   );
-  const enRojo = useMemo(() => activas.filter((r) => Number(r.saldo) < 0), [activas]);
-  // Una cuenta cerrada que todavia tiene plata: el total de arriba no la suma,
-  // pero la fila si la muestra, asi que los dos numeros no coinciden. Es un
-  // estado roto de verdad — se cierra una cuenta despues de vaciarla.
-  const cerradasConPlata = useMemo(
-    () => (rows ?? []).filter((r) => !r.is_active && Number(r.saldo) !== 0),
-    [rows],
-  );
+  // El disponible es TODA la plata del libro: las cuentas cargadas más la que
+  // todavía no tiene cuenta. Sumar sólo las cargadas es lo que hacía que la
+  // pantalla dijera «−10.000» teniendo 258.275.
+  const disponible = enBancos + enCajas + sinAsignar;
 
   if (rows === null) return <Spinner label="Cargando cuentas…" />;
 
@@ -287,42 +296,20 @@ export default function Tesoreria({
         />
         <Kpi
           label="Disponible total"
-          value={formatMoney(enBancos + enCajas, currency)}
-          tone={enRojo.length ? 'bad' : 'good'}
+          value={formatMoney(disponible, currency)}
+          tone={disponible < 0 ? 'bad' : 'good'}
           hint={
-            enRojo.length
-              ? `${enRojo.length} cuenta(s) en negativo`
-              : 'Suma de todas las cuentas activas'
+            sinAsignar !== 0
+              ? `${formatMoney(sinAsignar, currency)} todavía sin cuenta`
+              : `${activas.length} cuenta(s)`
           }
-          onClick={() => {
-            const r = enRojo[0] ?? activas[0];
-            if (r) onVerLibro(r.account_code, r.opening_date ?? undefined);
-          }}
+          onClick={() =>
+            sinAsignar !== 0
+              ? onVerLibro(CUENTA_SIN_ASIGNAR)
+              : activas[0] && onVerLibro(activas[0].account_code, activas[0].opening_date ?? undefined)
+          }
         />
       </div>
-
-      {cerradasConPlata.length ? (
-        <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          <strong>
-            {cerradasConPlata.length === 1
-              ? 'Una cuenta inactiva todavía tiene saldo'
-              : `${cerradasConPlata.length} cuentas inactivas todavía tienen saldo`}
-          </strong>{' '}
-          ({cerradasConPlata.map((r) => r.name).join(', ')}). No entran en el disponible de arriba,
-          así que ese total y las filas de abajo no van a coincidir. Transferí el saldo a otra
-          cuenta antes de dejarlas inactivas.
-        </p>
-      ) : null}
-
-      {enRojo.length ? (
-        <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-          <strong>
-            {enRojo.length === 1 ? 'Una cuenta está' : `${enRojo.length} cuentas están`} en negativo
-          </strong>{' '}
-          ({enRojo.map((r) => r.name).join(', ')}). O falta registrar un depósito, o el saldo
-          inicial que se cargó no era el correcto.
-        </p>
-      ) : null}
 
       <section className="rounded-xl border border-stone-200 bg-white">
         <div className="flex flex-wrap items-center gap-3 border-b border-stone-200 px-4 py-3">
@@ -352,7 +339,21 @@ export default function Tesoreria({
                 { header: 'Saldo', align: 'right' },
               ]}
               rows={() =>
-                rows.map((r) => [
+                [
+                  ...(sinAsignar !== 0
+                    ? [[
+                        '—',
+                        'Sin asignar a una cuenta',
+                        '',
+                        '',
+                        CUENTA_SIN_ASIGNAR,
+                        fnum(0),
+                        fnum(0),
+                        fnum(0),
+                        fnum(sinAsignar),
+                      ] as XCell[]]
+                    : []),
+                  ...rows.map((r) => [
                   KIND_LABEL[r.kind],
                   r.name,
                   r.bank_name ?? '',
@@ -362,7 +363,8 @@ export default function Tesoreria({
                   fnum(Number(r.entradas)),
                   fnum(Number(r.salidas)),
                   fnum(Number(r.saldo)),
-                ]) as XCell[][]
+                  ]),
+                ] as XCell[][]
               }
             />
           </div>
@@ -407,6 +409,33 @@ export default function Tesoreria({
                 </tr>
               </thead>
               <tbody>
+                {/* La plata que todavía no tiene cuenta. Va como una fila más y
+                    no como un cartel: se ve de dónde sale la diferencia entre
+                    el disponible y la suma de las cuentas, y se abre en el
+                    libro como cualquier otra. Desaparece sola el día que cada
+                    cobro diga a qué banco entró. */}
+                {sinAsignar !== 0 ? (
+                  <tr
+                    className="cursor-pointer border-b border-stone-100 bg-amber-50/50 hover:bg-amber-50"
+                    onClick={() => onVerLibro(CUENTA_SIN_ASIGNAR)}
+                  >
+                    <td className="px-4 py-2">
+                      <span className="font-medium text-stone-900">Sin asignar a una cuenta</span>
+                      <Badge className="ml-2 bg-amber-100 text-amber-800">Cobros sin banco</Badge>
+                    </td>
+                    <td className="px-3 py-2 text-stone-400">—</td>
+                    <td className="px-3 py-2 font-mono text-xs text-stone-500">
+                      {CUENTA_SIN_ASIGNAR}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-stone-400">—</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-stone-400">—</td>
+                    <td className="px-3 py-2 text-right font-semibold tabular-nums text-stone-900">
+                      {formatMoney(sinAsignar, currency)}
+                    </td>
+                    <td className="px-3 py-2 text-stone-400">—</td>
+                    <td className="px-3 py-2" />
+                  </tr>
+                ) : null}
                 {rows.map((r) => (
                   <tr
                     key={r.id}

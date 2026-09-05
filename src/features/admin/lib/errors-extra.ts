@@ -75,6 +75,39 @@ const ADMIN_ERROR_COPY: Record<string, string> = {
   NO_CUADRA: 'El asiento no cuadra: el total del debe tiene que coincidir con el total del haber.',
   ORIGEN_INVALIDO: 'Ese tipo de movimiento no existe: no se puede llevar al libro fiscal.',
   YA_DECLARADO: 'Ese movimiento ya está declarado en el libro fiscal. Actualizá la lista.',
+  // Auditoría del módulo contable (05/09/2026).
+  MES_YA_DEPRECIADO:
+    'Ese mes ya tiene su depreciación asentada. Si querés rehacerla, anulá primero ese comprobante.',
+  CUENTA_DE_SISTEMA:
+    'Esa cuenta la usa el sistema para asentar solo: no se puede borrar ni renombrar a mano.',
+  ACCOUNT_NOT_FOUND: 'No se encontró esa cuenta en el plan.',
+  NADA_QUE_DEPRECIAR: 'Ningún activo deprecia en ese mes.',
+  MES_INVALIDO: 'Ese mes no existe.',
+  PERIODO_CERRADO:
+    'Esa gestión ya está cerrada: no se puede tocar nada con esa fecha. Reabrila desde Gestión si de verdad hay que corregirla.',
+  PERIODO_NO_ENCONTRADO: 'No se encontró esa gestión.',
+  PERIODO_NO_CERRADO: 'Esa gestión no está cerrada.',
+  PERIODO_YA_CERRADO: 'Esa gestión ya estaba cerrada.',
+  SIN_MOVIMIENTOS: 'No hay movimientos para cerrar en esa gestión.',
+  FALTA_UFV: 'Faltan las UFV del período. Cargalas en Gestión antes de reexpresar.',
+  AJUSTE_CERO: 'La reexpresión da cero: no hay nada que asentar.',
+  MOVIMIENTO_NO_ENCONTRADO: 'No se encontró ese movimiento en el libro.',
+  CUENTA_TITULAR:
+    'Esa cuenta agrupa a otras: no se asienta en ella. Elegí una de sus cuentas hijas.',
+  VOUCHER_NOT_FOUND: 'No se encontró ese comprobante.',
+  VOUCHER_ALREADY_VOID: 'Ese comprobante ya estaba anulado.',
+  VOUCHER_AUTOMATIC:
+    'Ese comprobante lo generó el sistema: se anula desde el documento que lo originó, no desde acá.',
+  NO_ES_VENTA: 'Esa reserva no es una venta confirmada.',
+  TREASURY_NOT_FOUND: 'No se encontró esa caja o banco.',
+  MISMA_CUENTA: 'El origen y el destino de la transferencia son la misma cuenta.',
+  MONEDAS_DISTINTAS:
+    'Las dos cuentas llevan monedas distintas. Una transferencia entre monedas necesita tipo de cambio y todavía no está.',
+  INVALID_AMOUNT: 'El importe tiene que ser mayor a cero.',
+  CENTRO_COSTO_NO_ENCONTRADO: 'No se encontró ese centro de costos.',
+  CODIGO_REQUERIDO: 'Falta el código.',
+  NOMBRE_REQUERIDO: 'Falta el nombre.',
+  PROJECT_NOT_FOUND: 'No se encontró esa urbanización.',
   // Postgres cuando la función todavía no está creada en la base.
   'Could not find the function': 'Falta aplicar la migración admin_reserve_offline en la base de datos.',
   PGRST202: 'Falta aplicar la migración admin_reserve_offline en la base de datos.',
