@@ -142,17 +142,19 @@ export default function CuentasClient() {
 
   const tiles: { id: Filtro; label: string; valor: number; pista: string }[] = [
     { id: 'todos', label: 'Clientes', valor: clientes.length, pista: 'personas con movimientos' },
+    // Las pistas dicen la MODALIDAD, no el estado de la deuda: «deben y no
+    // tienen cuotas» era hablar de plata sin ponerle número.
     {
       id: 'contado',
       label: 'Al contado',
       valor: clientes.filter((c) => tiene(c, 'Contado')).length,
-      pista: 'pagaron todo',
+      pista: 'compra al contado',
     },
     {
       id: 'credito',
       label: 'A crédito',
       valor: clientes.filter((c) => tiene(c, 'Crédito')).length,
-      pista: 'pagan en cuotas',
+      pista: 'compra en cuotas',
     },
     {
       id: 'traspaso',
@@ -164,7 +166,7 @@ export default function CuentasClient() {
       id: 'sin_plan',
       label: 'Sin plan',
       valor: clientes.filter((c) => tiene(c, 'Sin plan')).length,
-      pista: 'deben y no tienen cuotas',
+      pista: 'sin cronograma de cuotas',
     },
     {
       id: 'con_direccion',

@@ -220,12 +220,18 @@ export function HistorialCliente({
           >
             <IconWhatsapp className="h-4 w-4" /> WhatsApp
           </a>
-          <Link
-            href={`/admin/clientes?ci=${encodeURIComponent(r.ci_norm)}`}
-            className={`${btnSecondary} ml-auto`}
-          >
-            Editar perfil
-          </Link>
+          {/* «Editar perfil» lleva a Clientes, que muestra TODA la plata. En
+              modo ficha no va: esconder los importes y dejar la puerta al lado
+              es no esconder nada. Lo único editable desde acá es la dirección,
+              que no es plata. */}
+          {sinPlata ? null : (
+            <Link
+              href={`/admin/clientes?ci=${encodeURIComponent(r.ci_norm)}`}
+              className={`${btnSecondary} ml-auto`}
+            >
+              Editar perfil
+            </Link>
+          )}
         </div>
 
         {Number(r.nombres_distintos) > 1 ? (
@@ -366,10 +372,19 @@ export function HistorialCliente({
               const abierta = abierto === m.reservation_id;
               return (
                 <li key={m.reservation_id}>
+                  {/* En modo ficha el movimiento NO se abre: lo que había
+                      adentro eran los pagos y los botones que llevan a la
+                      venta, la reserva, el contrato y el lote — todas
+                      pantallas con importes. Queda la línea, que ya dice lo
+                      único que corresponde: qué lote, cómo lo compró y
+                      cuándo. */}
                   <button
                     type="button"
+                    disabled={sinPlata}
                     onClick={() => setAbierto(abierta ? null : m.reservation_id)}
-                    className="w-full px-4 py-3 text-left hover:bg-stone-50"
+                    className={`w-full px-4 py-3 text-left ${
+                      sinPlata ? 'cursor-default' : 'hover:bg-stone-50'
+                    }`}
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge className={et.clase}>{et.texto}</Badge>
@@ -381,7 +396,9 @@ export function HistorialCliente({
                       <span className="ml-auto text-xs text-stone-500">
                         {dateLabel(m.fecha_cancelada ?? m.fecha_confirmada ?? m.created_at)}
                       </span>
-                      <span className="text-xs text-stone-300">{abierta ? '▲' : '▼'}</span>
+                      {sinPlata ? null : (
+                        <span className="text-xs text-stone-300">{abierta ? '▲' : '▼'}</span>
+                      )}
                     </div>
                     <p className="mt-1 text-xs text-stone-500">
                       {sinPlata ? (
@@ -435,7 +452,7 @@ export function HistorialCliente({
                     ) : null}
                   </button>
 
-                  {abierta ? (
+                  {abierta && !sinPlata ? (
                     <div className="border-t border-stone-100 bg-stone-50/70 px-4 py-3">
                       <div className="mb-2 flex flex-wrap gap-2">
                         {m.estado === 'confirmada' ? (
@@ -559,7 +576,7 @@ export function HistorialCliente({
           Están TODOS sus movimientos: lo que compró, lo que reservó y venció, lo que cedió y lo
           que recibió por traspaso.{' '}
           {sinPlata
-            ? 'De cada compra se dice cómo la pagó y cuándo; los importes se ven en Clientes.'
+            ? 'De cada compra se dice cómo la pagó y cuándo.'
             : 'En un lote recibido por traspaso, los pagos del dueño anterior salen marcados con su nombre — su recibo sigue siendo suyo.'}
         </p>
       </section>
