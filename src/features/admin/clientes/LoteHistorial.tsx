@@ -102,7 +102,7 @@ export default function LoteHistorial({ reservationId }: { reservationId: string
       <div className="mx-auto max-w-3xl">
         <EmptyState
           title="No encontré ese lote"
-          hint="Puede que la venta se haya anulado. Volvé a Clientes y abrí la ficha de nuevo."
+          hint="Puede que la venta se haya anulado. Volvé a Carteras y abrí la ficha de nuevo."
         />
       </div>
     );

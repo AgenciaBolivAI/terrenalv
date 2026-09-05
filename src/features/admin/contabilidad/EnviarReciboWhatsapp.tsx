@@ -35,7 +35,7 @@ export function EnviarReciboWhatsapp({
     return (
       <span
         className="rounded-lg border border-stone-200 px-3 py-1.5 text-sm text-stone-400"
-        title="Este comprador no tiene celular cargado. Agregalo desde Clientes y podrás mandarle el recibo."
+        title="Este comprador no tiene celular cargado. Agregalo desde Carteras y podrás mandarle el recibo."
       >
         Sin celular
       </span>

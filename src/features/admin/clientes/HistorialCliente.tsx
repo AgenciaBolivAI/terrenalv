@@ -220,7 +220,7 @@ export function HistorialCliente({
           >
             <IconWhatsapp className="h-4 w-4" /> WhatsApp
           </a>
-          {/* «Editar perfil» lleva a Clientes, que muestra TODA la plata. En
+          {/* «Editar perfil» lleva a Carteras, que muestra TODA la plata. En
               modo ficha no va: esconder los importes y dejar la puerta al lado
               es no esconder nada. Lo único editable desde acá es la dirección,
               que no es plata. */}

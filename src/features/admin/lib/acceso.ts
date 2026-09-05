@@ -18,7 +18,7 @@ export const SECCIONES: { clave: string; etiqueta: string; grupo: string }[] = [
   { clave: 'panel', etiqueta: 'Dashboard', grupo: 'Mostrador' },
   { clave: 'reservas', etiqueta: 'Reservas', grupo: 'Mostrador' },
   { clave: 'ventas', etiqueta: 'Ventas', grupo: 'Mostrador' },
-  { clave: 'clientes', etiqueta: 'Clientes', grupo: 'Mostrador' },
+  { clave: 'clientes', etiqueta: 'Carteras', grupo: 'Mostrador' },
   { clave: 'cuentas', etiqueta: 'Cuentas de clientes', grupo: 'Mostrador' },
   { clave: 'notificaciones', etiqueta: 'Notificaciones', grupo: 'Mostrador' },
   { clave: 'mi-cuenta', etiqueta: 'Mi cuenta', grupo: 'Mostrador' },

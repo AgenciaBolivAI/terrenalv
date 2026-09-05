@@ -33,7 +33,7 @@ export function FichaClienteDialog({
       {sinPlata ? null : (
         <div className="mt-4 flex justify-end border-t border-stone-100 pt-3">
           <Link href={`/admin/clientes?ci=${encodeURIComponent(ci)}`} className={btnPrimary}>
-            Abrir en Clientes
+            Abrir en Carteras
           </Link>
         </div>
       )}

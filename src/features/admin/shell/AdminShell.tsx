@@ -57,7 +57,7 @@ const GRUPOS: { titulo: string; items: NavItem[] }[] = [
       { href: '/admin', label: 'Dashboard', icon: IconHome },
       { href: '/admin/reservas', label: 'Reservas', icon: IconInbox },
       { href: '/admin/ventas', label: 'Ventas', icon: IconCheck },
-      { href: '/admin/clientes', label: 'Clientes', icon: IconUsers },
+      { href: '/admin/clientes', label: 'Carteras', icon: IconUsers },
       // Los que se registraron en la web. Es otra cosa que «Clientes»:
       // ahí están los que COMPRARON; acá los que tienen CUENTA, hayan
       // comprado o no — que es justamente la lista para trabajar.

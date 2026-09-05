@@ -221,8 +221,8 @@ export default function CuentasClient() {
               subtitle: `${visibles.length} persona${visibles.length === 1 ? '' : 's'}`,
               filename: `clientes-ficha-${filtro}-${hoyBolivia()}`,
               footnote:
-                'Ficha del cliente: quién es y dónde vive. De la compra sólo la modalidad y la ' +
-                'fecha — los importes se ven en Clientes.',
+                'Ficha del cliente: quién es y dónde vive. De la compra, sólo la modalidad y la ' +
+                'fecha.',
             }}
             columns={[
               { header: 'Nombre' },

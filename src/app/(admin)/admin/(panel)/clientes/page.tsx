@@ -4,7 +4,7 @@ import ClientesClient from '@/features/admin/clientes/ClientesClient';
 import { getAdminContext } from '@/features/admin/lib/get-admin-context';
 import { EmptyState } from '@/features/admin/ui/bits';
 
-export const metadata: Metadata = { title: 'Clientes' };
+export const metadata: Metadata = { title: 'Carteras' };
 export const dynamic = 'force-dynamic';
 
 // El cliente como eje: quién es, qué lotes tiene, qué pagó, qué debe.

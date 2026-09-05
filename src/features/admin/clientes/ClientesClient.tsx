@@ -374,7 +374,7 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
       <div className="flex flex-wrap items-baseline gap-3">
-        <h1 className="text-lg font-bold text-stone-900">Clientes</h1>
+        <h1 className="text-lg font-bold text-stone-900">Carteras</h1>
         <p className="text-xs text-stone-500">
           Toda la empresa: un cliente puede tener lotes en varias urbanizaciones.
         </p>
@@ -436,9 +436,9 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
             disabled={!visibles.length}
             orientation="landscape"
             meta={{
-              title: 'Clientes',
+              title: 'Carteras',
               subtitle: 'Terrenalv S.R.L. — todas las urbanizaciones',
-              filename: `clientes-${hoyBolivia()}`,
+              filename: `carteras-${hoyBolivia()}`,
               footnote:
                 'Valor acordado: el precio de los lotes que conserva. Pagado es CAPITAL — lo que fue contra el precio del lote, incluido lo abonado en el sistema anterior — así que acordado menos pagado da el saldo. El interés va en su propia columna porque no baja el saldo: es precio del tiempo, no del terreno. En quien cedió un lote por traspaso, lo pagado incluye plata de un lote que ya no es suyo. Saldo y mora, de las ventas vivas.',
             }}
