@@ -25,6 +25,7 @@ import { useToast } from '@/features/admin/ui/toast';
 import { adminErrorCopy } from '@/features/admin/lib/errors-extra';
 import { dateLabel } from '@/features/admin/contabilidad/types';
 import { useAdmin } from '@/features/admin/shell/AdminContext';
+import { hoyBolivia } from '@/features/admin/lib/lapaz';
 
 interface Resumen {
   project_id: string;
@@ -149,7 +150,7 @@ export default function InventarioClient() {
           onClick={() =>
             setEdit({
               project_id: projectId ?? undefined,
-              fecha_compra: new Date().toISOString().slice(0, 10),
+              fecha_compra: hoyBolivia(),
               titular: 'empresa',
             })
           }

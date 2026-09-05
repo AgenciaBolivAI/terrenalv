@@ -7,6 +7,7 @@
 import { useMemo, useRef, useState } from 'react';
 import Papa from 'papaparse';
 import { createClient } from '@/lib/supabase/client';
+import { traerTodo } from '@/features/admin/lib/traer-todo';
 import { Badge, Spinner, btnPrimary, btnSecondary } from '@/features/admin/ui/bits';
 import { Dialog } from '@/features/admin/ui/dialog';
 import { useToast } from '@/features/admin/ui/toast';
@@ -118,14 +119,26 @@ export function CsvImportWizard({
   async function dryRun(parsed: CsvRow[]) {
     setChecking(true);
     // Existing lots (any manzana) for the match + area gate.
-    const { data: lotRows, error } = await supabase
-      .from('lots')
-      .select('number, manzana_id, computed_area_m2')
-      .eq('project_id', projectId)
-      .is('deleted_at', null)
-      .limit(10000);
+    // Paginado: acá se busca si el lote YA existe, y la urbanización tiene más
+    // de mil. Con el tope de PostgREST, un número repetido más allá de la fila
+    // 1.000 pasaba el control de duplicados sin que nadie se enterara.
+    let error: unknown = null;
+    const lotRows = await traerTodo<{ number: string; manzana_id: string; computed_area_m2: number | null }>(
+      (desde, hasta) =>
+        supabase
+          .from('lots')
+          .select('number, manzana_id, computed_area_m2')
+          .eq('project_id', projectId)
+          .is('deleted_at', null)
+          .order('id')
+          .range(desde, hasta)
+          .then((r) => {
+            if (r.error) error = r.error;
+            return r;
+          }),
+    );
     if (error) {
-      push(builderErrorCopy(error.message), 'error');
+      push(builderErrorCopy((error as { message: string }).message), 'error');
       setChecking(false);
       return;
     }

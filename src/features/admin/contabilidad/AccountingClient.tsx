@@ -47,6 +47,7 @@ import {
 import type { AdminProject } from '@/features/admin/lib/project-types';
 import { IconWhatsapp } from '@/features/admin/ui/icons';
 import { useToast } from '@/features/admin/ui/toast';
+import { hoyBolivia } from '@/features/admin/lib/lapaz';
 import {
   ACCOUNT_KIND_LABEL,
   EXPENSE_ACCOUNT,
@@ -758,7 +759,7 @@ export default function AccountingClient({
                     meta={{
                       title: 'Cobros por Vía y Tipo',
                       subtitle: projectName,
-                      filename: `cobros-clasificados-${new Date().toISOString().slice(0, 10)}`,
+                      filename: `cobros-clasificados-${hoyBolivia()}`,
                       footnote:
                         'Cada cobro aprobado, clasificado por mes, tipo (seña / cuota / abono) y forma de pago. Bolivianos.',
                     }}
@@ -882,7 +883,7 @@ export default function AccountingClient({
                 meta={{
                   title: 'Ingresos y Egresos por Mes',
                   subtitle: projectName,
-                  filename: `ingresos-egresos-${new Date().toISOString().slice(0, 10)}`,
+                  filename: `ingresos-egresos-${hoyBolivia()}`,
                   footnote:
                     'Movimientos reales por las cuentas de caja y banco según el libro. Un gasto a crédito aparece el mes en que se paga. Bolivianos.',
                 }}
@@ -1057,7 +1058,7 @@ export default function AccountingClient({
                   meta={{
                     title: onlyLate ? 'Clientes Atrasados' : 'Cuentas por Cobrar',
                     subtitle: projectName,
-                    filename: `por-cobrar-${new Date().toISOString().slice(0, 10)}`,
+                    filename: `por-cobrar-${hoyBolivia()}`,
                     footnote: 'Saldo = cuotas pendientes. Días de atraso desde la cuota más vieja impaga.',
                   }}
                   columns={[
@@ -1199,7 +1200,7 @@ export default function AccountingClient({
                 meta={{
                   title: 'Egresos',
                   subtitle: projectName,
-                  filename: `egresos-${new Date().toISOString().slice(0, 10)}`,
+                  filename: `egresos-${hoyBolivia()}`,
                 }}
                 columns={[
                   { header: 'Fecha' },
@@ -1302,7 +1303,7 @@ export default function AccountingClient({
                   meta={{
                     title: 'Libro Mayor',
                     subtitle: projectName,
-                    filename: `libro-mayor-${new Date().toISOString().slice(0, 10)}`,
+                    filename: `libro-mayor-${hoyBolivia()}`,
                     footnote: 'Saldos: activo y gasto por el debe; pasivo, patrimonio e ingreso por el haber.',
                   }}
                   columns={[
@@ -1880,7 +1881,7 @@ function StatementDialog({
   currency: Currency;
 }) {
   if (!account) return null;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = hoyBolivia();
 
   function exportStatement() {
     if (!account || !cuotas) return;
@@ -2223,7 +2224,7 @@ function ExpenseDialog({
   // corresponda sin salir de la pantalla. El correlativo del comprobante es
   // del libro, así que la elección no lo altera.
   const [expProjectId, setExpProjectId] = useState(projectId);
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => hoyBolivia());
   const [category, setCategory] = useState<ExpenseCategory>('obra');
   const [description, setDescription] = useState('');
   const [supplier, setSupplier] = useState('');

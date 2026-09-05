@@ -35,6 +35,7 @@ import { num as fnum, type Cell as XCell } from '@/features/admin/export';
 import LibroIva from './LibroIva';
 import SumasFiscal from './SumasFiscal';
 import ComprobanteSoloFiscal from './ComprobanteSoloFiscal';
+import { hoyBolivia } from '@/features/admin/lib/lapaz';
 
 interface Pendiente {
   project_id: string;
@@ -191,7 +192,7 @@ export default function FiscalClient() {
           onClick={() =>
             setRango({
               desde: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
-              hasta: new Date().toISOString().slice(0, 10),
+              hasta: hoyBolivia(),
               terceros: false,
               cuentasGerenciales: false,
             })
@@ -372,7 +373,7 @@ export default function FiscalClient() {
                 meta={{
                   title: 'Libro diario fiscal',
                   subtitle: `Terrenalv S.R.L. · ${projectName}`,
-                  filename: `libro-fiscal-${new Date().toISOString().slice(0, 10)}`,
+                  filename: `libro-fiscal-${hoyBolivia()}`,
                   footnote:
                     'Contabilidad fiscal: lo declarado. No incluye los movimientos dejados afuera ni los que están a nombre de terceros salvo decisión expresa.',
                 }}

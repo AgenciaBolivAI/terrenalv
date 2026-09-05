@@ -22,6 +22,20 @@ export function laPazDateOf(instant: string | Date): string {
   return `${p.y}-${String(p.m + 1).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`;
 }
 
+/**
+ * HOY en Bolivia, como 'YYYY-MM-DD'. Es el valor por defecto de toda fecha que
+ * el equipo carga a mano.
+ *
+ * El atajo `new Date().toISOString().slice(0, 10)` devuelve el día UTC: entre
+ * las 20:00 y la medianoche en La Paz eso ya es MAÑANA. Un cobro registrado a
+ * las nueve de la noche quedaba fechado al día siguiente, y la base lo guarda
+ * tal cual — con lo que caía en otro mes, en otro período y, si el mes estaba
+ * por cerrarse, del lado equivocado del cierre.
+ */
+export function hoyBolivia(): string {
+  return laPazDateOf(new Date());
+}
+
 /** 00:00 of the given instant's La_Paz calendar day, as ISO UTC. */
 export function laPazDayStartIso(now: Date = new Date()): string {
   const p = laPazParts(now);

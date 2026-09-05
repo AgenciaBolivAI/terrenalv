@@ -1,3 +1,4 @@
+import { hoyBolivia } from '@/features/admin/lib/lapaz';
 // Shapes of the accounting reads. These mirror the two database views and the
 // expenses table exactly; nothing here is computed differently to how the
 // database computes it, so a figure on screen can always be traced to a row.
@@ -308,7 +309,8 @@ export function monthStartIso(): string {
 }
 
 export function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  // Hoy en Bolivia, no en UTC: ver hoyBolivia() en lib/lapaz.ts.
+  return hoyBolivia();
 }
 
 /** An approved payment, as listed on an account statement. */

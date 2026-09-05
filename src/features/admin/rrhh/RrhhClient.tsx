@@ -26,6 +26,7 @@ import { dateLabel } from '@/features/admin/contabilidad/types';
 import { CuentaSelect, useTesoreria } from '@/features/admin/contabilidad/Tesoreria';
 import { EmpleadoFile } from './EmpleadoFile';
 import type { Empleado } from './tipos';
+import { hoyBolivia } from '@/features/admin/lib/lapaz';
 
 // La ficha vive en `tipos.ts`: la comparten la lista y el file.
 
@@ -163,7 +164,7 @@ export default function RrhhClient() {
           <button
             type="button"
             className={btnPrimary}
-            onClick={() => setEdit({ fecha_ingreso: new Date().toISOString().slice(0, 10) })}
+            onClick={() => setEdit({ fecha_ingreso: hoyBolivia() })}
           >
             Nuevo empleado
           </button>
@@ -278,7 +279,7 @@ export default function RrhhClient() {
                         if (!motivo?.trim()) return;
                         const { error } = await supabase.rpc('admin_retirar_empleado', {
                           p_id: e.id,
-                          p_fecha: new Date().toISOString().slice(0, 10),
+                          p_fecha: hoyBolivia(),
                           p_nota: motivo.trim(),
                         });
                         if (error) {
@@ -629,7 +630,7 @@ export default function RrhhClient() {
                 const { data, error } = await supabase.rpc('admin_pagar_planilla', {
                   p_planilla_id: pagando.id,
                   p_treasury_account_id: cuentaId,
-                  p_fecha: new Date().toISOString().slice(0, 10),
+                  p_fecha: hoyBolivia(),
                 });
                 if (error) {
                   push(adminErrorCopy(error.message), 'error');

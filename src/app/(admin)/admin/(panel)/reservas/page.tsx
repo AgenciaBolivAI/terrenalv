@@ -23,7 +23,17 @@ export default async function ReservasPage({
   // llegando con ?tab=confirmadas, así que se los reenvía en vez de dejarlos
   // caer en "Por revisar" como si nada.
   if (sp.tab === 'confirmadas') {
-    redirect(sp.open ? `/admin/ventas?open=${encodeURIComponent(sp.open)}` : '/admin/ventas');
+    // Con el alcance puesto: la casilla que trae hasta acá cuenta las
+    // confirmadas de UNA urbanización, y /admin/ventas arranca consolidado
+    // cuando hay varias — sin esto el 7 del tablero abría las 22 de la
+    // empresa. Y `filtro=todas` porque la casilla cuenta TODAS las
+    // confirmadas, incluidas las que aún no pagaron la cuota inicial.
+    const u = ctx.project ? `u=${ctx.project.id}&` : '';
+    redirect(
+      sp.open
+        ? `/admin/ventas?${u}filtro=todas&open=${encodeURIComponent(sp.open)}`
+        : `/admin/ventas?${u}filtro=todas`,
+    );
   }
   const tab = (TABS.some((t) => t.id === sp.tab) ? sp.tab : 'revisar') as TabId;
 

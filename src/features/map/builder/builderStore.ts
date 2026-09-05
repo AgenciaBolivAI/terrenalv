@@ -11,6 +11,7 @@
 
 import { create } from 'zustand';
 import { createClient } from '@/lib/supabase/client';
+import { traerTodo } from '@/features/admin/lib/traer-todo';
 import type { LotStatus, ManzanaKind } from '@/lib/db-types';
 import type { Affine } from '../lib/affine';
 import { ensureCCW, roundPt } from '../lib/geom';
@@ -256,12 +257,18 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
           .eq('project_id', projectId)
           .order('code')
           .limit(2000),
-        supabase
-          .from('lots')
-          .select('manzana_id, needs_review')
-          .eq('project_id', projectId)
-          .is('deleted_at', null)
-          .limit(10000),
+        // Paginado: son los lotes de TODA la urbanización (2.078 hoy) y de acá
+        // sale el contador de «necesitan revisión» por manzana. Con el tope de
+        // 1.000 de PostgREST, las manzanas del final quedaban en cero.
+        traerTodo<{ manzana_id: string; needs_review: boolean }>((desde, hasta) =>
+          supabase
+            .from('lots')
+            .select('manzana_id, needs_review')
+            .eq('project_id', projectId)
+            .is('deleted_at', null)
+            .order('id')
+            .range(desde, hasta),
+        ).then((data) => ({ data, error: null })),
       ]);
       if (mzRes.error) {
         set({ status: 'error', loadError: mzRes.error.message });

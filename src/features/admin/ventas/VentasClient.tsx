@@ -455,17 +455,30 @@ export default function VentasClient({
   // no es plata vendida ni saldo por cobrar — es una gestión pendiente, y por
   // eso tiene su propio indicador en vez de inflar los totales.
   // Todo en bolivianos: la vista ya viene así.
+  /**
+   * El período que llega del tablero (?desde=&hasta=). Se aplica ANTES que
+   * todo: los KPI y la lista tienen que hablar del mismo conjunto de ventas.
+   * Sin esto la casilla del tablero decía «Ventas 1» y esta pantalla contestaba
+   * «Ventas 22» encima de una lista de una sola fila.
+   */
+  const enPeriodo = useCallback(
+    (r: Venta) => (!desde || r.fecha_venta >= desde) && (!hasta || r.fecha_venta <= hasta),
+    [desde, hasta],
+  );
+
+  const delPeriodo = useMemo(() => rows.filter(enPeriodo), [rows, enPeriodo]);
+
   const totals = useMemo(() => {
-    const ventas = rows.filter((r) => r.compra_iniciada);
+    const ventas = delPeriodo.filter((r) => r.compra_iniciada);
     return {
       ventas: ventas.length,
       valor: ventas.reduce((s, r) => s + Number(r.price_agreed), 0),
       pagado: ventas.reduce((s, r) => s + Number(r.pagado_total), 0),
       saldo: ventas.reduce((s, r) => s + Number(r.saldo), 0),
       conSaldo: ventas.filter((r) => Number(r.saldo) > 0).length,
-      sinInicial: rows.length - ventas.length,
+      sinInicial: delPeriodo.length - ventas.length,
     };
-  }, [rows]);
+  }, [delPeriodo]);
 
   const visibles = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -489,10 +502,8 @@ export default function VentasClient({
       if (filtro === 'contado' && tipoDeVenta(r) !== 'Contado') return false;
       if (filtro === 'credito' && tipoDeVenta(r) !== 'Crédito') return false;
       if (filtro === 'sin_plan' && tipoDeVenta(r) !== 'Sin plan') return false;
-      // El período llega del tablero: sin esto la casilla diría «1 venta hoy»
-      // y la lista mostraría las 22 de siempre.
-      if (desde && r.fecha_venta < desde) return false;
-      if (hasta && r.fecha_venta > hasta) return false;
+      // Mismo predicado que usan los KPI de arriba: una sola definición.
+      if (!enPeriodo(r)) return false;
       if (!q) return true;
       const lote = `${r.manzana ?? ''}-${r.lote ?? ''}`.toLowerCase();
       return (
@@ -503,7 +514,7 @@ export default function VentasClient({
         lote.replace('-', ' ').includes(q)
       );
     });
-  }, [rows, query, filtro, desde, hasta]);
+  }, [rows, query, filtro, enPeriodo]);
 
   /** Un KPI abre la lista YA filtrada: la cifra y la lista deben coincidir. */
   function verFiltrado(f: Filtro) {
@@ -546,7 +557,12 @@ export default function VentasClient({
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0">
           <h1 className="text-lg font-bold text-stone-900">Ventas</h1>
-          <p className="text-xs text-stone-500">{projectName} · lotes vendidos y su saldo</p>
+          <p className="text-xs text-stone-500">
+            {projectName} · lotes vendidos y su saldo
+            {desde || hasta
+              ? ` · ${desde ? dateLabel(desde) : 'el inicio'} a ${hasta ? dateLabel(hasta) : 'hoy'}`
+              : ''}
+          </p>
         </div>
         <button
           type="button"

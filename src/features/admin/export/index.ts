@@ -1,3 +1,4 @@
+import { hoyBolivia } from '@/features/admin/lib/lapaz';
 // Exportación de cualquier tabla del panel a CSV o PDF.
 //
 // Un solo módulo para todo el sistema, no una función por pantalla: el contador
@@ -239,5 +240,5 @@ export async function exportPdf(
 
 /** Fecha corta para nombres de archivo: 2026-08-20. */
 export function hoyIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return hoyBolivia();
 }

@@ -18,6 +18,7 @@ import { Dialog } from '@/features/admin/ui/dialog';
 import { useToast } from '@/features/admin/ui/toast';
 import { CuentaSelect, useTesoreria } from './Tesoreria';
 import type { CobroTarget } from './types';
+import { hoyBolivia } from '@/features/admin/lib/lapaz';
 
 export default function RegistrarCobroDialog({
   cobro,
@@ -54,7 +55,7 @@ export default function RegistrarCobroDialog({
   // comprador está parado en el mostrador esperándolo. Por eso el diálogo no se
   // cierra solo: muestra el enlace de imprimir y el de WhatsApp.
   const [hecho, setHecho] = useState<{ paymentId: string; tipo: string } | null>(null);
-  const [paidOn, setPaidOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [paidOn, setPaidOn] = useState(() => hoyBolivia());
   const [provider, setProvider] = useState<'efectivo' | 'manual_qr' | 'banco_ganadero' | 'bnb'>('efectivo');
   const [reference, setReference] = useState('');
   // A qué cuenta entró el cobro: sin esto el asiento cae en la 1111 genérica y

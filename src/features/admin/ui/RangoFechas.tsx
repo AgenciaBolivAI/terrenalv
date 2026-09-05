@@ -9,15 +9,14 @@
 // pantalla de destino, que es lo que hace que el número y la lista coincidan.
 
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { hoyBolivia, laPazDateOf } from '@/features/admin/lib/lapaz';
 import { useCallback } from 'react';
 
-/** yyyy-mm-dd de hoy en Bolivia, que es el día que cuenta la oficina. */
-function hoyBolivia(): string {
-  return new Date(Date.now() - 4 * 3600_000).toISOString().slice(0, 10);
-}
-
+// El día que cuenta es el de Bolivia: hoyBolivia() vive en lib/lapaz.ts y es
+// la misma que usan los formularios, para que «Hoy» signifique lo mismo en
+// todas partes.
 function hace(dias: number): string {
-  return new Date(Date.now() - 4 * 3600_000 - dias * 86_400_000).toISOString().slice(0, 10);
+  return laPazDateOf(new Date(Date.now() - dias * 86_400_000));
 }
 
 function inicioDeMes(): string {

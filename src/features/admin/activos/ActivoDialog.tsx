@@ -21,6 +21,7 @@ import { FormaPagoPicker, type FormaPago } from '@/features/admin/contabilidad/F
 import { useTesoreria } from '@/features/admin/contabilidad/Tesoreria';
 import type { AdminProject } from '@/features/admin/lib/project-types';
 import type { Activo, Categoria } from './tipos';
+import { hoyBolivia } from '@/features/admin/lib/lapaz';
 
 export function ActivoDialog({
   activo,
@@ -44,7 +45,7 @@ export function ActivoDialog({
     contactKinds: ['proveedor', 'empleado', 'otro'],
   });
 
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyBolivia();
   const [projectIdSel, setProjectIdSel] = useState(activo?.project_id ?? defaultProjectId);
   const [codigo, setCodigo] = useState(activo?.codigo ?? '');
   const [nombre, setNombre] = useState(activo?.nombre ?? '');

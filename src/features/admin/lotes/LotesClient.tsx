@@ -12,6 +12,7 @@ import {
   type RowSelectionState,
 } from '@tanstack/react-table';
 import { createClient } from '@/lib/supabase/client';
+import { traerTodo } from '@/features/admin/lib/traer-todo';
 import { cuotaDelPlan, parseFinancingPlan, type FinancingPlan } from '@/lib/financing';
 import { formatMoney } from '@/lib/format';
 import type { LotStatus, PricingCategory, TeamRole } from '@/lib/db-types';
@@ -218,11 +219,15 @@ export default function LotesClient({ projectId, role, currency, initialStatus =
       return;
     }
     setLoading(true);
-    let q = supabase.from('lots').select(LOT_COLUMNS).eq('project_id', projectId).is('deleted_at', null);
-    if (selectedMz) q = q.eq('manzana_id', selectedMz);
-    else if (statusFilter) q = q.eq('status', statusFilter);
-    const { data } = await q.limit(5000);
-    const rows = (data ?? []) as LotRow[];
+    // Paginado: filtrar por estado en toda la urbanización trae más de mil
+    // lotes (hoy 2.071 disponibles) y PostgREST corta en 1.000 sin avisar — el
+    // tablero decía 2.071 y esta lista mostraba 1.000.
+    const rows = await traerTodo<LotRow>((desde, hasta) => {
+      let q = supabase.from('lots').select(LOT_COLUMNS).eq('project_id', projectId).is('deleted_at', null);
+      if (selectedMz) q = q.eq('manzana_id', selectedMz);
+      else if (statusFilter) q = q.eq('status', statusFilter);
+      return q.order('id').range(desde, hasta);
+    });
     setLots(rows);
     await loadResCodes(rows);
     setLoading(false);

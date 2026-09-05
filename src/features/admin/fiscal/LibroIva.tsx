@@ -26,6 +26,7 @@ import { dateLabel } from '@/features/admin/contabilidad/types';
 import { useAdmin } from '@/features/admin/shell/AdminContext';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
 import type { Cell as XCell } from '@/features/admin/export';
+import { hoyBolivia } from '@/features/admin/lib/lapaz';
 
 interface Factura {
   id: string;
@@ -164,7 +165,7 @@ export default function LibroIva() {
               meta={{
                 title: tipo === 'compra' ? 'Registro de compras (RCV)' : 'Registro de ventas (RCV)',
                 subtitle: `Terrenalv S.R.L. · ${projectName}`,
-                filename: `rcv-${tipo}s-${new Date().toISOString().slice(0, 10)}`,
+                filename: `rcv-${tipo}s-${hoyBolivia()}`,
                 footnote:
                   'IVA 13% por dentro sobre (importe − exento − descuentos). Cada factura guarda su propia tasa. Bancarización: desde el umbral vigente la factura lleva su medio de pago bancario.',
               }}
@@ -207,7 +208,7 @@ export default function LibroIva() {
               onClick={() =>
                 setAlta({
                   tipo,
-                  fecha: new Date().toISOString().slice(0, 10),
+                  fecha: hoyBolivia(),
                   nit: '',
                   razon_social: '',
                   numero_factura: '',

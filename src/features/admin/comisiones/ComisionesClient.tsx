@@ -32,6 +32,7 @@ import { dateLabel } from '@/features/admin/contabilidad/types';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
 import EscalaComisiones from './EscalaComisiones';
 import { num as fnum, type Cell as XCell } from '@/features/admin/export';
+import { hoyBolivia } from '@/features/admin/lib/lapaz';
 
 interface Vendedor {
   profile_id: string;
@@ -490,7 +491,7 @@ export default function ComisionesClient() {
             meta={{
               title: 'Comisiones por venta',
               subtitle: 'Terrenalv S.R.L.',
-              filename: `comisiones-${new Date().toISOString().slice(0, 10)}`,
+              filename: `comisiones-${hoyBolivia()}`,
               footnote:
                 'Base «cobrado»: la comisión se gana a medida que el comprador paga capital. Base «precio»: se gana entera al firmar.',
             }}
@@ -895,7 +896,7 @@ function PagarComisionDialog({
   const { cuentas } = useTesoreria();
   const [monto, setMonto] = useState(String(c.por_pagar));
   const [cuentaId, setCuentaId] = useState('');
-  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  const [fecha, setFecha] = useState(() => hoyBolivia());
   const [nota, setNota] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -19,6 +19,7 @@ import { cuentaDelComprador, saldosCorridos, terminosDelPlan } from './cuentas';
 import type { EstadoDeCuenta } from './estado-de-cuenta';
 import { formatMoney, waLink } from '@/lib/format';
 import { IconWhatsapp } from '@/features/admin/ui/icons';
+import { hoyBolivia } from '@/features/admin/lib/lapaz';
 
 export type PlanPdfDatos = EstadoDeCuenta;
 
@@ -40,7 +41,7 @@ export async function bajarPlanPdf(p: PlanPdfDatos): Promise<string> {
   // El saldo corriente: lo que le queda DESPUÉS de cada cuota. La cuenta
   // vive en cuentas.ts, la misma que usa la pantalla, con sus tests.
   const saldos = saldosCorridos(cuotas);
-  const hoyIso = new Date().toISOString().slice(0, 10);
+  const hoyIso = hoyBolivia();
 
   // «Pagado» en el PDF es la PLATA ENTREGADA (los mismos recibos), no solo el
   // capital: misma regla que la pantalla del estado de cuenta.

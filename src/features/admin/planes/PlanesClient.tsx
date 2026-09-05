@@ -45,6 +45,7 @@ import {
   type ProjectScope,
 } from '@/features/admin/ui/scope';
 import type { AdminProject } from '@/features/admin/lib/project-types';
+import { hoyBolivia } from '@/features/admin/lib/lapaz';
 
 /** Una fila de v_planes, tal como la define la vista. */
 interface Plan {
@@ -436,7 +437,7 @@ export default function PlanesClient({
                 meta={{
                   title: 'Planes de pago',
                   subtitle: scopeLabel(scope, projects),
-                  filename: `planes-${new Date().toISOString().slice(0, 10)}`,
+                  filename: `planes-${hoyBolivia()}`,
                   footnote:
                     'Saldo: cuotas pendientes o parciales del plan. Vencido: la parte impaga de las cuotas cuya fecha ya pasó.',
                 }}
@@ -713,7 +714,7 @@ export default function PlanesClient({
                                             cuota: String(r.monthly_amount),
                                             fecha:
                                               r.proxima_cuota ??
-                                              new Date().toISOString().slice(0, 10),
+                                              hoyBolivia(),
                                             fijar: 'meses',
                                           })
                                         }
@@ -730,7 +731,7 @@ export default function PlanesClient({
                                             planId: r.plan_id,
                                             fecha:
                                               r.proxima_cuota ??
-                                              new Date().toISOString().slice(0, 10),
+                                              hoyBolivia(),
                                           })
                                         }
                                         className="mt-2 ml-2 inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-stone-700 hover:bg-stone-100"

@@ -3,6 +3,7 @@ import { formatMoney } from '@/lib/format';
 import { cuentaDelComprador } from './cuentas';
 import { Logo } from '@/components/Logo';
 import type { EstadoDeCuenta as Datos } from './estado-de-cuenta';
+import { hoyBolivia } from '@/features/admin/lib/lapaz';
 
 // El estado de cuenta que ve el comprador con su enlace.
 //
@@ -236,7 +237,7 @@ export function EstadoDeCuenta({ d }: { d: Datos }) {
               </thead>
               <tbody>
                 {d.plan.cuotas.map((c) => {
-                  const hoy = new Date().toISOString().slice(0, 10);
+                  const hoy = hoyBolivia();
                   const vencida = c.status !== 'pagada' && c.due_date < hoy;
                   return (
                     <tr key={c.number} className="border-b border-stone-100">
