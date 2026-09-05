@@ -33,6 +33,7 @@ import { IconWhatsapp } from '@/features/admin/ui/icons';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
 import { num as fnum, type Cell as XCell } from '@/features/admin/export';
 import { dateLabel } from '@/features/admin/contabilidad/types';
+import { FichaContacto } from './FichaContacto';
 import { etiquetaDeMovimiento } from './etiquetas';
 import { hoyBolivia } from '@/features/admin/lib/lapaz';
 
@@ -646,7 +647,12 @@ export default function ClientesClient({ abrirCi }: { abrirCi: string | null }) 
                             ) : null}
                           </div>
 
-                          <div className="grid gap-4 lg:grid-cols-2">
+                          {/* Dónde vive y cómo se llega. Es la MISMA ficha que
+                              se ve en Cuentas y en el historial: una sola
+                              verdad, cargada una sola vez. */}
+                          <FichaContacto ci={r.ci_norm} />
+
+                          <div className="mt-3 grid gap-4 lg:grid-cols-2">
                             <div>
                               <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
                                 Sus lotes y reservas

@@ -17,21 +17,26 @@ export function FichaClienteDialog({
   ci,
   nombre,
   onClose,
+  sinPlata = false,
 }: {
   ci: string;
   nombre?: string;
   onClose: () => void;
+  /** Cuentas abre la misma ficha, pero sin un solo importe. */
+  sinPlata?: boolean;
 }) {
   return (
     <Dialog open onClose={onClose} wide title={nombre ?? 'Cliente'}>
       <div className="max-h-[72vh] overflow-y-auto pr-1">
-        <HistorialCliente ci={ci} />
+        <HistorialCliente ci={ci} sinPlata={sinPlata} />
       </div>
-      <div className="mt-4 flex justify-end border-t border-stone-100 pt-3">
-        <Link href={`/admin/clientes?ci=${encodeURIComponent(ci)}`} className={btnPrimary}>
-          Abrir en Clientes
-        </Link>
-      </div>
+      {sinPlata ? null : (
+        <div className="mt-4 flex justify-end border-t border-stone-100 pt-3">
+          <Link href={`/admin/clientes?ci=${encodeURIComponent(ci)}`} className={btnPrimary}>
+            Abrir en Clientes
+          </Link>
+        </div>
+      )}
     </Dialog>
   );
 }

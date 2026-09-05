@@ -20,7 +20,11 @@ import { Badge, EmptyState, Spinner, btnSecondary } from '@/features/admin/ui/bi
 import { IconWhatsapp } from '@/features/admin/ui/icons';
 import { dateLabel } from '@/features/admin/contabilidad/types';
 import { etiquetaDeMovimiento } from './etiquetas';
+import { FichaContacto } from './FichaContacto';
 
+// Las columnas de plata son OPCIONALES porque en modo `sinPlata` no se piden:
+// esa pantalla lee `v_clientes_ficha` / `v_cliente_actividad_ficha`, que no
+// las tienen. Lo que el navegador nunca recibe no se puede mostrar por error.
 interface Resumen {
   ci_norm: string;
   buyer_full_name: string;
@@ -30,24 +34,28 @@ interface Resumen {
   reservas_totales: number;
   lotes_comprados: number;
   lotes_reservados: number;
-  reservas_expiradas: number;
-  reservas_canceladas: number;
-  traspasos_cedidos: number;
-  traspasos_recibidos: number;
+  reservas_expiradas?: number;
+  reservas_canceladas?: number;
+  traspasos_cedidos?: number;
+  traspasos_recibidos?: number;
   proyectos: number;
-  pagado_total: number;
-  saldo_total: number;
-  con_plan: number;
-  cuotas_vencidas: number;
-  monto_vencido: number;
+  pagado_total?: number;
+  saldo_total?: number;
+  con_plan?: number;
+  cuotas_vencidas?: number;
+  monto_vencido?: number;
   primera_actividad: string;
   ultima_actividad: string | null;
-  comisiones_pagadas: number;
-  avisos_activos: number;
-  vendidos_mercado: number;
-  vendido_mercado_bob: number;
+  comisiones_pagadas?: number;
+  avisos_activos?: number;
+  vendidos_mercado?: number;
+  vendido_mercado_bob?: number;
   nombres_distintos: number;
   nombres_vistos: string;
+  // Sólo en modo `sinPlata`: cómo compró y cuándo, sin un solo importe.
+  modalidades?: string | null;
+  primera_compra?: string | null;
+  ultima_compra?: string | null;
 }
 
 interface Movimiento {
@@ -58,24 +66,27 @@ interface Movimiento {
   manzana: string | null;
   lote: string | null;
   area_m2: number | null;
-  price_agreed: number;
+  price_agreed?: number;
   created_at: string;
   fecha_confirmada: string | null;
   fecha_cancelada: string | null;
   cancel_reason: string | null;
   origen_label: string;
-  pagado_total: number | null;
-  saldo: number | null;
-  con_plan: boolean | null;
+  pagado_total?: number | null;
+  saldo?: number | null;
+  con_plan?: boolean | null;
+  /** Contado / Crédito / Traspaso / Sin plan — la trae la vista sin plata. */
+  modalidad?: string | null;
+  fecha?: string | null;
   recibida_por_traspaso: boolean;
   cedida_por_traspaso: boolean;
   cedida_a_tracking: string | null;
   cedida_a_comprador: string | null;
   traspaso_de_tracking: string | null;
   traspaso_de_comprador: string | null;
-  comprada_en_mercado: boolean;
-  precio_mercado: number | null;
-  vendida_en_mercado: boolean;
+  comprada_en_mercado?: boolean;
+  precio_mercado?: number | null;
+  vendida_en_mercado?: boolean;
 }
 
 interface PagoCadena {
@@ -105,7 +116,22 @@ const BADGE: Record<string, string> = {
   cancelada: 'bg-stone-200 text-stone-600',
 };
 
-export function HistorialCliente({ ci }: { ci: string }) {
+export function HistorialCliente({
+  ci,
+  sinPlata = false,
+}: {
+  ci: string;
+  /**
+   * Muestra a la persona sin un solo importe: ni precio, ni pagado, ni saldo,
+   * ni recibos. De la compra sólo queda la modalidad y la fecha.
+   *
+   * No es un `hidden` en la pantalla: en este modo se leen otras vistas
+   * —`v_clientes_ficha` y `v_cliente_actividad_ficha`— que directamente no
+   * traen columnas de plata, y los pagos ni se piden. Lo que el navegador
+   * nunca recibe no se filtra abriendo el inspector.
+   */
+  sinPlata?: boolean;
+}) {
   const supabase = useMemo(() => createClient(), []);
   const [r, setR] = useState<Resumen | null>(null);
   const [movs, setMovs] = useState<Movimiento[]>([]);
@@ -116,7 +142,7 @@ export function HistorialCliente({ ci }: { ci: string }) {
   const cargar = useCallback(async () => {
     const limpio = ci.replace(/,/g, '');
     const { data } = await supabase
-      .from('v_clientes')
+      .from(sinPlata ? 'v_clientes_ficha' : 'v_clientes')
       .select('*')
       .or(`ci_norm.eq.${limpio},buyer_ci.eq.${limpio}`)
       .limit(1)
@@ -125,13 +151,13 @@ export function HistorialCliente({ ci }: { ci: string }) {
     setR(res);
     if (res) {
       const { data: act } = await supabase
-        .from('v_cliente_actividad')
+        .from(sinPlata ? 'v_cliente_actividad_ficha' : 'v_cliente_actividad')
         .select('*')
         .eq('ci_norm', res.ci_norm)
         .order('created_at', { ascending: false });
       const lista = (act ?? []) as unknown as Movimiento[];
       setMovs(lista);
-      if (lista.length > 0) {
+      if (lista.length > 0 && !sinPlata) {
         // Todos los pagos de todos sus lotes, cadena incluida, en una sola ida.
         const { data: pg } = await supabase
           .from('v_historial_pagos_cadena')
@@ -145,7 +171,7 @@ export function HistorialCliente({ ci }: { ci: string }) {
       }
     }
     setCargado(true);
-  }, [supabase, ci]);
+  }, [supabase, ci, sinPlata]);
 
   useEffect(() => {
     void cargar();
@@ -209,7 +235,15 @@ export function HistorialCliente({ ci }: { ci: string }) {
           </p>
         ) : null}
 
-        <div className="mt-3 grid grid-cols-2 gap-3 text-center sm:grid-cols-5">
+        {/* Dónde vive y cómo se llega: lo carga la oficina, va en las dos
+            pantallas. */}
+        <FichaContacto ci={r.ci_norm} />
+
+        <div
+          className={`mt-3 grid grid-cols-2 gap-3 text-center ${
+            sinPlata ? 'sm:grid-cols-4' : 'sm:grid-cols-5'
+          }`}
+        >
           <div className="rounded-lg bg-stone-50 p-2.5">
             <p className="text-[11px] text-stone-500">Lotes hoy</p>
             <p className="text-lg font-bold tabular-nums">{r.lotes_comprados}</p>
@@ -218,60 +252,99 @@ export function HistorialCliente({ ci }: { ci: string }) {
             <p className="text-[11px] text-stone-500">Movimientos</p>
             <p className="text-lg font-bold tabular-nums">{r.reservas_totales}</p>
           </div>
-          <div className="rounded-lg bg-green-50 p-2.5">
-            <p className="text-[11px] text-stone-500">Nos ha pagado</p>
-            <p className="text-lg font-bold tabular-nums text-brand">
-              {formatMoney(Number(r.pagado_total), 'BOB')}
-            </p>
-          </div>
-          <div className="rounded-lg bg-stone-50 p-2.5">
-            <p className="text-[11px] text-stone-500">Nos debe</p>
-            <p
-              className={`text-lg font-bold tabular-nums ${
-                Number(r.saldo_total) > 0 ? 'text-red-600' : 'text-stone-900'
-              }`}
-            >
-              {formatMoney(Number(r.saldo_total), 'BOB')}
-            </p>
-          </div>
-          <div className="rounded-lg bg-stone-50 p-2.5">
-            <p className="text-[11px] text-stone-500">Recibos</p>
-            <p className="text-lg font-bold tabular-nums">{recibosTotales}</p>
-          </div>
+          {sinPlata ? (
+            <>
+              <div className="rounded-lg bg-stone-50 p-2.5">
+                <p className="text-[11px] text-stone-500">Cómo compró</p>
+                <p className="text-sm font-bold text-stone-900">{r.modalidades ?? '—'}</p>
+              </div>
+              <div className="rounded-lg bg-stone-50 p-2.5">
+                <p className="text-[11px] text-stone-500">
+                  {r.primera_compra && r.primera_compra !== r.ultima_compra
+                    ? 'Compras'
+                    : 'Fecha de compra'}
+                </p>
+                <p className="text-sm font-bold text-stone-900">
+                  {r.primera_compra
+                    ? r.ultima_compra && r.ultima_compra !== r.primera_compra
+                      ? `${dateLabel(r.primera_compra)} — ${dateLabel(r.ultima_compra)}`
+                      : dateLabel(r.primera_compra)
+                    : '—'}
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="rounded-lg bg-green-50 p-2.5">
+                <p className="text-[11px] text-stone-500">Nos ha pagado</p>
+                <p className="text-lg font-bold tabular-nums text-brand">
+                  {formatMoney(Number(r.pagado_total), 'BOB')}
+                </p>
+              </div>
+              <div className="rounded-lg bg-stone-50 p-2.5">
+                <p className="text-[11px] text-stone-500">Nos debe</p>
+                <p
+                  className={`text-lg font-bold tabular-nums ${
+                    Number(r.saldo_total) > 0 ? 'text-red-600' : 'text-stone-900'
+                  }`}
+                >
+                  {formatMoney(Number(r.saldo_total), 'BOB')}
+                </p>
+              </div>
+              <div className="rounded-lg bg-stone-50 p-2.5">
+                <p className="text-[11px] text-stone-500">Recibos</p>
+                <p className="text-lg font-bold tabular-nums">{recibosTotales}</p>
+              </div>
+            </>
+          )}
         </div>
 
         <p className="mt-3 flex flex-wrap items-center gap-2 text-xs text-stone-500">
-          {Number(r.cuotas_vencidas) > 0 ? (
-            <Badge className="bg-red-100 text-red-700">
-              {r.cuotas_vencidas} cuota(s) vencida(s) ·{' '}
-              {formatMoney(Number(r.monto_vencido), 'BOB')}
-            </Badge>
-          ) : (
-            <Badge className="bg-green-100 text-green-700">Sin mora</Badge>
-          )}
-          {Number(r.con_plan) > 0 ? (
-            <Badge className="bg-stone-100 text-stone-600">{r.con_plan} plan(es) de cuotas</Badge>
+          {/* La mora, los planes y el mercado se cuentan en plata: en modo
+              ficha no se nombran. */}
+          {!sinPlata ? (
+            <>
+              {Number(r.cuotas_vencidas) > 0 ? (
+                <Badge className="bg-red-100 text-red-700">
+                  {r.cuotas_vencidas} cuota(s) vencida(s) ·{' '}
+                  {formatMoney(Number(r.monto_vencido), 'BOB')}
+                </Badge>
+              ) : (
+                <Badge className="bg-green-100 text-green-700">Sin mora</Badge>
+              )}
+              {Number(r.con_plan) > 0 ? (
+                <Badge className="bg-stone-100 text-stone-600">
+                  {r.con_plan} plan(es) de cuotas
+                </Badge>
+              ) : null}
+            </>
           ) : null}
           {Number(r.proyectos) > 1 ? (
             <Badge className="bg-stone-100 text-stone-600">
               en {r.proyectos} urbanizaciones
             </Badge>
           ) : null}
-          {Number(r.traspasos_recibidos) > 0 ? (
-            <span>{r.traspasos_recibidos} lote(s) recibidos por traspaso.</span>
-          ) : null}
-          {Number(r.traspasos_cedidos) > 0 ? <span>{r.traspasos_cedidos} cedidos.</span> : null}
-          {Number(r.vendidos_mercado) > 0 ? (
-            <span>
-              Vendió {r.vendidos_mercado} por el mercado por{' '}
-              {formatMoney(Number(r.vendido_mercado_bob), 'BOB')} y pagó{' '}
-              {formatMoney(Number(r.comisiones_pagadas), 'BOB')} de comisión.
-            </span>
-          ) : null}
-          {Number(r.avisos_activos) > 0 ? (
-            <Badge className="bg-green-100 text-green-800">
-              {r.avisos_activos} aviso(s) en el mercado
-            </Badge>
+          {!sinPlata ? (
+            <>
+              {Number(r.traspasos_recibidos) > 0 ? (
+                <span>{r.traspasos_recibidos} lote(s) recibidos por traspaso.</span>
+              ) : null}
+              {Number(r.traspasos_cedidos) > 0 ? (
+                <span>{r.traspasos_cedidos} cedidos.</span>
+              ) : null}
+              {Number(r.vendidos_mercado) > 0 ? (
+                <span>
+                  Vendió {r.vendidos_mercado} por el mercado por{' '}
+                  {formatMoney(Number(r.vendido_mercado_bob), 'BOB')} y pagó{' '}
+                  {formatMoney(Number(r.comisiones_pagadas), 'BOB')} de comisión.
+                </span>
+              ) : null}
+              {Number(r.avisos_activos) > 0 ? (
+                <Badge className="bg-green-100 text-green-800">
+                  {r.avisos_activos} aviso(s) en el mercado
+                </Badge>
+              ) : null}
+            </>
           ) : null}
         </p>
       </section>
@@ -311,27 +384,41 @@ export function HistorialCliente({ ci }: { ci: string }) {
                       <span className="text-xs text-stone-300">{abierta ? '▲' : '▼'}</span>
                     </div>
                     <p className="mt-1 text-xs text-stone-500">
-                      {m.origen_label} · precio {formatMoney(Number(m.price_agreed), 'BOB')}
-                      {m.estado === 'confirmada' && m.saldo !== null ? (
+                      {sinPlata ? (
                         <>
-                          {' · pagado '}
-                          {formatMoney(Number(m.pagado_total ?? 0), 'BOB')}
-                          {' · '}
-                          <span
-                            className={Number(m.saldo) > 0 ? 'font-semibold text-red-600' : ''}
-                          >
-                            saldo {formatMoney(Number(m.saldo), 'BOB')}
-                          </span>
-                          {m.con_plan ? ' · con plan' : ''}
+                          {m.origen_label}
+                          {m.modalidad ? (
+                            <>
+                              {' · '}
+                              <span className="font-semibold text-stone-700">{m.modalidad}</span>
+                            </>
+                          ) : null}
                         </>
-                      ) : null}
-                      {suyos.length > 0 ? ` · ${suyos.length} pago(s)` : ''}
+                      ) : (
+                        <>
+                          {m.origen_label} · precio {formatMoney(Number(m.price_agreed), 'BOB')}
+                          {m.estado === 'confirmada' && m.saldo != null ? (
+                            <>
+                              {' · pagado '}
+                              {formatMoney(Number(m.pagado_total ?? 0), 'BOB')}
+                              {' · '}
+                              <span
+                                className={Number(m.saldo) > 0 ? 'font-semibold text-red-600' : ''}
+                              >
+                                saldo {formatMoney(Number(m.saldo), 'BOB')}
+                              </span>
+                              {m.con_plan ? ' · con plan' : ''}
+                            </>
+                          ) : null}
+                          {suyos.length > 0 ? ` · ${suyos.length} pago(s)` : ''}
+                        </>
+                      )}
                     </p>
                     {m.recibida_por_traspaso ? (
                       <p className="mt-0.5 text-xs text-stone-500">
                         Recibido de <strong>{m.traspaso_de_comprador ?? '—'}</strong> (
                         {m.traspaso_de_tracking ?? '—'})
-                        {m.comprada_en_mercado && m.precio_mercado !== null
+                        {!sinPlata && m.comprada_en_mercado && m.precio_mercado != null
                           ? ` — pagó ${formatMoney(Number(m.precio_mercado), 'BOB')} por el mercado`
                           : ''}
                         .
@@ -378,6 +465,8 @@ export function HistorialCliente({ ci }: { ci: string }) {
                         ) : null}
                       </div>
 
+                      {sinPlata ? null : (
+                        <>
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">
                           Pagos y recibos de este lote
@@ -457,6 +546,8 @@ export function HistorialCliente({ ci }: { ci: string }) {
                           ))}
                         </ul>
                       )}
+                        </>
+                      )}
                     </div>
                   ) : null}
                 </li>
@@ -466,8 +557,10 @@ export function HistorialCliente({ ci }: { ci: string }) {
         )}
         <p className="border-t border-stone-100 px-4 py-2 text-xs text-stone-400">
           Están TODOS sus movimientos: lo que compró, lo que reservó y venció, lo que cedió y lo
-          que recibió por traspaso. En un lote recibido por traspaso, los pagos del dueño anterior
-          salen marcados con su nombre — su recibo sigue siendo suyo.
+          que recibió por traspaso.{' '}
+          {sinPlata
+            ? 'De cada compra se dice cómo la pagó y cuándo; los importes se ven en Clientes.'
+            : 'En un lote recibido por traspaso, los pagos del dueño anterior salen marcados con su nombre — su recibo sigue siendo suyo.'}
         </p>
       </section>
     </div>

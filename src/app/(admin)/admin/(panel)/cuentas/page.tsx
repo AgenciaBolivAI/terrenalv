@@ -5,14 +5,15 @@ import { getAdminContext } from '@/features/admin/lib/get-admin-context';
 import { EmptyState } from '@/features/admin/ui/bits';
 import { isAccounting } from '@/features/admin/lib/roles';
 
-export const metadata: Metadata = { title: 'Cuentas de clientes' };
+export const metadata: Metadata = { title: 'Ficha de clientes' };
 export const dynamic = 'force-dynamic';
 
-// Los clientes REGISTRADOS en la web — distinto de «Clientes», que son los que
-// ya compraron. Acá están también los que crearon cuenta y todavía no
-// compraron: esa es la lista para trabajar, y la razón de pedir el alta.
+// La MISMA gente que «Clientes», pero sin un solo importe: quién es, dónde
+// vive, cómo se llega hasta él, y de cada compra nada más que la modalidad
+// (contado, crédito, traspaso) y la fecha.
 //
-// Es dato comercial, no plata: ventas la necesita tanto como contabilidad.
+// Es dato comercial, no plata: ventas la necesita tanto como contabilidad, y
+// por eso esta pantalla se puede abrir sin ver la plata de nadie.
 export default async function CuentasPage() {
   const ctx = await getAdminContext();
   if (!ctx.ok) {

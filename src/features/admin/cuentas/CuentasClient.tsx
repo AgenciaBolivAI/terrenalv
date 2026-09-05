@@ -1,87 +1,110 @@
 'use client';
 
-// Los clientes REGISTRADOS: quiénes se dieron de alta, cuántos llegaron a
-// comprar, y a quiénes hay que saludar este mes.
+// La misma gente que Clientes, pero SIN PLATA.
 //
-// Cada tile filtra la lista de abajo. Un número sin manera de llegar a la
-// gente que cuenta no sirve para nada: si dice «12 cumplen este mes», hay que
-// poder ver los doce y escribirles.
+// Antes esta pantalla listaba únicamente a quienes se habían creado una cuenta
+// en la web —hoy, nadie— así que estaba vacía mientras la oficina tenía 20
+// clientes de verdad. Ahora muestra a las mismas personas que Clientes: quién
+// es, dónde vive y cómo se llega hasta él.
+//
+// De la compra sólo se dice CÓMO la pagó (contado, crédito, traspaso) y CUÁNDO.
+// Ni precio, ni pagado, ni saldo, ni recibos. Y no es que se oculten en la
+// pantalla: se leen `v_clientes_ficha` y `v_cliente_actividad_ficha`, que no
+// tienen columnas de plata — hay un guardián (`la_ficha_de_cuentas_no_muestra_plata`)
+// que se pone rojo si alguien le agrega una.
+//
+// Cada tile filtra la lista de abajo: un número sin manera de llegar a la
+// gente que cuenta no sirve para nada.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { formatMoney, waLink } from '@/lib/format';
+import { waLink } from '@/lib/format';
 import { dateLabel } from '@/features/admin/contabilidad/types';
 import { EmptyState, Spinner } from '@/features/admin/ui/bits';
 import { ExportButtons } from '@/features/admin/export/ExportButtons';
+import { traerTodo } from '@/features/admin/lib/traer-todo';
+import { hoyBolivia } from '@/features/admin/lib/lapaz';
+import { FichaClienteDialog } from '@/features/admin/clientes/FichaClienteDialog';
+import { consultaDeMapa, enlaceDeMapa } from '@/features/admin/clientes/FichaContacto';
 
-interface Cliente {
-  id: string;
-  full_name: string;
-  email: string;
-  phone: string | null;
-  ci: string | null;
+interface ClienteFicha {
+  ci_norm: string;
+  buyer_full_name: string;
+  buyer_ci: string;
+  buyer_phone: string | null;
+  buyer_email: string | null;
+  lotes_comprados: number;
+  reservas_totales: number;
+  lotes_reservados: number;
+  proyectos: number;
+  primera_actividad: string;
+  ultima_actividad: string | null;
+  direccion: string | null;
+  referencias: string | null;
+  ubicacion: string | null;
+  nota: string | null;
   city: string | null;
-  birth_date: string | null;
   como_nos_conocio: string | null;
   marketing_opt_in: boolean;
-  fecha_registro: string;
-  compras: number;
-  invertido: number;
-  saldo: number;
-  es_comprador: boolean;
-  cumple_este_mes: boolean;
-  aniversario_este_mes: boolean;
+  correo_verificado: boolean;
+  fecha_registro: string | null;
+  modalidades: string | null;
   primera_compra: string | null;
-}
-
-interface Resumen {
-  registrados: number;
-  este_mes: number;
-  compradores: number;
-  sin_comprar: number;
-  con_permiso_email: number;
-  cumplen_este_mes: number;
-  aniversario_mes: number;
-  compras_vinculadas: number;
-  compras_sin_cuenta: number;
-  por_mes: { mes: string; altas: number }[];
-  como_nos_conocio: { origen: string; cuantos: number }[];
+  ultima_compra: string | null;
 }
 
 type Filtro =
   | 'todos'
-  | 'este_mes'
-  | 'compradores'
-  | 'sin_comprar'
-  | 'con_permiso'
-  | 'cumple'
-  | 'aniversario';
+  | 'contado'
+  | 'credito'
+  | 'traspaso'
+  | 'sin_plan'
+  | 'con_direccion'
+  | 'sin_direccion';
 
 const ETIQUETA: Record<Filtro, string> = {
-  todos: 'Todos los registrados',
-  este_mes: 'Se registraron este mes',
-  compradores: 'Ya compraron',
-  sin_comprar: 'Registrados sin comprar',
-  con_permiso: 'Aceptan recibir correos',
-  cumple: 'Cumplen años este mes',
-  aniversario: 'Aniversario de compra este mes',
+  todos: 'Todos los clientes',
+  contado: 'Compraron al contado',
+  credito: 'Compraron a crédito',
+  traspaso: 'Recibieron por traspaso',
+  sin_plan: 'Compraron sin plan de cuotas',
+  con_direccion: 'Con dirección cargada',
+  sin_direccion: 'Sin dirección cargada',
+};
+
+/** Un cliente «es» de una modalidad si alguna de sus compras lo fue. */
+function tiene(c: ClienteFicha, modalidad: string): boolean {
+  return (c.modalidades ?? '').includes(modalidad);
+}
+
+const BADGE_MODALIDAD: Record<string, string> = {
+  Contado: 'bg-green-100 text-green-800',
+  Crédito: 'bg-sky-100 text-sky-800',
+  Traspaso: 'bg-violet-100 text-violet-800',
+  'Sin plan': 'bg-amber-100 text-amber-800',
 };
 
 export default function CuentasClient() {
   const supabase = useMemo(() => createClient(), []);
-  const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [resumen, setResumen] = useState<Resumen | null>(null);
+  const [clientes, setClientes] = useState<ClienteFicha[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<Filtro>('todos');
   const [q, setQ] = useState('');
+  const [ficha, setFicha] = useState<ClienteFicha | null>(null);
 
   const cargar = useCallback(async () => {
-    const [c, r] = await Promise.all([
-      supabase.from('v_clientes_cuenta').select('*').order('created_at', { ascending: false }),
-      supabase.rpc('an_clientes_resumen'),
-    ]);
-    setClientes((c.data ?? []) as unknown as Cliente[]);
-    setResumen((r.data as unknown as Resumen) ?? null);
+    const filas = await traerTodo<ClienteFicha>((desde, hasta) =>
+      supabase
+        .from('v_clientes_ficha')
+        .select('*')
+        .order('ci_norm', { ascending: true })
+        .range(desde, hasta),
+    );
+    // Se pagina por `ci_norm` porque es único y estable —sin un orden único,
+    // dos páginas repiten una fila y se saltean otra— pero se MUESTRA por
+    // nombre, que es como la oficina busca a una persona.
+    filas.sort((a, b) => a.buyer_full_name.localeCompare(b.buyer_full_name, 'es'));
+    setClientes(filas);
     setLoading(false);
   }, [supabase]);
 
@@ -89,24 +112,22 @@ export default function CuentasClient() {
     void cargar();
   }, [cargar]);
 
-  const mesInicio = new Date();
-  mesInicio.setDate(1);
-  const desdeMes = mesInicio.toISOString().slice(0, 10);
-
   const visibles = clientes.filter((c) => {
-    if (filtro === 'este_mes' && c.fecha_registro < desdeMes) return false;
-    if (filtro === 'compradores' && !c.es_comprador) return false;
-    if (filtro === 'sin_comprar' && c.es_comprador) return false;
-    if (filtro === 'con_permiso' && !c.marketing_opt_in) return false;
-    if (filtro === 'cumple' && !c.cumple_este_mes) return false;
-    if (filtro === 'aniversario' && !c.aniversario_este_mes) return false;
+    if (filtro === 'contado' && !tiene(c, 'Contado')) return false;
+    if (filtro === 'credito' && !tiene(c, 'Crédito')) return false;
+    if (filtro === 'traspaso' && !tiene(c, 'Traspaso')) return false;
+    if (filtro === 'sin_plan' && !tiene(c, 'Sin plan')) return false;
+    if (filtro === 'con_direccion' && !c.direccion) return false;
+    if (filtro === 'sin_direccion' && c.direccion) return false;
     const t = q.trim().toLowerCase();
     if (!t) return true;
     return (
-      c.full_name.toLowerCase().includes(t) ||
-      c.email.toLowerCase().includes(t) ||
-      (c.phone ?? '').includes(t) ||
-      (c.ci ?? '').toLowerCase().includes(t) ||
+      c.buyer_full_name.toLowerCase().includes(t) ||
+      (c.buyer_email ?? '').toLowerCase().includes(t) ||
+      (c.buyer_phone ?? '').includes(t) ||
+      c.buyer_ci.toLowerCase().includes(t) ||
+      (c.direccion ?? '').toLowerCase().includes(t) ||
+      (c.referencias ?? '').toLowerCase().includes(t) ||
       (c.city ?? '').toLowerCase().includes(t)
     );
   });
@@ -120,13 +141,43 @@ export default function CuentasClient() {
   }
 
   const tiles: { id: Filtro; label: string; valor: number; pista: string }[] = [
-    { id: 'todos', label: 'Registrados', valor: resumen?.registrados ?? 0, pista: 'cuentas creadas' },
-    { id: 'este_mes', label: 'Nuevos este mes', valor: resumen?.este_mes ?? 0, pista: 'altas del mes' },
-    { id: 'compradores', label: 'Ya compraron', valor: resumen?.compradores ?? 0, pista: 'con al menos un lote' },
-    { id: 'sin_comprar', label: 'Sin comprar', valor: resumen?.sin_comprar ?? 0, pista: 'la lista para trabajar' },
-    { id: 'con_permiso', label: 'Aceptan correos', valor: resumen?.con_permiso_email ?? 0, pista: 'se les puede escribir' },
-    { id: 'cumple', label: 'Cumplen este mes', valor: resumen?.cumplen_este_mes ?? 0, pista: 'para saludar' },
-    { id: 'aniversario', label: 'Aniversario del mes', valor: resumen?.aniversario_mes ?? 0, pista: 'de su compra' },
+    { id: 'todos', label: 'Clientes', valor: clientes.length, pista: 'personas con movimientos' },
+    {
+      id: 'contado',
+      label: 'Al contado',
+      valor: clientes.filter((c) => tiene(c, 'Contado')).length,
+      pista: 'pagaron todo',
+    },
+    {
+      id: 'credito',
+      label: 'A crédito',
+      valor: clientes.filter((c) => tiene(c, 'Crédito')).length,
+      pista: 'pagan en cuotas',
+    },
+    {
+      id: 'traspaso',
+      label: 'Por traspaso',
+      valor: clientes.filter((c) => tiene(c, 'Traspaso')).length,
+      pista: 'les cedieron el lote',
+    },
+    {
+      id: 'sin_plan',
+      label: 'Sin plan',
+      valor: clientes.filter((c) => tiene(c, 'Sin plan')).length,
+      pista: 'deben y no tienen cuotas',
+    },
+    {
+      id: 'con_direccion',
+      label: 'Con dirección',
+      valor: clientes.filter((c) => c.direccion).length,
+      pista: 'sabemos dónde viven',
+    },
+    {
+      id: 'sin_direccion',
+      label: 'Sin dirección',
+      valor: clientes.filter((c) => !c.direccion).length,
+      pista: 'falta cargarla',
+    },
   ];
 
   return (
@@ -151,39 +202,11 @@ export default function CuentasClient() {
         ))}
       </div>
 
-      {/* Las compras que todavía no tienen dueño con cuenta: la lista de a
-          quién invitar a registrarse. */}
-      {resumen && resumen.compras_sin_cuenta > 0 ? (
-        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          <strong>{resumen.compras_sin_cuenta}</strong>{' '}
-          {resumen.compras_sin_cuenta === 1 ? 'venta confirmada no está' : 'ventas confirmadas no están'}{' '}
-          vinculada{resumen.compras_sin_cuenta === 1 ? '' : 's'} a ninguna cuenta.{' '}
-          {resumen.compras_vinculadas} ya {resumen.compras_vinculadas === 1 ? 'lo está' : 'lo están'}.
-          Cada comprador las vincula con su código de seguimiento desde{' '}
-          <span className="font-mono">/cuenta</span>.
-        </p>
-      ) : null}
-
-      {resumen && resumen.como_nos_conocio.length > 0 ? (
-        <div className="rounded-xl border border-stone-200 bg-white p-3">
-          <p className="text-[11px] font-semibold tracking-wide text-stone-500 uppercase">
-            Cómo nos conocieron
-          </p>
-          <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-700">
-            {resumen.como_nos_conocio.map((o) => (
-              <li key={o.origen}>
-                {o.origen} <strong className="tabular-nums">{o.cuantos}</strong>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
       <div className="flex flex-wrap items-center gap-2">
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar por nombre, correo, celular, carnet o ciudad"
+          placeholder="Buscar por nombre, carnet, celular, correo o dirección"
           className="w-full max-w-md rounded-lg border border-stone-300 px-3 py-1.5 text-sm sm:w-auto sm:flex-1"
         />
         <span className="text-xs text-stone-500">
@@ -192,41 +215,41 @@ export default function CuentasClient() {
         <div className="ml-auto">
           <ExportButtons
             meta={{
-              title: `Clientes registrados — ${ETIQUETA[filtro]}`,
+              title: `Clientes — ${ETIQUETA[filtro]}`,
               subtitle: `${visibles.length} persona${visibles.length === 1 ? '' : 's'}`,
-              filename: `clientes-${filtro}-${new Date().toISOString().slice(0, 10)}`,
+              filename: `clientes-ficha-${filtro}-${hoyBolivia()}`,
               footnote:
-                'Solo se le escribe a quien aceptó recibir correos. «Invertido» es lo que pagó ' +
-                'contra el precio de sus lotes; «Saldo» lo que le falta.',
+                'Ficha del cliente: quién es y dónde vive. De la compra sólo la modalidad y la ' +
+                'fecha — los importes se ven en Clientes.',
             }}
             columns={[
               { header: 'Nombre' },
-              { header: 'Correo' },
-              { header: 'Celular' },
               { header: 'Carnet' },
+              { header: 'Celular' },
+              { header: 'Correo' },
+              { header: 'Dirección' },
+              { header: 'Referencias' },
+              { header: 'Ubicación' },
               { header: 'Ciudad' },
-              { header: 'Nacimiento' },
-              { header: 'Cómo nos conoció' },
-              { header: 'Acepta correos' },
-              { header: 'Registrado' },
-              { header: 'Compras', align: 'right' },
-              { header: 'Invertido', align: 'right' },
-              { header: 'Saldo', align: 'right' },
+              { header: 'Lotes', align: 'right' },
+              { header: 'Cómo compró' },
+              { header: 'Primera compra' },
+              { header: 'Última compra' },
             ]}
             rows={() =>
               visibles.map((c) => [
-                c.full_name,
-                c.email,
-                c.phone ?? '',
-                c.ci ?? '',
+                c.buyer_full_name,
+                c.buyer_ci,
+                c.buyer_phone ?? '',
+                c.buyer_email ?? '',
+                c.direccion ?? '',
+                c.referencias ?? '',
+                c.ubicacion ?? '',
                 c.city ?? '',
-                c.birth_date ? dateLabel(c.birth_date) : '',
-                c.como_nos_conocio ?? '',
-                c.marketing_opt_in ? 'Sí' : 'No',
-                dateLabel(c.fecha_registro),
-                c.compras,
-                Number(c.invertido),
-                Number(c.saldo),
+                c.lotes_comprados,
+                c.modalidades ?? '',
+                c.primera_compra ? dateLabel(c.primera_compra) : '',
+                c.ultima_compra ? dateLabel(c.ultima_compra) : '',
               ])
             }
           />
@@ -238,52 +261,105 @@ export default function CuentasClient() {
           title="Nadie por acá todavía"
           hint={
             clientes.length === 0
-              ? 'Cuando los compradores creen su cuenta en /cuenta van a aparecer en esta lista.'
+              ? 'Cuando se confirme la primera reserva, el comprador aparece en esta lista.'
               : 'Probá con otro filtro o limpiá la búsqueda.'
           }
         />
       ) : (
         <ul className="divide-y divide-stone-100 rounded-xl border border-stone-200 bg-white">
-          {visibles.map((c) => (
-            <li key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm">
-              <span className="font-semibold text-stone-900">{c.full_name}</span>
-              {c.cumple_este_mes ? (
-                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-800">
-                  cumple este mes
-                </span>
-              ) : null}
-              {c.aniversario_este_mes ? (
-                <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800">
-                  aniversario
-                </span>
-              ) : null}
-              {!c.marketing_opt_in ? (
-                <span className="rounded-full bg-stone-200 px-2 py-0.5 text-[11px] text-stone-600">
-                  sin permiso de correo
-                </span>
-              ) : null}
-              <span className="text-xs text-stone-500">{c.email}</span>
-              {c.city ? <span className="text-xs text-stone-400">{c.city}</span> : null}
-              <span className="ml-auto text-xs text-stone-500">
-                {c.compras > 0
-                  ? `${c.compras} lote${c.compras === 1 ? '' : 's'} · ${formatMoney(Number(c.invertido), 'BOB')}`
-                  : 'sin comprar'}
-              </span>
-              <span className="text-xs text-stone-400">alta {dateLabel(c.fecha_registro)}</span>
-              {c.phone ? (
-                <a
-                  href={waLink(c.phone, `Hola ${c.full_name.split(' ')[0] ?? ''}, te escribimos de Terrenalv.`)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-lg bg-green-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-green-700"
-                >
-                  WhatsApp
-                </a>
-              ) : null}
-            </li>
-          ))}
+          {visibles.map((c) => {
+            const mapa = consultaDeMapa(c);
+            return (
+              <li key={c.ci_norm} className="px-4 py-2.5 text-sm">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <button
+                    type="button"
+                    onClick={() => setFicha(c)}
+                    className="font-semibold text-stone-900 hover:text-brand hover:underline"
+                    title="Ver la ficha completa"
+                  >
+                    {c.buyer_full_name}
+                  </button>
+                  <span className="font-mono text-xs text-stone-400">CI {c.buyer_ci}</span>
+                  {(c.modalidades ?? '').split(' · ').filter(Boolean).map((m) => (
+                    <span
+                      key={m}
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                        BADGE_MODALIDAD[m] ?? 'bg-stone-100 text-stone-600'
+                      }`}
+                    >
+                      {m}
+                    </span>
+                  ))}
+                  {c.lotes_comprados > 0 ? (
+                    <span className="text-xs text-stone-500">
+                      {c.lotes_comprados} lote{c.lotes_comprados === 1 ? '' : 's'}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-stone-400">sin comprar</span>
+                  )}
+                  <span className="ml-auto text-xs text-stone-500">
+                    {c.primera_compra
+                      ? c.ultima_compra && c.ultima_compra !== c.primera_compra
+                        ? `${dateLabel(c.primera_compra)} — ${dateLabel(c.ultima_compra)}`
+                        : dateLabel(c.primera_compra)
+                      : `desde ${dateLabel(c.primera_actividad)}`}
+                  </span>
+                  {c.buyer_phone ? (
+                    <a
+                      href={waLink(
+                        c.buyer_phone,
+                        `Hola ${c.buyer_full_name.split(' ')[0] ?? ''}, le escribimos de Terrenalv.`,
+                      )}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-lg bg-green-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-green-700"
+                    >
+                      WhatsApp
+                    </a>
+                  ) : null}
+                </div>
+                <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-stone-500">
+                  {c.direccion ? <span>{c.direccion}</span> : null}
+                  {c.referencias ? <span className="text-stone-400">{c.referencias}</span> : null}
+                  {!c.direccion ? (
+                    <button
+                      type="button"
+                      onClick={() => setFicha(c)}
+                      className="text-stone-400 underline hover:text-stone-600"
+                    >
+                      cargar dirección
+                    </button>
+                  ) : null}
+                  {mapa ? (
+                    <a
+                      href={enlaceDeMapa(mapa)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold text-brand hover:underline"
+                    >
+                      Mapa ↗
+                    </a>
+                  ) : null}
+                </p>
+              </li>
+            );
+          })}
         </ul>
       )}
+
+      {ficha ? (
+        <FichaClienteDialog
+          ci={ficha.ci_norm}
+          nombre={ficha.buyer_full_name}
+          sinPlata
+          onClose={() => {
+            setFicha(null);
+            // Puede haber cargado la dirección desde la ficha.
+            void cargar();
+          }}
+        />
+      ) : null}
     </div>
   );
 }
