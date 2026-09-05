@@ -40,6 +40,7 @@ import { ElegirLoteDialog, type LoteElegible } from './ElegirLote';
 import { SellOfflineDialog } from './VenderLoteDialogs';
 import type { CobroTarget } from '@/features/admin/contabilidad/types';
 import { ScopeBar, scopeLabel, type ProjectScope } from '@/features/admin/ui/scope';
+import { RangoFechas } from '@/features/admin/ui/RangoFechas';
 import type { AdminProject } from '@/features/admin/lib/project-types';
 
 /** Una fila de v_ventas, tal como la define la vista. */
@@ -480,28 +481,40 @@ export default function VentasClient({
     };
   }, [delPeriodo]);
 
+  /**
+   * ¿Esta venta entra en ese chip?
+   *
+   * Vive suelta porque la usan DOS cosas: la lista de abajo y el número que
+   * lleva cada chip. Si cada una tuviera su copia, el día que se toque una
+   * el chip diría «3» y abriría cuatro filas.
+   */
+  const pasaFiltro = useCallback((r: Venta, f: Filtro) => {
+    // Salvo 'todas' y 'sin_inicial', cada chip describe un subconjunto de
+    // las VENTAS: así el número de un KPI y la lista que abre coinciden.
+    if (f !== 'todas' && f !== 'sin_inicial' && !r.compra_iniciada) return false;
+    if (f === 'sin_inicial' && r.compra_iniciada) return false;
+    if (f === 'saldo' && !(Number(r.saldo) > 0)) return false;
+    if (f === 'migradas' && !r.migrada) return false;
+    if (f === 'plan' && !r.con_plan) return false;
+    if (f === 'cobradas' && !(Number(r.cobrado_aqui) > 0)) return false;
+    // 'oficina' es la venta que empezó como reserva en el mostrador;
+    // 'directa' es la que nunca pasó por una reserva. Son dos maneras
+    // distintas de vender y la oficina las trabaja distinto.
+    if (f === 'app' && r.origen !== 'app') return false;
+    if (f === 'oficina' && r.origen !== 'oficina_reserva') return false;
+    if (f === 'directa' && r.origen !== 'oficina_directa') return false;
+    if (f === 'traspasos' && !r.traspaso) return false;
+    // Los tres tipos nuevos salen de la MISMA regla que usa el tablero.
+    if (f === 'contado' && tipoDeVenta(r) !== 'Contado') return false;
+    if (f === 'credito' && tipoDeVenta(r) !== 'Crédito') return false;
+    if (f === 'sin_plan' && tipoDeVenta(r) !== 'Sin plan') return false;
+    return true;
+  }, []);
+
   const visibles = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((r) => {
-      // Salvo 'todas' y 'sin_inicial', cada chip describe un subconjunto de
-      // las VENTAS: así el número de un KPI y la lista que abre coinciden.
-      if (filtro !== 'todas' && filtro !== 'sin_inicial' && !r.compra_iniciada) return false;
-      if (filtro === 'sin_inicial' && r.compra_iniciada) return false;
-      if (filtro === 'saldo' && !(Number(r.saldo) > 0)) return false;
-      if (filtro === 'migradas' && !r.migrada) return false;
-      if (filtro === 'plan' && !r.con_plan) return false;
-      if (filtro === 'cobradas' && !(Number(r.cobrado_aqui) > 0)) return false;
-      // 'oficina' es la venta que empezó como reserva en el mostrador;
-      // 'directa' es la que nunca pasó por una reserva. Son dos maneras
-      // distintas de vender y la oficina las trabaja distinto.
-      if (filtro === 'app' && r.origen !== 'app') return false;
-      if (filtro === 'oficina' && r.origen !== 'oficina_reserva') return false;
-      if (filtro === 'directa' && r.origen !== 'oficina_directa') return false;
-      if (filtro === 'traspasos' && !r.traspaso) return false;
-      // Los tres tipos nuevos salen de la MISMA regla que usa el tablero.
-      if (filtro === 'contado' && tipoDeVenta(r) !== 'Contado') return false;
-      if (filtro === 'credito' && tipoDeVenta(r) !== 'Crédito') return false;
-      if (filtro === 'sin_plan' && tipoDeVenta(r) !== 'Sin plan') return false;
+      if (!pasaFiltro(r, filtro)) return false;
       // Mismo predicado que usan los KPI de arriba: una sola definición.
       if (!enPeriodo(r)) return false;
       if (!q) return true;
@@ -514,7 +527,22 @@ export default function VentasClient({
         lote.replace('-', ' ').includes(q)
       );
     });
-  }, [rows, query, filtro, enPeriodo]);
+  }, [rows, query, filtro, enPeriodo, pasaFiltro]);
+
+  /**
+   * Cuántas ventas hay en cada chip, dentro del período elegido.
+   *
+   * Es la pregunta que hizo la contadora —«cuántas ventas al contado tuve en
+   * el día»— y hasta ahora había que tocar cada chip y contar las filas a ojo.
+   * Se calcula con el MISMO `pasaFiltro` que arma la lista, así que el número
+   * del chip y lo que se abre al tocarlo son siempre lo mismo. No entra la
+   * búsqueda por texto a propósito: el chip cuenta el período, no lo tecleado.
+   */
+  const conteoPorChip = useMemo(() => {
+    const m = {} as Record<Filtro, number>;
+    for (const c of CHIPS) m[c.id] = delPeriodo.filter((r) => pasaFiltro(r, c.id)).length;
+    return m;
+  }, [delPeriodo, pasaFiltro]);
 
   /** Un KPI abre la lista YA filtrada: la cifra y la lista deben coincidir. */
   function verFiltrado(f: Filtro) {
@@ -572,6 +600,13 @@ export default function VentasClient({
           Vender en oficina
         </button>
       </div>
+
+      {/* El mismo selector del tablero, y el mismo período: vive en la URL
+          (?desde=&hasta=), así que llegar desde una casilla del tablero y
+          elegirlo acá son la misma cosa. Antes esta pantalla RESPETABA el
+          período pero no tenía cómo cambiarlo: sólo se podía traer haciendo
+          clic desde el tablero, y una vez acá quedabas encerrado en él. */}
+      <RangoFechas desde={desde} hasta={hasta} />
 
       <ScopeBar projects={projects} scope={scope} onScope={setScope} />
 
@@ -637,6 +672,13 @@ export default function VentasClient({
                                 }`}
                   >
                     {c.label}
+                    <span
+                      className={`ml-1.5 tabular-nums ${
+                        filtro === c.id ? 'text-white/80' : 'text-stone-400'
+                      }`}
+                    >
+                      {conteoPorChip[c.id] ?? 0}
+                    </span>
                   </button>
                 ))}
                 {filtro === 'cobradas' ? (
