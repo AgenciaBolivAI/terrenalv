@@ -195,10 +195,15 @@ export default function PlanesClient({
    * respuesta, así que se pagina desde el primer día en lugar de descubrirlo
    * el día en que la lista empiece a mentir por lo bajo.
    */
-  const fetchAll = useCallback(async () => {
+  const fetchAll = useCallback(async (opts?: { conservarDetalle?: boolean }) => {
     setLoading(true);
-    setSelected(null);
-    setCuotas(null);
+    // Al cobrar NO se cierra el plan abierto: la oficina está mirando ese
+    // cronograma justamente para ver la cuota que acaba de saldar. Cerrarlo
+    // hacía que el cobro pareciera no haberse registrado.
+    if (!opts?.conservarDetalle) {
+      setSelected(null);
+      setCuotas(null);
+    }
     const PAGINA = 1000;
     const todos: Plan[] = [];
     for (let desde = 0; desde < 20 * PAGINA; desde += PAGINA) {
@@ -225,15 +230,9 @@ export default function PlanesClient({
     void fetchAll();
   }, [fetchAll]);
 
-  /** Detalle inline: el cronograma completo del plan, cuota por cuota. */
-  const toggleDetail = useCallback(
+  /** El cronograma de un plan, cuota por cuota. */
+  const cargarCuotas = useCallback(
     async (planId: string) => {
-      if (selectedRef.current === planId) {
-        setSelected(null);
-        return;
-      }
-      setSelected(planId);
-      setCuotas(null);
       const { data } = await supabase
         .from('installments')
         .select('id, number, due_date, amount, amount_paid, status, paid_at')
@@ -244,6 +243,34 @@ export default function PlanesClient({
       if (selectedRef.current === planId) setCuotas((data ?? []) as unknown as Installment[]);
     },
     [supabase],
+  );
+
+  /**
+   * Refrescar después de tocar un plan, SIN cerrar el que está abierto.
+   *
+   * Todo lo que se hace desde acá —cobrar, mover una fecha, correr el
+   * cronograma, renegociar— se hace mirando ese cronograma, y el resultado se
+   * quiere ver ahí mismo. Cerrarlo hacía que cada acción pareciera no haber
+   * pasado.
+   */
+  const refrescar = useCallback(async () => {
+    const abierto = selectedRef.current;
+    await fetchAll({ conservarDetalle: true });
+    if (abierto) await cargarCuotas(abierto);
+  }, [fetchAll, cargarCuotas]);
+
+  /** Detalle inline: abre o cierra el cronograma del plan. */
+  const toggleDetail = useCallback(
+    async (planId: string) => {
+      if (selectedRef.current === planId) {
+        setSelected(null);
+        return;
+      }
+      setSelected(planId);
+      setCuotas(null);
+      await cargarCuotas(planId);
+    },
+    [cargarCuotas],
   );
 
   // ---- Enlace profundo ?open=<plan_id> ----
@@ -885,7 +912,7 @@ export default function PlanesClient({
           onClose={() => setCobrando(null)}
           onPaid={() => {
             setCobrando(null);
-            void fetchAll();
+            void refrescar();
           }}
         />
       ) : null}
@@ -1021,7 +1048,7 @@ export default function PlanesClient({
                   'success',
                 );
                 setEditando(null);
-                void fetchAll();
+                void refrescar();
               }}
             >
               Guardar condiciones
@@ -1066,7 +1093,7 @@ export default function PlanesClient({
                 }
                 push('Fecha actualizada.', 'success');
                 setMoviendo(null);
-                void fetchAll();
+                void refrescar();
               }}
             >
               Guardar
@@ -1113,7 +1140,7 @@ export default function PlanesClient({
                 }
                 push('Cronograma actualizado.', 'success');
                 setCorriendo(null);
-                void fetchAll();
+                void refrescar();
               }}
             >
               Cambiar fechas

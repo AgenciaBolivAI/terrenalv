@@ -346,6 +346,15 @@ export default function RegistrarCobroDialog({
       setError('Revisa el tipo de cambio: tiene que ser Bs por $us (ej. 6.96).');
       return;
     }
+    // El recibo del plan se abre solo, en otra pestaña.
+    //
+    // La pestaña se PIDE ACÁ, todavía dentro del clic, y recién se le pone la
+    // dirección cuando la base contesta: si se pidiera después del `await`, el
+    // navegador ya no la considera parte del gesto del usuario y la bloquea
+    // sin avisar. Si igual la bloquea, queda el botón «Ver / imprimir recibo»
+    // de la pantalla siguiente, que hace lo mismo.
+    const pestanaRecibo = cobro.tiene_plan ? window.open('', '_blank') : null;
+
     setBusy(true);
     const { data, error: err } = await supabase.rpc('admin_register_cuota_payment', {
       p_reservation_id: cobro.reservation_id,
@@ -362,6 +371,8 @@ export default function RegistrarCobroDialog({
     });
     setBusy(false);
     if (err) {
+      // No quedó recibo que mostrar: la pestaña en blanco se cierra sola.
+      pestanaRecibo?.close();
       setError(adminErrorCopy(err.message));
       return;
     }
@@ -394,9 +405,18 @@ export default function RegistrarCobroDialog({
       push(`Pago registrado en ${r?.cuotas_afectadas ?? 0} cuota(s).${extra}`, 'success');
     }
     if (r?.payment_id) {
+      const recibo = `/admin/recibo/${r.payment_id}`;
+      if (pestanaRecibo && !pestanaRecibo.closed) {
+        // `replace` para que el «atrás» de esa pestaña no vuelva a la nada.
+        pestanaRecibo.location.replace(recibo);
+      } else if (cobro.tiene_plan) {
+        // La bloqueó al abrirla vacía: se reintenta ahora que hay dirección.
+        window.open(recibo, '_blank', 'noopener');
+      }
       setHecho({ paymentId: r.payment_id, tipo: r?.tipo ?? 'cuota' });
       onPaid();
     } else {
+      pestanaRecibo?.close();
       onPaid();
       onClose();
     }
